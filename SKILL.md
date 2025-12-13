@@ -145,17 +145,52 @@ This creates a "ghost" protection rule that:
 - Restricts pushes to nobody
 - Prevents the branch from being created
 
-**Step 6: Update CI/CD and documentation**
-- Update workflow files: `branches: [main]` instead of `master`
-- Update README badges and links
-- Notify team members to update local repos:
-  ```bash
-  git checkout master
-  git branch -m master main
-  git fetch origin
-  git branch -u origin/main main
-  git remote set-head origin -a
-  ```
+**Step 6: Update CI/CD workflows**
+```bash
+# Find and update workflow files
+grep -rl "master" .github/workflows/ | xargs sed -i 's/master/main/g'
+
+# Common patterns to update:
+# - branches: [master] → branches: [main]
+# - on: push: branches: master → main
+# - refs/heads/master → refs/heads/main
+```
+
+**Step 7: Update documentation**
+
+Search and replace branch references:
+```bash
+# Find all references to master branch in docs
+grep -rn "master" --include="*.md" --include="*.rst" --include="*.txt"
+
+# Common updates needed:
+```
+
+| File | Pattern | Update to |
+|------|---------|-----------|
+| README.md | `badge/branch-master` | `badge/branch-main` |
+| README.md | `github.com/org/repo/tree/master` | `tree/main` |
+| README.md | `github.com/org/repo/blob/master` | `blob/main` |
+| README.md | `?branch=master` | `?branch=main` |
+| CONTRIBUTING.md | "merge into master" | "merge into main" |
+| docs/*.md | `/master/` links | `/main/` |
+| package.json | `"repository": "...#master"` | `#main` |
+
+```bash
+# Bulk update in markdown files
+find . -name "*.md" -exec sed -i 's|/master/|/main/|g; s|/master"|/main"|g; s|branch-master|branch-main|g' {} \;
+```
+
+**Step 8: Notify team**
+
+Team members must update local repos:
+```bash
+git checkout master
+git branch -m master main
+git fetch origin
+git branch -u origin/main main
+git remote set-head origin -a
+```
 
 ### Branch Protection Configuration
 
