@@ -25,6 +25,7 @@ GitHub platform configuration and repository management patterns. This skill foc
 
 ## Triggers
 
+**Setup & Configuration:**
 - Creating a new GitHub repository
 - "Check my GitHub project setup"
 - "Configure branch protection"
@@ -32,6 +33,14 @@ GitHub platform configuration and repository management patterns. This skill foc
 - "How do I require PR reviews?"
 - "Auto-merge Dependabot PRs"
 - "Configure CODEOWNERS"
+
+**Troubleshooting (PR Merge Blocked):**
+- "PR can't be merged" / "merge is blocked"
+- "unresolved conversations" / "unresolved comments"
+- "required reviews not met"
+- "CODEOWNERS review required"
+- "status checks failed" (for branch protection context)
+- `gh pr merge` returns error
 
 ## Workflows
 
@@ -163,6 +172,72 @@ changelog:
 ```bash
 gh release create v1.0.0 --generate-notes
 ```
+
+### Troubleshooting: PR Merge Blocked
+
+When a PR cannot be merged, diagnose the cause:
+
+**Step 1: Check PR status**
+```bash
+# View PR details including merge state
+gh pr view <number> --json mergeable,mergeStateStatus,reviewDecision,statusCheckRollup
+
+# Check for blocking issues
+gh pr checks <number>
+```
+
+**Step 2: Identify the blocker**
+
+| Symptom | Cause | Resolution |
+|---------|-------|------------|
+| `BLOCKED` mergeStateStatus | Unresolved conversations | Resolve all review threads |
+| `REVIEW_REQUIRED` reviewDecision | Missing approvals | Request reviews from required reviewers |
+| `CHANGES_REQUESTED` reviewDecision | Changes requested | Address feedback, request re-review |
+| Failed checks in `statusCheckRollup` | CI/CD failures | Fix failing tests/lints |
+| `CODEOWNERS review required` | Missing code owner approval | Get approval from designated owners |
+
+**Step 3: Check unresolved conversations**
+```bash
+# View all PR comments (look for unresolved threads)
+gh pr view <number> --comments
+
+# Via API for detailed thread status
+gh api repos/{owner}/{repo}/pulls/<number>/comments
+```
+
+**Step 4: Resolution actions**
+
+For **unresolved conversations**:
+1. Review each comment thread in the PR
+2. Address the feedback or reply with explanation
+3. Click "Resolve conversation" on each thread
+4. All threads must show as resolved before merge
+
+For **missing reviews**:
+```bash
+# Request review from specific users
+gh pr edit <number> --add-reviewer username
+
+# Check who needs to review
+gh pr view <number> --json reviewRequests
+```
+
+For **CODEOWNERS blocking**:
+```bash
+# Check which files triggered CODEOWNERS
+gh pr view <number> --json files
+
+# Cross-reference with .github/CODEOWNERS to identify required reviewers
+```
+
+**Common `gh pr merge` errors:**
+
+| Error Message | Meaning | Fix |
+|---------------|---------|-----|
+| `Pull request is not mergeable` | Branch protection blocking | Run diagnosis steps above |
+| `Required status check "X" is expected` | CI not run or pending | Wait for CI or trigger manually |
+| `At least 1 approving review is required` | No approvals yet | Request and obtain review |
+| `Changes were made after the most recent approval` | Stale approval | Request re-review |
 
 ## Quick CLI Reference
 
