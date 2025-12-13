@@ -175,6 +175,7 @@ grep -rn "master" --include="*.md" --include="*.rst" --include="*.txt"
 | CONTRIBUTING.md | "merge into master" | "merge into main" |
 | docs/*.md | `/master/` links | `/main/` |
 | package.json | `"repository": "...#master"` | `#main` |
+| composer.json | `"dev-master"` or `#master` | `"dev-main"` or `#main` |
 
 ```bash
 # Bulk update in markdown files
