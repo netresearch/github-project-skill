@@ -255,6 +255,87 @@ info "Recommended: bug, enhancement, documentation, good first issue, help wante
 info "Run: gh label list (if gh CLI is available)"
 
 # ─────────────────────────────────────────────────────────────────
+header "Branch Configuration"
+# ─────────────────────────────────────────────────────────────────
+
+# Check default branch name locally
+if git rev-parse --git-dir > /dev/null 2>&1; then
+    DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+    if [ -z "$DEFAULT_BRANCH" ]; then
+        DEFAULT_BRANCH=$(git config --get init.defaultBranch 2>/dev/null || echo "unknown")
+    fi
+
+    if [ "$DEFAULT_BRANCH" = "main" ]; then
+        pass "Default branch is 'main'"
+    elif [ "$DEFAULT_BRANCH" = "unknown" ]; then
+        warn "Could not determine default branch (check remote)"
+    else
+        fail "Default branch is '$DEFAULT_BRANCH' (should be 'main')"
+    fi
+fi
+
+# Check repository settings via gh CLI if available
+if command -v gh &> /dev/null; then
+    # Get repo info from remote
+    REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null)
+    if [ -n "$REMOTE_URL" ]; then
+        # Extract owner/repo from URL
+        REPO_SLUG=$(echo "$REMOTE_URL" | sed -E 's|.*github\.com[:/](.+/[^.]+)(\.git)?$|\1|')
+
+        if [ -n "$REPO_SLUG" ]; then
+            info "Checking GitHub settings for $REPO_SLUG..."
+
+            # Get repo settings
+            REPO_SETTINGS=$(gh api "repos/$REPO_SLUG" 2>/dev/null || echo "{}")
+
+            if [ "$REPO_SETTINGS" != "{}" ]; then
+                # Check default branch
+                GH_DEFAULT=$(echo "$REPO_SETTINGS" | jq -r '.default_branch // "unknown"')
+                if [ "$GH_DEFAULT" = "main" ]; then
+                    pass "GitHub default branch is 'main'"
+                else
+                    fail "GitHub default branch is '$GH_DEFAULT' (should be 'main')"
+                fi
+
+                # Check merge settings
+                ALLOW_REBASE=$(echo "$REPO_SETTINGS" | jq -r '.allow_rebase_merge // false')
+                ALLOW_MERGE=$(echo "$REPO_SETTINGS" | jq -r '.allow_merge_commit // true')
+                ALLOW_SQUASH=$(echo "$REPO_SETTINGS" | jq -r '.allow_squash_merge // true')
+                DELETE_ON_MERGE=$(echo "$REPO_SETTINGS" | jq -r '.delete_branch_on_merge // false')
+
+                if [ "$ALLOW_REBASE" = "true" ]; then
+                    pass "Rebase merge enabled"
+                else
+                    fail "Rebase merge disabled (should be enabled)"
+                fi
+
+                if [ "$ALLOW_MERGE" = "false" ]; then
+                    pass "Merge commits disabled"
+                else
+                    fail "Merge commits enabled (should be disabled - rebase only)"
+                fi
+
+                if [ "$ALLOW_SQUASH" = "false" ]; then
+                    pass "Squash merge disabled"
+                else
+                    fail "Squash merge enabled (should be disabled - rebase only)"
+                fi
+
+                if [ "$DELETE_ON_MERGE" = "true" ]; then
+                    pass "Delete branch on merge enabled"
+                else
+                    fail "Delete branch on merge disabled (should be enabled)"
+                fi
+            else
+                warn "Could not fetch GitHub repo settings (check gh auth)"
+            fi
+        fi
+    fi
+else
+    info "Install gh CLI for remote settings verification"
+fi
+
+# ─────────────────────────────────────────────────────────────────
 header "Branch Protection Readiness"
 # ─────────────────────────────────────────────────────────────────
 
@@ -267,6 +348,8 @@ echo "  - Require review from CODEOWNERS"
 echo "  - Require conversation resolution"
 echo "  - Do not allow force pushes"
 echo "  - Do not allow deletions"
+echo "  - Allow rebase merge only (disable merge & squash)"
+echo "  - Delete branch on merge"
 info "Check with: gh api repos/{owner}/{repo}/branches/main/protection"
 
 # Check if local indicators suggest protection is needed

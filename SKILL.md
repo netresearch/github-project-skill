@@ -59,6 +59,27 @@ To set up a new GitHub repository:
 
 Run verification: `./scripts/verify-github-project.sh /path/to/repo`
 
+### Branch Configuration
+
+**Required branch settings:**
+
+| Setting | Value | Rationale |
+|---------|-------|-----------|
+| Default branch name | `main` | Industry standard |
+| Default branch protected | ✅ | Prevent direct pushes |
+| Allowed merge method | **Rebase only** | Clean linear history |
+| Delete branch on merge | ✅ | Keep repo clean |
+
+To configure via GitHub CLI:
+
+```bash
+# Ensure default branch is named "main"
+gh api repos/{owner}/{repo} --jq '.default_branch'
+
+# Configure merge settings (rebase only, delete on merge)
+gh repo edit --enable-rebase-merge --disable-merge-commit --disable-squash-merge --delete-branch-on-merge
+```
+
 ### Branch Protection Configuration
 
 To configure branch protection via GitHub CLI:
@@ -86,6 +107,10 @@ gh api repos/{owner}/{repo}/branches/main/protection \
 | Require CODEOWNERS review | ✅ | Domain expert review |
 | Require conversation resolution | ✅ | All comments addressed |
 | Do not allow force pushes | ✅ | Protect history |
+| Allow rebase merge | ✅ | Clean linear history |
+| Disable merge commits | ✅ | No merge bubbles |
+| Disable squash merge | ✅ | Preserve commit granularity |
+| Delete branch on merge | ✅ | Auto-cleanup merged branches |
 
 ### PR Comment Resolution Workflow
 
