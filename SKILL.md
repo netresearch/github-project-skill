@@ -51,6 +51,14 @@ GitHub platform configuration and repository management patterns. This skill foc
 - "status checks failed" (for branch protection context)
 - `gh pr merge` returns error
 
+**Troubleshooting (Auto-Merge Failures):**
+- "auto-merge not working" / "Dependabot PR not merging"
+- "Merge method squash merging is not allowed"
+- "Merge method merge commit is not allowed"
+- "required status check not found"
+- "status check name mismatch"
+- PRs stuck with auto-merge enabled
+
 **Branch Migration:**
 - "rename master to main"
 - "change default branch"
@@ -279,6 +287,105 @@ To configure automatic merging of dependency updates:
 2. Create auto-merge workflow using template: `templates/auto-merge.yml.template`
 3. Workflow auto-approves and merges minor/patch updates
 4. Major updates require manual review
+
+### Troubleshooting: Auto-Merge Failures
+
+When auto-merge is enabled but PRs aren't merging automatically:
+
+**Step 1: Check repo merge settings vs workflow merge method**
+```bash
+# View current merge method settings
+gh api repos/{owner}/{repo} --jq '{
+  allow_squash_merge,
+  allow_merge_commit,
+  allow_rebase_merge,
+  delete_branch_on_merge
+}'
+```
+
+**Step 2: Identify merge method mismatch**
+
+| Workflow Uses | Repo Setting Required | Error Message |
+|---------------|----------------------|---------------|
+| `gh pr merge --squash` | `allow_squash_merge: true` | "Merge method squash merging is not allowed" |
+| `gh pr merge --merge` | `allow_merge_commit: true` | "Merge method merge commit is not allowed" |
+| `gh pr merge --rebase` | `allow_rebase_merge: true` | "Merge method rebase is not allowed" |
+
+**Step 3: Fix merge method alignment**
+
+Option A - Update workflow to match repo settings (recommended for rebase-only repos):
+```yaml
+# In .github/workflows/auto-merge-deps.yml
+- run: gh pr merge --auto --rebase "$PR_URL"  # Match repo's allowed method
+```
+
+Option B - Update repo settings to allow workflow's merge method:
+```bash
+# Enable squash merge (if workflow uses --squash)
+gh api repos/{owner}/{repo} --method PATCH -f allow_squash_merge=true
+
+# Or configure for rebase-only (recommended)
+gh api repos/{owner}/{repo} --method PATCH \
+  -f allow_rebase_merge=true \
+  -f allow_merge_commit=false \
+  -f allow_squash_merge=false
+```
+
+**Step 4: Validate required status checks**
+
+Status check names must **exactly match** what workflows produce:
+
+```bash
+# View required status checks on branch protection
+gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks \
+  --jq '.contexts[]'
+
+# View actual check names from a recent PR
+gh pr checks <number> --json name --jq '.[].name'
+```
+
+**Common status check name mismatches:**
+
+| Expected (Branch Protection) | Actual (Workflow Output) | Issue |
+|------------------------------|--------------------------|-------|
+| `Analyze (javascript-typescript)` | `Analyze (javascript)` | Language detection differs |
+| `build` | `Build / build` | Job name includes workflow name |
+| `test` | `test (ubuntu-latest, 18)` | Matrix parameters appended |
+
+**Step 5: Fix status check names**
+```bash
+# Update branch protection to match actual check names
+gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks \
+  --method PATCH \
+  -f strict=true \
+  --input - <<EOF
+{
+  "contexts": ["Analyze (javascript)", "build", "test"]
+}
+EOF
+```
+
+**Step 6: Re-trigger stuck PRs**
+
+After fixing settings, re-trigger auto-merge on existing PRs:
+```bash
+# Update PR branch to trigger checks
+gh pr update-branch <number> --rebase
+
+# Or close and reopen to re-evaluate
+gh pr close <number> && gh pr reopen <number>
+```
+
+**Auto-merge compatibility checklist:**
+
+| Check | Command | Expected |
+|-------|---------|----------|
+| Merge method alignment | `gh api repos/{owner}/{repo} --jq '.allow_rebase_merge'` | Matches workflow flag |
+| Status checks pass | `gh pr checks <number>` | All green |
+| Status check names match | Compare `gh pr checks` vs branch protection | Exact match |
+| Reviews complete | `gh pr view <number> --json reviewDecision` | `APPROVED` |
+| No merge conflicts | `gh pr view <number> --json mergeable` | `MERGEABLE` |
+| Auto-merge enabled | `gh pr view <number> --json autoMergeRequest` | Not null |
 
 ### GitHub Discussions Setup
 

@@ -82,6 +82,15 @@ echo ""
 info "Checking repository: $REPO_PATH"
 info "Note: For CI/CD, security scanning, SLSA → see other skills"
 
+# Extract repo slug for GitHub API calls
+REPO_SLUG=""
+if git rev-parse --git-dir > /dev/null 2>&1; then
+    REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null)
+    if [ -n "$REMOTE_URL" ]; then
+        REPO_SLUG=$(echo "$REMOTE_URL" | sed -E 's|.*github\.com[:/](.+/[^.]+)(\.git)?$|\1|')
+    fi
+fi
+
 # ─────────────────────────────────────────────────────────────────
 header "Root Documentation Files"
 # ─────────────────────────────────────────────────────────────────
@@ -171,6 +180,20 @@ if [ -d ".github/workflows" ]; then
             if grep -rl "dependabot/fetch-metadata" .github/workflows/ > /dev/null 2>&1; then
                 pass "Dependabot metadata check enabled (safer auto-merge)"
             fi
+
+            # Check for merge method compatibility
+            WORKFLOW_MERGE_METHOD=""
+            if grep -rq "\-\-squash" .github/workflows/ 2>/dev/null; then
+                WORKFLOW_MERGE_METHOD="squash"
+            elif grep -rq "\-\-rebase" .github/workflows/ 2>/dev/null; then
+                WORKFLOW_MERGE_METHOD="rebase"
+            elif grep -rq "\-\-merge" .github/workflows/ 2>/dev/null; then
+                WORKFLOW_MERGE_METHOD="merge"
+            fi
+
+            if [ -n "$WORKFLOW_MERGE_METHOD" ]; then
+                info "Auto-merge workflow uses: --$WORKFLOW_MERGE_METHOD"
+            fi
         else
             warn "pull_request_target workflow exists but no bot auto-merge detected"
         fi
@@ -179,6 +202,60 @@ if [ -d ".github/workflows" ]; then
     fi
 else
     warn ".github/workflows directory missing"
+fi
+
+# ─────────────────────────────────────────────────────────────────
+header "Auto-merge Compatibility Check"
+# ─────────────────────────────────────────────────────────────────
+
+if command -v gh &> /dev/null && [ -n "$REPO_SLUG" ]; then
+    # Get repo merge settings
+    MERGE_SETTINGS=$(gh api "repos/$REPO_SLUG" 2>/dev/null || echo "{}")
+
+    if [ "$MERGE_SETTINGS" != "{}" ]; then
+        ALLOW_SQUASH=$(echo "$MERGE_SETTINGS" | jq -r '.allow_squash_merge // false')
+        ALLOW_MERGE=$(echo "$MERGE_SETTINGS" | jq -r '.allow_merge_commit // true')
+        ALLOW_REBASE=$(echo "$MERGE_SETTINGS" | jq -r '.allow_rebase_merge // false')
+
+        # Check for merge method alignment with workflow
+        if [ -n "$WORKFLOW_MERGE_METHOD" ]; then
+            case "$WORKFLOW_MERGE_METHOD" in
+                squash)
+                    if [ "$ALLOW_SQUASH" = "true" ]; then
+                        pass "Workflow merge method (squash) is allowed by repo settings"
+                    else
+                        fail "MISMATCH: Workflow uses --squash but repo has allow_squash_merge=false"
+                        info "Fix: Update workflow to use --rebase, or enable squash merge in repo settings"
+                    fi
+                    ;;
+                rebase)
+                    if [ "$ALLOW_REBASE" = "true" ]; then
+                        pass "Workflow merge method (rebase) is allowed by repo settings"
+                    else
+                        fail "MISMATCH: Workflow uses --rebase but repo has allow_rebase_merge=false"
+                        info "Fix: Enable rebase merge in repo settings"
+                    fi
+                    ;;
+                merge)
+                    if [ "$ALLOW_MERGE" = "true" ]; then
+                        pass "Workflow merge method (merge) is allowed by repo settings"
+                    else
+                        fail "MISMATCH: Workflow uses --merge but repo has allow_merge_commit=false"
+                        info "Fix: Update workflow to use --rebase, or enable merge commits in repo settings"
+                    fi
+                    ;;
+            esac
+        fi
+
+        # Check for rebase-only configuration (recommended)
+        if [ "$ALLOW_REBASE" = "true" ] && [ "$ALLOW_MERGE" = "false" ] && [ "$ALLOW_SQUASH" = "false" ]; then
+            pass "Repo configured for rebase-only merges (recommended)"
+        elif [ "$ALLOW_REBASE" = "true" ]; then
+            info "Multiple merge methods allowed. Consider enabling rebase-only for clean history."
+        fi
+    fi
+else
+    info "Skipping merge method compatibility check (requires gh CLI and remote)"
 fi
 
 # ─────────────────────────────────────────────────────────────────
@@ -275,61 +352,52 @@ if git rev-parse --git-dir > /dev/null 2>&1; then
 fi
 
 # Check repository settings via gh CLI if available
-if command -v gh &> /dev/null; then
-    # Get repo info from remote
-    REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null)
-    if [ -n "$REMOTE_URL" ]; then
-        # Extract owner/repo from URL
-        REPO_SLUG=$(echo "$REMOTE_URL" | sed -E 's|.*github\.com[:/](.+/[^.]+)(\.git)?$|\1|')
+if command -v gh &> /dev/null && [ -n "$REPO_SLUG" ]; then
+    info "Checking GitHub settings for $REPO_SLUG..."
 
-        if [ -n "$REPO_SLUG" ]; then
-            info "Checking GitHub settings for $REPO_SLUG..."
+    # Get repo settings
+    REPO_SETTINGS=$(gh api "repos/$REPO_SLUG" 2>/dev/null || echo "{}")
 
-            # Get repo settings
-            REPO_SETTINGS=$(gh api "repos/$REPO_SLUG" 2>/dev/null || echo "{}")
-
-            if [ "$REPO_SETTINGS" != "{}" ]; then
-                # Check default branch
-                GH_DEFAULT=$(echo "$REPO_SETTINGS" | jq -r '.default_branch // "unknown"')
-                if [ "$GH_DEFAULT" = "main" ]; then
-                    pass "GitHub default branch is 'main'"
-                else
-                    fail "GitHub default branch is '$GH_DEFAULT' (should be 'main')"
-                fi
-
-                # Check merge settings
-                ALLOW_REBASE=$(echo "$REPO_SETTINGS" | jq -r '.allow_rebase_merge // false')
-                ALLOW_MERGE=$(echo "$REPO_SETTINGS" | jq -r '.allow_merge_commit // true')
-                ALLOW_SQUASH=$(echo "$REPO_SETTINGS" | jq -r '.allow_squash_merge // true')
-                DELETE_ON_MERGE=$(echo "$REPO_SETTINGS" | jq -r '.delete_branch_on_merge // false')
-
-                if [ "$ALLOW_REBASE" = "true" ]; then
-                    pass "Rebase merge enabled"
-                else
-                    fail "Rebase merge disabled (should be enabled)"
-                fi
-
-                if [ "$ALLOW_MERGE" = "false" ]; then
-                    pass "Merge commits disabled"
-                else
-                    fail "Merge commits enabled (should be disabled - rebase only)"
-                fi
-
-                if [ "$ALLOW_SQUASH" = "false" ]; then
-                    pass "Squash merge disabled"
-                else
-                    fail "Squash merge enabled (should be disabled - rebase only)"
-                fi
-
-                if [ "$DELETE_ON_MERGE" = "true" ]; then
-                    pass "Delete branch on merge enabled"
-                else
-                    fail "Delete branch on merge disabled (should be enabled)"
-                fi
-            else
-                warn "Could not fetch GitHub repo settings (check gh auth)"
-            fi
+    if [ "$REPO_SETTINGS" != "{}" ]; then
+        # Check default branch
+        GH_DEFAULT=$(echo "$REPO_SETTINGS" | jq -r '.default_branch // "unknown"')
+        if [ "$GH_DEFAULT" = "main" ]; then
+            pass "GitHub default branch is 'main'"
+        else
+            fail "GitHub default branch is '$GH_DEFAULT' (should be 'main')"
         fi
+
+        # Check merge settings
+        ALLOW_REBASE=$(echo "$REPO_SETTINGS" | jq -r '.allow_rebase_merge // false')
+        ALLOW_MERGE=$(echo "$REPO_SETTINGS" | jq -r '.allow_merge_commit // true')
+        ALLOW_SQUASH=$(echo "$REPO_SETTINGS" | jq -r '.allow_squash_merge // true')
+        DELETE_ON_MERGE=$(echo "$REPO_SETTINGS" | jq -r '.delete_branch_on_merge // false')
+
+        if [ "$ALLOW_REBASE" = "true" ]; then
+            pass "Rebase merge enabled"
+        else
+            fail "Rebase merge disabled (should be enabled)"
+        fi
+
+        if [ "$ALLOW_MERGE" = "false" ]; then
+            pass "Merge commits disabled"
+        else
+            fail "Merge commits enabled (should be disabled - rebase only)"
+        fi
+
+        if [ "$ALLOW_SQUASH" = "false" ]; then
+            pass "Squash merge disabled"
+        else
+            fail "Squash merge enabled (should be disabled - rebase only)"
+        fi
+
+        if [ "$DELETE_ON_MERGE" = "true" ]; then
+            pass "Delete branch on merge enabled"
+        else
+            fail "Delete branch on merge disabled (should be enabled)"
+        fi
+    else
+        warn "Could not fetch GitHub repo settings (check gh auth)"
     fi
 else
     info "Install gh CLI for remote settings verification"
