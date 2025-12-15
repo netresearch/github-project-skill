@@ -265,9 +265,18 @@ updates:
 
 ## Auto-merge Workflow
 
-### GitHub Actions Auto-merge
+### Auto-merge Decision Matrix
+
+| Repository Configuration | Workflow Pattern | Key Difference |
+|--------------------------|------------------|----------------|
+| Merge queue enabled | GraphQL `enqueuePullRequest` | Adds PR to queue, queue handles merge |
+| Branch protection (no queue) | `gh pr merge --auto` | Enables auto-merge, GitHub merges when checks pass |
+| No branch protection | `gh pr merge --rebase` | Direct merge, no waiting |
+
+### GitHub Actions Auto-merge (Branch Protection)
 ```yaml
 # .github/workflows/auto-merge.yml
+# Use when: Branch protection enabled, no merge queue
 name: Auto-merge dependency updates
 
 on:
@@ -296,6 +305,78 @@ jobs:
 
       - name: Enable auto-merge
         run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### GitHub Actions Auto-merge (Merge Queue)
+```yaml
+# .github/workflows/auto-merge-deps.yml
+# Use when: Repository has merge queue enabled
+# IMPORTANT: mergeMethod is NOT a valid argument for enqueuePullRequest
+name: Auto-merge dependency PRs
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]' || github.actor == 'renovate[bot]'
+    steps:
+      - name: Auto-approve PR
+        run: gh pr review --approve "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add to merge queue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
+        run: |
+          gh api graphql -f query='
+            mutation($pullRequestId: ID!) {
+              enqueuePullRequest(input: {pullRequestId: $pullRequestId}) {
+                mergeQueueEntry { id }
+              }
+            }' -f pullRequestId="$PR_NODE_ID"
+```
+
+### GitHub Actions Auto-merge (No Branch Protection)
+```yaml
+# .github/workflows/auto-merge-deps.yml
+# Use when: No branch protection rules configured
+# Note: --auto flag requires branch protection, use direct merge instead
+name: Auto-merge dependency PRs
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]' || github.actor == 'renovate[bot]'
+    steps:
+      - name: Auto-approve PR
+        run: gh pr review --approve "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge PR
+        run: gh pr merge --rebase "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
