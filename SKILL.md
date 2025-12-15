@@ -1,6 +1,6 @@
 ---
 name: github-project
-description: "GitHub repository setup and platform-specific features. This skill should be used when creating new GitHub repositories, configuring branch protection rules, setting up GitHub Issues/Discussions/Projects, creating sub-issues and issue hierarchies, managing PR review workflows, configuring Dependabot/Renovate auto-merge, or checking GitHub project configuration. Focuses on GitHub platform features, not CI/CD pipelines or language-specific tooling. By Netresearch."
+description: "GitHub repository setup and platform-specific features. This skill should be used when creating new GitHub repositories, configuring branch protection rules, setting up GitHub Issues/Discussions/Projects, creating sub-issues and issue hierarchies, managing PR review workflows, configuring Dependabot/Renovate auto-merge, setting up merge queues with GraphQL enqueuePullRequest mutations, or checking GitHub project configuration. Focuses on GitHub platform features, not CI/CD pipelines or language-specific tooling. By Netresearch."
 ---
 
 # GitHub Project Skill
@@ -58,6 +58,14 @@ GitHub platform configuration and repository management patterns. This skill foc
 - "required status check not found"
 - "status check name mismatch"
 - PRs stuck with auto-merge enabled
+- "Protected branch rules not configured" (--auto requires branch protection)
+- Merge queue not processing PRs
+
+**Merge Queue Configuration:**
+- "set up merge queue"
+- "enqueuePullRequest"
+- "auto-merge with merge queue"
+- "GraphQL merge queue mutation"
 
 **Branch Migration:**
 - "rename master to main"
@@ -106,108 +114,14 @@ gh repo edit --enable-rebase-merge --disable-merge-commit --disable-squash-merge
 
 ### Renaming "master" to "main"
 
-To migrate from `master` to `main` as default branch:
+For complete migration steps from `master` to `main` as default branch, see `references/branch-migration.md`.
 
-**Step 1: Rename locally and push**
+Quick start:
 ```bash
-# Rename local branch
 git branch -m master main
-
-# Push new branch to remote
 git push -u origin main
-```
-
-**Step 2: Update GitHub default branch**
-```bash
-# Set main as default (via API)
-gh api repos/{owner}/{repo} --method PATCH -f default_branch=main
-
-# Or via gh repo edit
 gh repo edit --default-branch main
-```
-
-**Step 3: Update branch protection**
-```bash
-# Copy protection rules from master to main (if any existed)
-# Then delete master protection
-gh api repos/{owner}/{repo}/branches/master/protection --method DELETE 2>/dev/null || true
-
-# Set up protection on main (see Branch Protection Configuration below)
-```
-
-**Step 4: Delete old master branch**
-```bash
-# Delete remote master
 git push origin --delete master
-```
-
-**Step 5: Prevent master from being re-created**
-
-Create a branch protection rule for `master` that blocks all pushes:
-
-```bash
-# Create restrictive rule for "master" branch name
-gh api repos/{owner}/{repo}/branches/master/protection \
-  --method PUT \
-  -f required_status_checks=null \
-  -f enforce_admins=true \
-  -f required_pull_request_reviews='{"required_approving_review_count":6,"dismiss_stale_reviews":true}' \
-  -f restrictions='{"users":[],"teams":[]}' \
-  -f allow_force_pushes=false \
-  -f allow_deletions=false
-```
-
-This creates a "ghost" protection rule that:
-- Requires 6 approvals (effectively blocking all PRs)
-- Restricts pushes to nobody
-- Prevents the branch from being created
-
-**Step 6: Update CI/CD workflows**
-```bash
-# Find and update workflow files
-grep -rl "master" .github/workflows/ | xargs sed -i 's/master/main/g'
-
-# Common patterns to update:
-# - branches: [master] → branches: [main]
-# - on: push: branches: master → main
-# - refs/heads/master → refs/heads/main
-```
-
-**Step 7: Update documentation**
-
-Search and replace branch references:
-```bash
-# Find all references to master branch in docs
-grep -rn "master" --include="*.md" --include="*.rst" --include="*.txt"
-
-# Common updates needed:
-```
-
-| File | Pattern | Update to |
-|------|---------|-----------|
-| README.md | `badge/branch-master` | `badge/branch-main` |
-| README.md | `github.com/org/repo/tree/master` | `tree/main` |
-| README.md | `github.com/org/repo/blob/master` | `blob/main` |
-| README.md | `?branch=master` | `?branch=main` |
-| CONTRIBUTING.md | "merge into master" | "merge into main" |
-| docs/*.md | `/master/` links | `/main/` |
-| package.json | `"repository": "...#master"` | `#main` |
-| composer.json | `"dev-master"` or `#master` | `"dev-main"` or `#main` |
-
-```bash
-# Bulk update in markdown files
-find . -name "*.md" -exec sed -i 's|/master/|/main/|g; s|/master"|/main"|g; s|branch-master|branch-main|g' {} \;
-```
-
-**Step 8: Notify team**
-
-Team members must update local repos:
-```bash
-git checkout master
-git branch -m master main
-git fetch origin
-git branch -u origin/main main
-git remote set-head origin -a
 ```
 
 ### Branch Protection Configuration
@@ -284,9 +198,74 @@ To configure automatic reviewer assignment:
 To configure automatic merging of dependency updates:
 
 1. Configure Dependabot or Renovate (see `references/dependency-management.md`)
-2. Create auto-merge workflow using template: `templates/auto-merge.yml.template`
+2. Create auto-merge workflow using appropriate template (see decision matrix below)
 3. Workflow auto-approves and merges minor/patch updates
 4. Major updates require manual review
+
+**Auto-Merge Decision Matrix:**
+
+| Repository Configuration | Template | Merge Method |
+|--------------------------|----------|--------------|
+| Merge queue enabled | `auto-merge-queue.yml.template` | GraphQL `enqueuePullRequest` |
+| Branch protection (no queue) | `auto-merge.yml.template` | `gh pr merge --auto` |
+| No branch protection | `auto-merge-direct.yml.template` | `gh pr merge --rebase` (direct) |
+
+### Merge Queue Auto-Merge Setup
+
+For repositories with merge queues enabled, the `--auto` flag and direct merge commands don't work. Use the GraphQL `enqueuePullRequest` mutation instead.
+
+**Key points:**
+- The `mergeMethod` parameter is NOT valid for `enqueuePullRequest` - merge method is set by queue configuration
+- Use `github.event.pull_request.node_id` to get the PR's GraphQL node ID
+- The mutation adds the PR to the queue; actual merge happens when queue processes it
+
+```yaml
+# .github/workflows/auto-merge-deps.yml
+name: Auto-merge dependency PRs
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]' || github.actor == 'renovate[bot]'
+    steps:
+      - name: Approve PR
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr review --approve "$PR_URL"
+
+      - name: Add to merge queue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
+        run: |
+          gh api graphql -f query='
+            mutation($pullRequestId: ID!) {
+              enqueuePullRequest(input: {pullRequestId: $pullRequestId}) {
+                mergeQueueEntry { id }
+              }
+            }' -f pullRequestId="$PR_NODE_ID"
+```
+
+### Direct Auto-Merge Setup (No Branch Protection)
+
+For repositories without branch protection rules, the `--auto` flag fails with "Protected branch rules not configured". Use direct merge instead:
+
+```yaml
+# .github/workflows/auto-merge-deps.yml
+- name: Merge PR
+  env:
+    PR_URL: ${{ github.event.pull_request.html_url }}
+    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  run: gh pr merge --rebase "$PR_URL"
+```
 
 ### Troubleshooting: Auto-Merge Failures
 
@@ -313,67 +292,36 @@ gh api repos/{owner}/{repo} --jq '{
 
 **Step 3: Fix merge method alignment**
 
-Option A - Update workflow to match repo settings (recommended for rebase-only repos):
-```yaml
-# In .github/workflows/auto-merge-deps.yml
-- run: gh pr merge --auto --rebase "$PR_URL"  # Match repo's allowed method
-```
-
-Option B - Update repo settings to allow workflow's merge method:
+Either update workflow to match repo settings (`gh pr merge --rebase`) or update repo:
 ```bash
-# Enable squash merge (if workflow uses --squash)
-gh api repos/{owner}/{repo} --method PATCH -f allow_squash_merge=true
-
-# Or configure for rebase-only (recommended)
-gh api repos/{owner}/{repo} --method PATCH \
-  -f allow_rebase_merge=true \
-  -f allow_merge_commit=false \
-  -f allow_squash_merge=false
+gh api repos/{owner}/{repo} --method PATCH -f allow_rebase_merge=true
 ```
 
 **Step 4: Validate required status checks**
 
 Status check names must **exactly match** what workflows produce:
-
 ```bash
-# View required status checks on branch protection
-gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks \
-  --jq '.contexts[]'
-
-# View actual check names from a recent PR
+# Compare expected vs actual check names
+gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks --jq '.contexts[]'
 gh pr checks <number> --json name --jq '.[].name'
 ```
 
 **Common status check name mismatches:**
 
-| Expected (Branch Protection) | Actual (Workflow Output) | Issue |
-|------------------------------|--------------------------|-------|
-| `Analyze (javascript-typescript)` | `Analyze (javascript)` | Language detection differs |
-| `build` | `Build / build` | Job name includes workflow name |
-| `test` | `test (ubuntu-latest, 18)` | Matrix parameters appended |
+| Expected | Actual | Issue |
+|----------|--------|-------|
+| `Analyze (javascript-typescript)` | `Analyze (javascript)` | Language detection |
+| `build` | `Build / build` | Workflow name prefix |
+| `test` | `test (ubuntu-latest, 18)` | Matrix parameters |
 
-**Step 5: Fix status check names**
+**Step 5: Fix and re-trigger**
 ```bash
-# Update branch protection to match actual check names
+# Update branch protection check names
 gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks \
-  --method PATCH \
-  -f strict=true \
-  --input - <<EOF
-{
-  "contexts": ["Analyze (javascript)", "build", "test"]
-}
-EOF
-```
+  --method PATCH -f strict=true --input - <<< '{"contexts":["actual-check-name"]}'
 
-**Step 6: Re-trigger stuck PRs**
-
-After fixing settings, re-trigger auto-merge on existing PRs:
-```bash
-# Update PR branch to trigger checks
+# Re-trigger stuck PRs
 gh pr update-branch <number> --rebase
-
-# Or close and reopen to re-evaluate
-gh pr close <number> && gh pr reopen <number>
 ```
 
 **Auto-merge compatibility checklist:**
@@ -429,157 +377,21 @@ gh release create v1.0.0 --generate-notes
 
 ### Sub-Issues Configuration
 
-GitHub's sub-issues feature enables parent-child relationships between issues, supporting up to 8 levels of hierarchy and 100 sub-issues per parent. This replaced the deprecated tasklists feature (sunset April 2025).
+GitHub's sub-issues feature enables parent-child relationships between issues (up to 8 levels, 100 sub-issues per parent). For complete GraphQL API reference, see `references/sub-issues.md`.
 
-**Important:** The `gh` CLI does not support sub-issues directly. You must use the GraphQL API.
+**Important:** The `gh` CLI does not support sub-issues directly. Use GraphQL API.
 
-#### Creating Sub-Issues
-
-**Step 1: Create the issues normally**
+Quick reference:
 ```bash
-# Create parent issue
-gh issue create --title "Parent feature request" --body "Main tracking issue"
-# Returns: https://github.com/owner/repo/issues/100
+# Get issue node ID
+gh api graphql -f query='{repository(owner:"OWNER",name:"REPO"){issue(number:123){id}}}'
 
-# Create child issues
-gh issue create --title "Sub-task 1" --body "First sub-task"
-# Returns: https://github.com/owner/repo/issues/101
+# Add sub-issue (requires node IDs)
+gh api graphql -f query='mutation{addSubIssue(input:{issueId:"PARENT_ID",subIssueId:"CHILD_ID"}){issue{number}subIssue{number}}}'
 
-gh issue create --title "Sub-task 2" --body "Second sub-task"
-# Returns: https://github.com/owner/repo/issues/102
+# List sub-issues
+gh api graphql -f query='{repository(owner:"OWNER",name:"REPO"){issue(number:123){subIssues(first:50){nodes{number title state}}}}}'
 ```
-
-**Step 2: Get issue node IDs (required for GraphQL)**
-```bash
-gh api graphql -f query='
-{
-  repository(owner: "OWNER", name: "REPO") {
-    parent: issue(number: 100) { id }
-    child1: issue(number: 101) { id }
-    child2: issue(number: 102) { id }
-  }
-}'
-```
-
-Output:
-```json
-{
-  "data": {
-    "repository": {
-      "parent": { "id": "I_kwDOXXXXXX" },
-      "child1": { "id": "I_kwDOYYYYYY" },
-      "child2": { "id": "I_kwDOZZZZZZ" }
-    }
-  }
-}
-```
-
-**Step 3: Link sub-issues to parent**
-```bash
-# Add first sub-issue
-gh api graphql -f query='
-mutation {
-  addSubIssue(input: {
-    issueId: "I_kwDOXXXXXX",
-    subIssueId: "I_kwDOYYYYYY"
-  }) {
-    issue { number title }
-    subIssue { number title }
-  }
-}'
-
-# Add second sub-issue
-gh api graphql -f query='
-mutation {
-  addSubIssue(input: {
-    issueId: "I_kwDOXXXXXX",
-    subIssueId: "I_kwDOZZZZZZ"
-  }) {
-    issue { number title }
-    subIssue { number title }
-  }
-}'
-```
-
-#### Querying Sub-Issues
-
-**List all sub-issues of a parent:**
-```bash
-gh api graphql -f query='
-{
-  repository(owner: "OWNER", name: "REPO") {
-    issue(number: 100) {
-      number
-      title
-      subIssues(first: 50) {
-        nodes {
-          number
-          title
-          state
-        }
-        totalCount
-      }
-    }
-  }
-}'
-```
-
-**Get parent of a sub-issue:**
-```bash
-gh api graphql -f query='
-{
-  repository(owner: "OWNER", name: "REPO") {
-    issue(number: 101) {
-      number
-      title
-      parent {
-        number
-        title
-      }
-    }
-  }
-}'
-```
-
-#### Removing Sub-Issues
-
-```bash
-gh api graphql -f query='
-mutation {
-  removeSubIssue(input: {
-    issueId: "I_kwDOXXXXXX",
-    subIssueId: "I_kwDOYYYYYY"
-  }) {
-    issue { number }
-    subIssue { number }
-  }
-}'
-```
-
-#### Sub-Issues Best Practices
-
-| Practice | Rationale |
-|----------|-----------|
-| Use parent as tracking/meta issue | Provides overview and progress tracking |
-| Add "tracking" label to parent | Identifies meta-issues in issue lists |
-| Keep hierarchy ≤3 levels | Deeper hierarchies become hard to manage |
-| Reference upstream PRs in body | Link to external sources for context |
-| One sub-issue per distinct feature | Enables independent progress and assignment |
-
-#### Sub-Issues Behavior
-
-- **Inheritance**: Sub-issues inherit Project and Milestone from parent by default
-- **Cross-org support**: Sub-issues can belong to different organizations than parent
-- **Progress tracking**: Parent issue shows completion percentage in GitHub UI
-- **Limits**: Maximum 100 sub-issues per parent, 8 levels of nesting
-
-#### Migration from Tasklists
-
-Tasklists were sunset April 30, 2025. To convert old tasklist items:
-
-1. Identify issues with tasklist markdown (`- [ ] #123`)
-2. Create sub-issue relationships using GraphQL API above
-3. Remove tasklist markdown from issue body (or leave as reference)
 
 ### Troubleshooting: PR Merge Blocked
 
@@ -604,38 +416,16 @@ gh pr checks <number>
 | Failed checks in `statusCheckRollup` | CI/CD failures | Fix failing tests/lints |
 | `CODEOWNERS review required` | Missing code owner approval | Get approval from designated owners |
 
-**Step 3: Check unresolved conversations**
+**Step 3: Resolution actions**
 ```bash
-# View all PR comments (look for unresolved threads)
+# For unresolved conversations: view and resolve threads
 gh pr view <number> --comments
 
-# Via API for detailed thread status
-gh api repos/{owner}/{repo}/pulls/<number>/comments
-```
-
-**Step 4: Resolution actions**
-
-For **unresolved conversations**:
-1. Review each comment thread in the PR
-2. Address the feedback or reply with explanation
-3. Click "Resolve conversation" on each thread
-4. All threads must show as resolved before merge
-
-For **missing reviews**:
-```bash
-# Request review from specific users
+# For missing reviews: request specific reviewers
 gh pr edit <number> --add-reviewer username
 
-# Check who needs to review
-gh pr view <number> --json reviewRequests
-```
-
-For **CODEOWNERS blocking**:
-```bash
-# Check which files triggered CODEOWNERS
+# For CODEOWNERS blocking: check which files need review
 gh pr view <number> --json files
-
-# Cross-reference with .github/CODEOWNERS to identify required reviewers
 ```
 
 **Common `gh pr merge` errors:**
@@ -646,6 +436,8 @@ gh pr view <number> --json files
 | `Required status check "X" is expected` | CI not run or pending | Wait for CI or trigger manually |
 | `At least 1 approving review is required` | No approvals yet | Request and obtain review |
 | `Changes were made after the most recent approval` | Stale approval | Request re-review |
+| `Protected branch rules not configured` | `--auto` requires branch protection | Use direct merge or enable branch protection |
+| `InputObject 'EnqueuePullRequestInput' doesn't accept argument 'mergeMethod'` | Invalid GraphQL parameter | Remove `mergeMethod` from mutation - it's set by queue config |
 
 ## Quick CLI Reference
 
@@ -673,16 +465,6 @@ gh label create "name" --color "hex" --description "desc"
 
 # Projects
 gh project create --title "Project Name"
-
-# Sub-Issues (GraphQL only - gh CLI doesn't support directly)
-# Get issue node ID
-gh api graphql -f query='{repository(owner:"OWNER",name:"REPO"){issue(number:123){id}}}'
-# Add sub-issue (requires node IDs)
-gh api graphql -f query='mutation{addSubIssue(input:{issueId:"PARENT_ID",subIssueId:"CHILD_ID"}){issue{number}subIssue{number}}}'
-# List sub-issues
-gh api graphql -f query='{repository(owner:"OWNER",name:"REPO"){issue(number:123){subIssues(first:50){nodes{number title state}}}}}'
-# Remove sub-issue
-gh api graphql -f query='mutation{removeSubIssue(input:{issueId:"PARENT_ID",subIssueId:"CHILD_ID"}){issue{number}}}'
 ```
 
 ## Resources
@@ -690,8 +472,12 @@ gh api graphql -f query='mutation{removeSubIssue(input:{issueId:"PARENT_ID",subI
 | Resource | Purpose |
 |----------|---------|
 | `references/repository-structure.md` | Standard files and directory layout |
-| `references/dependency-management.md` | Dependabot/Renovate configuration patterns |
-| `templates/` | Ready-to-use GitHub configuration templates |
+| `references/dependency-management.md` | Dependabot/Renovate and auto-merge patterns |
+| `references/sub-issues.md` | GitHub sub-issues GraphQL API |
+| `references/branch-migration.md` | Master to main migration guide |
+| `templates/auto-merge.yml.template` | Auto-merge with branch protection (--auto flag) |
+| `templates/auto-merge-queue.yml.template` | Auto-merge with merge queue (GraphQL mutation) |
+| `templates/auto-merge-direct.yml.template` | Auto-merge without branch protection |
 | `scripts/verify-github-project.sh` | Verification script for project setup |
 
 ## Verification
