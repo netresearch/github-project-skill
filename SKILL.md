@@ -74,6 +74,24 @@ GitHub platform configuration and repository management patterns. This skill foc
 - "prevent master branch"
 - "block master from being created"
 
+## Installation
+
+### Option 1: Via Netresearch Marketplace (Recommended)
+
+```bash
+/plugin marketplace add netresearch/claude-code-marketplace
+```
+
+Then browse skills with `/plugin`.
+
+### Option 2: Download Release
+
+Download the [latest release](https://github.com/netresearch/github-project-skill/releases/latest) and extract to `~/.claude/skills/github-project/`
+
+### Option 3: Manual Installation
+
+Clone or download this repository to your Claude Code skills directory.
+
 ## Workflows
 
 ### New Repository Setup
@@ -479,6 +497,10 @@ gh project create --title "Project Name"
 | `templates/auto-merge-queue.yml.template` | Auto-merge with merge queue (GraphQL mutation) |
 | `templates/auto-merge-direct.yml.template` | Auto-merge without branch protection |
 | `scripts/verify-github-project.sh` | Verification script for project setup |
+
+---
+
+**Made with ❤️ for Open Source by [Netresearch](https://www.netresearch.de/)**
 
 ## Verification
 
