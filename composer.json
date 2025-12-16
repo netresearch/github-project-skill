@@ -1,12 +1,12 @@
 {
   "name": "netresearch/agent-github-project",
-  "description": "GitHub repository setup and platform-specific features. This skill should be used when creating new GitHub repositories, configuring branch protection rules, setting up GitHub Issues/Discussions/Proje",
+  "description": "Netresearch AI skill for GitHub repository setup, branch protection and project configuration",
   "type": "ai-agent-skill",
   "license": "MIT",
   "authors": [
     {
       "name": "Netresearch DTT GmbH",
-      "email": "plugins@netresearch.de",
+      "email": "info@netresearch.de",
       "homepage": "https://www.netresearch.de/",
       "role": "Manufacturer"
     }
