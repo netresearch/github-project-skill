@@ -37,6 +37,19 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Wait for CI checks
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Waiting for CI checks to pass..."
+          sleep 30
+          timeout 900 gh pr checks "$PR_URL" --watch --fail-fast || {
+            echo "CI checks did not pass"
+            exit 1
+          }
+          echo "All CI checks passed!"
+
       - name: Merge PR
         run: gh pr merge --rebase "$PR_URL"
         env:
