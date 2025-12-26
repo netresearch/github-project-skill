@@ -639,6 +639,29 @@ gh project create --title "Project Name"
 | `templates/auto-merge-direct.yml.template` | Auto-merge without branch protection |
 | `scripts/verify-github-project.sh` | Verification script for project setup |
 
+## Related Skills
+
+This skill focuses on GitHub platform configuration. For complete project setup:
+
+| Skill | Purpose |
+|-------|---------|
+| `go-development` | Go code patterns, Makefile interface, testing, linting |
+| `enterprise-readiness` | OpenSSF Scorecard, SLSA provenance, signed releases, CI workflow templates |
+| `git-workflow` | Git branching strategies, conventional commits |
+| `security-audit` | Deep security audits (OWASP, CVE analysis) |
+
+### Skill Coordination
+
+```
+github-project (this skill)
+├── Repository configuration
+├── Branch protection / rulesets
+├── Dependabot/Renovate auto-merge
+└── Coordinates with:
+    ├── go-development → CI workflow content (test, lint, build)
+    └── enterprise-readiness → Security workflows (Scorecard, CodeQL, SLSA)
+```
+
 ---
 
 **Made with ❤️ for Open Source by [Netresearch](https://www.netresearch.de/)**
