@@ -29,13 +29,15 @@ jobs:
       - name: Create skill package
         run: |
           mkdir -p dist
-          cp SKILL.md dist/
+          # Copy skill files from new structure
+          cp skills/github-project/SKILL.md dist/
           cp LICENSE dist/
-          [ -d "references" ] && cp -r references dist/
-          [ -d "scripts" ] && cp -r scripts dist/
-          [ -d "assets" ] && cp -r assets dist/
-          [ -d "templates" ] && cp -r templates dist/
-          [ -d "skills" ] && cp -r skills dist/
+          [ -d "skills/github-project/references" ] && cp -r skills/github-project/references dist/
+          [ -d "skills/github-project/scripts" ] && cp -r skills/github-project/scripts dist/
+          [ -d "skills/github-project/assets" ] && cp -r skills/github-project/assets dist/
+          [ -d "skills/github-project/templates" ] && cp -r skills/github-project/templates dist/
+          # Include plugin manifest
+          [ -d ".claude-plugin" ] && cp -r .claude-plugin dist/
           cd dist
           zip -r ../github-project-${{ steps.version.outputs.version }}.zip .
           tar -czvf ../github-project-${{ steps.version.outputs.version }}.tar.gz .
