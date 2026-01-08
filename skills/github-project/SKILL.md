@@ -12,6 +12,7 @@ description: "GitHub repository setup and configuration. This skill should be us
 - Setting up CODEOWNERS
 - Troubleshooting "merge is blocked" or "not allowed merge method" errors
 - Configuring auto-merge for Dependabot/Renovate
+- Setting up release workflows and release labeling
 
 ## Usage
 
@@ -21,7 +22,8 @@ Key references:
 - `references/repository-structure.md` - Standard repo layout
 - `references/sub-issues.md` - Sub-issues GraphQL API
 - `references/dependency-management.md` - Dependabot/Renovate configuration
-- `templates/` - Auto-merge workflow templates
+- `references/release-labeling.md` - Automatic release labeling for PRs/issues
+- `templates/` - Auto-merge and release-labeler workflow templates
 
 ## Go Project CI Checklist
 
