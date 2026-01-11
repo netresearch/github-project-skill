@@ -676,9 +676,9 @@ gh project create --title "Project Name"
 | `references/dependency-management.md` | Dependabot/Renovate and auto-merge patterns |
 | `references/sub-issues.md` | GitHub sub-issues GraphQL API |
 | `references/branch-migration.md` | Master to main migration guide |
-| `templates/auto-merge.yml.template` | Auto-merge with branch protection (--auto flag) |
-| `templates/auto-merge-queue.yml.template` | Auto-merge with merge queue (GraphQL mutation) |
-| `templates/auto-merge-direct.yml.template` | Auto-merge without branch protection |
+| `assets/auto-merge.yml.template` | Auto-merge with branch protection (--auto flag) |
+| `assets/auto-merge-queue.yml.template` | Auto-merge with merge queue (GraphQL mutation) |
+| `assets/auto-merge-direct.yml.template` | Auto-merge without branch protection |
 | `scripts/verify-github-project.sh` | Verification script for project setup |
 
 ## Related Skills

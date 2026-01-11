@@ -33,11 +33,11 @@ released:vX.Y.Z
 
 ### 1. Add the workflow
 
-Copy `templates/release-labeler.yml.template` to `.github/workflows/release-labeler.yml`:
+Copy `assets/release-labeler.yml.template` to `.github/workflows/release-labeler.yml`:
 
 ```bash
 curl -o .github/workflows/release-labeler.yml \
-  https://raw.githubusercontent.com/netresearch/github-project-skill/main/skills/github-project/templates/release-labeler.yml.template
+  https://raw.githubusercontent.com/netresearch/github-project-skill/main/skills/github-project/assets/release-labeler.yml.template
 ```
 
 ### 2. Ensure permissions
