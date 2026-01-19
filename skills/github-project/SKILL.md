@@ -97,6 +97,46 @@ When setting up CI for Go projects, ensure these GitHub configurations:
 | Auto-merge workflow | Merge minor/patch updates automatically | `assets/auto-merge*.yml` templates |
 | Required checks | CI workflow names in branch protection | Match exact workflow job names |
 
+## Merge Strategy & Signed Commits
+
+When configuring repositories that require signed commits with clean history, consult `references/merge-strategy.md` for the recommended settings.
+
+### Quick Reference
+
+For signed commits workflow (rebase locally + merge commit):
+
+| Repository Setting | Value | Why |
+|--------------------|-------|-----|
+| `allow_merge_commit` | **true** | Preserves signatures on feature branch commits |
+| `allow_rebase_merge` | true | GitHub requires at least one of squash/rebase |
+| `allow_squash_merge` | false | Destroys individual commit signatures |
+
+| Branch Protection | Value | Why |
+|-------------------|-------|-----|
+| `required_signatures` | true | Enforces GPG/SSH signed commits |
+| `required_linear_history` | **false** | Must be false - conflicts with merge commits |
+
+### Workflow
+
+```bash
+# 1. Developer rebases PR branch locally (signs commits)
+git fetch origin && git rebase origin/main
+git push --force-with-lease
+
+# 2. Merge via merge commit (preserves signatures)
+gh pr merge <number> --merge
+```
+
+### Auto-Merge Compatibility
+
+| Merge Strategy | Works with `required_signatures`? |
+|----------------|-----------------------------------|
+| Merge commit | ✅ Yes - GitHub signs the merge commit |
+| Rebase merge | ❌ No - GitHub cannot sign rewritten commits |
+| Squash merge | ❌ No - GitHub cannot sign squashed commit |
+
+**Important:** When enabling auto-merge, select "Create a merge commit" strategy.
+
 ## Related Skills
 
 When implementing Go code patterns and CI/CD workflows, use the `go-development` skill.
