@@ -97,6 +97,112 @@ When setting up CI for Go projects, ensure these GitHub configurations:
 | Auto-merge workflow | Merge minor/patch updates automatically | `assets/auto-merge*.yml` templates |
 | Required checks | CI workflow names in branch protection | Match exact workflow job names |
 
+## TYPO3 Extension Repository Standards
+
+When setting up repositories for TYPO3 extensions, apply these standards for consistency across Netresearch projects.
+
+### Repository Settings
+
+Configure via GitHub UI or `gh` CLI:
+
+```bash
+# Enable Projects tab
+gh repo edit --enable-projects
+
+# Set description (template)
+gh repo edit --description "TYPO3 extension for <purpose> - by Netresearch"
+
+# Add topics
+gh api repos/OWNER/REPO/topics -X PUT -f names='["typo3","typo3-extension","php","<domain-topics>"]'
+```
+
+| Setting | Value | Why |
+|---------|-------|-----|
+| `has_projects` | true | Project board for issue tracking |
+| `has_wiki` | false | Use Documentation/ folder instead |
+| Description | `<What it does> - by Netresearch` | Consistent branding |
+
+### Required Topics
+
+All TYPO3 extension repos MUST have these topics:
+
+| Topic | Required | Example |
+|-------|----------|---------|
+| `typo3` | ✅ Always | - |
+| `typo3-extension` | ✅ Always | - |
+| `php` | ✅ Always | - |
+| Domain-specific | ✅ 2-5 more | `ckeditor`, `llm`, `ai`, `rte` |
+
+**Example from t3x-rte_ckeditor_image:**
+```
+typo3, typo3-extension, typo3cms-extension, ckeditor, ckeditor-plugin, rte-ckeditor, magic-images
+```
+
+**Example from t3x-nr-llm:**
+```
+typo3, typo3-extension, php, ai, llm, openai, anthropic, claude, gemini, gpt
+```
+
+### README Badge Order
+
+Badges should appear in this order (see `netresearch-branding` skill for templates):
+
+```markdown
+<!-- Row 1: CI/Quality badges -->
+[![CI](...)][ci]
+[![codecov](...)][codecov]
+[![Documentation](...)][docs]  <!-- if applicable -->
+
+<!-- Row 2: Security badges -->
+[![OpenSSF Scorecard](...)][scorecard]
+[![OpenSSF Best Practices](...)][bestpractices]
+[![SLSA 3](...)][slsa]
+
+<!-- Row 3: Standards badges -->
+[![PHPStan](...)][phpstan]
+[![PHP 8.x+](...)][php]
+[![TYPO3 vXX](...)][typo3]
+[![License](...)][license]
+[![Latest Release](...)][release]
+[![Contributor Covenant](...)][covenant]
+
+<!-- Row 4: TYPO3 TER badges (if published to TER) -->
+![Composer](https://typo3-badges.dev/badge/EXT_KEY/composer/shields.svg)
+![Downloads](https://typo3-badges.dev/badge/EXT_KEY/downloads/shields.svg)
+![Extension](https://typo3-badges.dev/badge/EXT_KEY/extension/shields.svg)
+![Stability](https://typo3-badges.dev/badge/EXT_KEY/stability/shields.svg)
+![TYPO3](https://typo3-badges.dev/badge/EXT_KEY/typo3/shields.svg)
+![Version](https://typo3-badges.dev/badge/EXT_KEY/version/shields.svg)
+<!-- Generated with 🧡 at typo3-badges.dev -->
+```
+
+### Quick Setup Commands
+
+```bash
+# Set topics for TYPO3 extension
+gh api repos/netresearch/t3x-EXTNAME/topics -X PUT \
+  -f names='["typo3","typo3-extension","php","DOMAIN1","DOMAIN2"]'
+
+# Enable projects
+gh repo edit netresearch/t3x-EXTNAME --enable-projects
+
+# Update description
+gh repo edit netresearch/t3x-EXTNAME \
+  --description "TYPO3 extension for PURPOSE - by Netresearch"
+```
+
+### Verification
+
+Check repository compliance:
+
+```bash
+# Check topics
+gh api repos/OWNER/REPO/topics --jq '.names | if contains(["typo3","typo3-extension","php"]) then "✅ Required topics present" else "❌ Missing required topics" end'
+
+# Check has_projects
+gh api repos/OWNER/REPO --jq 'if .has_projects then "✅ Projects enabled" else "❌ Projects disabled" end'
+```
+
 ## Merge Strategy & Signed Commits
 
 When configuring repositories that require signed commits with clean history, consult `references/merge-strategy.md` for the recommended settings.
