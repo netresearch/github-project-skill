@@ -287,6 +287,41 @@ gh pr merge <number> --merge
 
 **Important:** When enabling auto-merge, select "Create a merge commit" strategy.
 
+## CodeQL Configuration (MANDATORY)
+
+Netresearch projects use custom CodeQL workflows (`.github/workflows/codeql.yml`). GitHub's "Default Setup" **MUST be disabled** - they cannot coexist.
+
+### The Problem
+
+When both Default Setup and a custom workflow exist, CI fails with:
+```
+CodeQL analyses from advanced configurations cannot be processed when the default setup is enabled
+```
+
+### Required Action
+
+**Before pushing a custom CodeQL workflow**, disable Default Setup:
+
+```bash
+# Check current state
+gh api repos/OWNER/REPO/code-scanning/default-setup --jq '.state'
+
+# Disable default setup (MANDATORY)
+gh api repos/OWNER/REPO/code-scanning/default-setup -X PATCH -f state=not-configured
+```
+
+| Setting | Required State | Why |
+|---------|----------------|-----|
+| Default Setup | `not-configured` | Conflicts with custom workflow |
+| Custom `codeql.yml` | Present in `.github/workflows/` | Our standard security scanning |
+
+### Verification
+
+```bash
+# Verify default setup is disabled
+gh api repos/OWNER/REPO/code-scanning/default-setup --jq 'if .state == "not-configured" then "✅ Default Setup disabled" else "❌ Default Setup still enabled - DISABLE IT" end'
+```
+
 ## Related Skills
 
 When implementing Go code patterns and CI/CD workflows, use the `go-development` skill.
