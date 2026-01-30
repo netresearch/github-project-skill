@@ -97,6 +97,50 @@ When setting up CI for Go projects, ensure these GitHub configurations:
 | Auto-merge workflow | Merge minor/patch updates automatically | `assets/auto-merge*.yml` templates |
 | Required checks | CI workflow names in branch protection | Match exact workflow job names |
 
+## Polyglot Project CI Checklist (PHP + JavaScript)
+
+When setting up CI for projects with both PHP and JavaScript, ensure coverage from ALL languages:
+
+| Requirement | Implementation | Why |
+|-------------|----------------|-----|
+| PHP test coverage | `phpunit --coverage-clover` for each test suite | Codecov needs all suites |
+| JavaScript test coverage | `npm run test:coverage` with lcov output | Codecov aggregates all languages |
+| vitest lcov reporter | `reporter: ['text', 'json', 'html', 'lcov']` | Required for Codecov compatibility |
+| Codecov upload | List ALL coverage files in `files:` parameter | Ensures complete coverage picture |
+
+### Example CI Configuration
+
+```yaml
+# Run all PHP test suites with coverage
+- run: php -d pcov.enabled=1 .Build/bin/phpunit -c Build/phpunit/UnitTests.xml --coverage-clover .Build/coverage/unit.xml
+- run: php -d pcov.enabled=1 .Build/bin/phpunit -c Build/phpunit/IntegrationTests.xml --coverage-clover .Build/coverage/integration.xml
+
+# Run JavaScript tests with coverage
+- uses: actions/setup-node@SHA # vX.Y.Z
+  with:
+    node-version: '22'
+- run: npm install
+- run: npm run test:coverage
+
+# Upload ALL coverage files
+- uses: codecov/codecov-action@SHA # vX.Y.Z
+  with:
+    files: .Build/coverage/unit.xml,.Build/coverage/integration.xml,coverage/lcov.info
+```
+
+### vitest Configuration
+
+When using vitest, the `lcov` reporter is **required** for Codecov:
+
+```javascript
+// vitest.config.js
+coverage: {
+    provider: 'v8',
+    reporter: ['text', 'json', 'html', 'lcov'],  // lcov REQUIRED
+    reportsDirectory: 'coverage',
+}
+```
+
 ## TYPO3 Extension Repository Standards
 
 When setting up repositories for TYPO3 extensions, apply these standards for consistency across Netresearch projects.
