@@ -1,0 +1,120 @@
+# Example checkpoints.yaml for github-project skill
+# Copy this to your skill repo root as checkpoints.yaml
+
+version: 1
+skill_id: github-project
+
+mechanical:
+  # === FILE EXISTENCE CHECKS ===
+  - id: GH-01
+    type: file_exists
+    target: README.md
+    severity: error
+    desc: "README.md must exist"
+
+  - id: GH-02
+    type: file_exists
+    target: LICENSE
+    severity: error
+    desc: "LICENSE file must exist"
+
+  - id: GH-03
+    type: file_exists
+    target: SECURITY.md
+    severity: warning
+    desc: "SECURITY.md should exist for vulnerability reporting"
+
+  - id: GH-04
+    type: file_exists
+    target: CONTRIBUTING.md
+    severity: warning
+    desc: "CONTRIBUTING.md should exist"
+
+  - id: GH-05
+    type: file_exists
+    target: .github/CODEOWNERS
+    severity: warning
+    desc: "CODEOWNERS should exist for review assignments"
+
+  - id: GH-06
+    type: file_exists
+    target: .github/dependabot.yml
+    severity: warning
+    desc: "Dependabot config should exist"
+
+  - id: GH-07
+    type: file_exists
+    target: .github/PULL_REQUEST_TEMPLATE.md
+    severity: info
+    desc: "PR template should exist"
+
+  - id: GH-08
+    type: file_exists
+    target: .github/ISSUE_TEMPLATE/bug_report.md
+    severity: info
+    desc: "Bug report template should exist"
+
+  - id: GH-09
+    type: file_exists
+    target: .github/ISSUE_TEMPLATE/feature_request.md
+    severity: info
+    desc: "Feature request template should exist"
+
+  # === CONTENT CHECKS ===
+  - id: GH-10
+    type: contains
+    target: README.md
+    pattern: "codecov.io"
+    severity: warning
+    desc: "README should have Codecov badge"
+
+  - id: GH-11
+    type: regex
+    target: README.md
+    pattern: "github.com/.*/actions/workflows"
+    severity: error
+    desc: "README should have CI status badge"
+
+  - id: GH-12
+    type: regex
+    target: README.md
+    pattern: "img.shields.io.*license"
+    severity: warning
+    desc: "README should have license badge"
+
+  # === DEPENDABOT CHECKS ===
+  - id: GH-13
+    type: contains
+    target: .github/dependabot.yml
+    pattern: 'package-ecosystem: "composer"'
+    severity: warning
+    desc: "Dependabot should monitor composer dependencies"
+
+  - id: GH-14
+    type: contains
+    target: .github/dependabot.yml
+    pattern: 'package-ecosystem: "github-actions"'
+    severity: warning
+    desc: "Dependabot should monitor GitHub Actions"
+
+llm_reviews:
+  # === SUBJECTIVE CHECKS (require LLM judgment) ===
+  - id: GH-15
+    domain: repo-health
+    rubric: references/llm-rubric.md#badge-order
+    severity: warning
+    desc: "Verify README badges are in the correct order"
+
+  - id: GH-16
+    domain: repo-health
+    prompt: |
+      Verify the README has a clear structure with these sections:
+      - Installation/Setup
+      - Usage/Configuration
+      - Development (tests, linting)
+      - License
+      - Credits/Contributors
+
+      Check the actual section headers in README.md and report if it matches.
+    severity: info
+    desc: "README should have standard structure with key sections"
