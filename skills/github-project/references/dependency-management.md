@@ -1,6 +1,6 @@
 # Dependency Management Reference
 
-Dependabot and Renovate configuration patterns.
+Dependabot and Renovate configuration patterns, auto-merge workflows, and troubleshooting.
 
 ## Dependabot
 
@@ -169,27 +169,45 @@ updates:
 }
 ```
 
-### Auto-merge Configuration
+### Auto-merge Configuration (Recommended)
+
+**IMPORTANT:** Use `platformAutomerge: true` to leverage Renovate's bypass permissions:
+
 ```json
 {
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  "automergeType": "pr",
+  "platformAutomerge": true,
   "packageRules": [
     {
-      "matchUpdateTypes": ["minor", "patch"],
-      "automerge": true
-    },
-    {
-      "matchManagers": ["github-actions"],
-      "groupName": "GitHub Actions",
-      "automerge": true
-    },
-    {
-      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["patch", "minor", "pin", "digest"],
       "automerge": true
     }
   ]
 }
 ```
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `automergeType` | `"pr"` | Merge via PR (not branch) for visibility |
+| `platformAutomerge` | `true` | Use GitHub's auto-merge (Renovate enables it) |
+| `automerge` | `true` | Enable auto-merge for matching packages |
+
+### Lock File Maintenance
+
+Use Renovate for lock file updates instead of CI workflows that push directly to main:
+
+```json
+{
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  }
+}
+```
+
+**Why:** CI workflows cannot push to protected branches. Renovate creates PRs that go through normal review/merge process.
 
 ### Grouping Rules
 ```json
@@ -273,29 +291,53 @@ updates:
 | Branch protection (no queue) | `gh pr merge --auto` | Enables auto-merge, GitHub merges when checks pass |
 | No branch protection | `gh pr merge --rebase` | Direct merge, no waiting |
 
-### GitHub Actions Auto-merge (Branch Protection)
+### Renovate vs Dependabot Auto-merge
+
+| Capability | Renovate | Dependabot |
+|------------|----------|------------|
+| Native auto-merge | ✅ `platformAutomerge` | ❌ Needs workflow |
+| Bypass permissions | ✅ When in bypass list | ❌ Via `GITHUB_TOKEN` only |
+| Lock file maintenance | ✅ Built-in | ❌ Manual |
+| Who enables auto-merge | `app/renovate` | `app/github-actions` |
+
+**Critical difference:** When Renovate enables auto-merge via `platformAutomerge`, it appears as `enabledBy: app/renovate` and can use bypass permissions. When a workflow enables auto-merge, it appears as `enabledBy: app/github-actions` which may NOT have bypass permissions.
+
+### GitHub Actions Auto-merge (Dependabot Only)
+
+For Renovate PRs, let Renovate handle auto-merge via `platformAutomerge`. Only use workflows for Dependabot:
+
 ```yaml
-# .github/workflows/auto-merge.yml
-# Use when: Branch protection enabled, no merge queue
-name: Auto-merge dependency updates
+# .github/workflows/auto-merge-deps.yml
+# For Renovate: Only approve (Renovate handles auto-merge via platformAutomerge)
+# For Dependabot: Approve and enable auto-merge
+name: Auto-merge dependency PRs
 
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]' || github.actor == 'renovate[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'renovate[bot]'
+    permissions:
+      contents: write
+      pull-requests: write
+
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@v2
         with:
           egress-policy: audit
+
+      - name: Dependabot metadata
+        id: metadata
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Auto-approve PR
         run: gh pr review --approve "$PR_URL"
@@ -303,8 +345,11 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Enable auto-merge
-        run: gh pr merge --auto --squash "$PR_URL"
+      # Only enable auto-merge for Dependabot PRs
+      # Renovate handles its own auto-merge via platformAutomerge
+      - name: Enable auto-merge (Dependabot only)
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        run: gh pr merge --auto --merge "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -349,55 +394,166 @@ jobs:
             }' -f pullRequestId="$PR_NODE_ID"
 ```
 
-### GitHub Actions Auto-merge (No Branch Protection)
+## Branch Protection Configuration
+
+### Required Status Checks - CRITICAL
+
+**Check names MUST match exactly.** Matrix jobs produce names with suffixes:
+
+| Workflow Definition | Actual Check Name |
+|---------------------|-------------------|
+| `job-name:` | `job-name` |
+| `name: job (${{ matrix.variant }})` | `job (variant-value)` |
+
+**Example:** If workflow has:
 ```yaml
-# .github/workflows/auto-merge-deps.yml
-# Use when: No branch protection rules configured
-# Note: --auto flag requires branch protection, use direct merge instead
-name: Auto-merge dependency PRs
-
-on:
-  pull_request_target:
-    types: [opened, synchronize, reopened]
-
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
-  auto-merge:
-    runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]' || github.actor == 'renovate[bot]'
-    steps:
-      - name: Auto-approve PR
-        run: gh pr review --approve "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Merge PR
-        run: gh pr merge --rebase "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  smoke-test:
+    strategy:
+      matrix:
+        variant: [minimal, full]
+    name: smoke-test (${{ matrix.name }})
 ```
 
-### Dependabot Auto-merge Metadata
+Branch protection must list:
+- `smoke-test (minimal)`
+- `smoke-test (full)`
+
+NOT just `smoke-test`.
+
+### Bypass Permissions for Auto-merge
+
+Add Renovate and Dependabot to bypass list:
+
+```bash
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews -X PATCH \
+  --input - << 'EOF'
+{
+  "dismiss_stale_reviews": false,
+  "require_code_owner_reviews": false,
+  "required_approving_review_count": 1,
+  "bypass_pull_request_allowances": {
+    "apps": ["dependabot", "renovate"]
+  }
+}
+EOF
+```
+
+### Code Owner Reviews - AVOID with Auto-merge
+
+**Problem:** `require_code_owner_reviews: true` blocks auto-merge even when the bot is in the bypass list.
+
+| Setting | Effect on Auto-merge |
+|---------|---------------------|
+| `require_code_owner_reviews: false` | ✅ Works - any approval counts |
+| `require_code_owner_reviews: true` | ❌ Blocked - `github-actions` approval doesn't satisfy code owner requirement |
+
+**Why:** Bypass permissions only apply at merge time, but GitHub's `mergeStateStatus` shows `BLOCKED` before that, preventing auto-merge from being attempted.
+
+**Solution:** Disable `require_code_owner_reviews` for repos with dependency auto-merge:
+
+```bash
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews -X PATCH \
+  -f require_code_owner_reviews=false
+```
+
+### Merge Strategy Requirements
+
+| Branch Protection Setting | Allowed Merge Methods |
+|---------------------------|----------------------|
+| `required_linear_history: true` | Rebase only (`--rebase`) |
+| `required_linear_history: false` | Merge, squash, or rebase |
+
+If you see "Merge method X is not allowed", check:
+```bash
+gh api repos/OWNER/REPO/branches/main/protection --jq '.required_linear_history'
+```
+
+### Strict Status Checks
+
+With `strict: true`, PRs must be up-to-date with main before merging:
+
+```bash
+# Check if strict is enabled
+gh api repos/OWNER/REPO/branches/main/protection/required_status_checks --jq '.strict'
+```
+
+**Impact:** After one PR merges, others become "behind" and need rebasing. Renovate handles this automatically via `@renovate rebase` or its scheduling.
+
+## Troubleshooting Auto-merge
+
+### PR Shows BLOCKED Despite Passing Checks
+
+1. **Check names mismatch:**
+   ```bash
+   # Get actual check names from PR
+   gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+     repository(owner:$owner,name:$repo){
+       pullRequest(number:$pr){
+         commits(last:1){nodes{commit{statusCheckRollup{contexts(first:50){
+           nodes{...on CheckRun{name conclusion}}
+         }}}}}
+       }
+     }
+   }' -f owner=OWNER -f repo=REPO -F pr=NUMBER --jq '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts.nodes[].name'
+
+   # Compare with required checks
+   gh api repos/OWNER/REPO/branches/main/protection/required_status_checks --jq '.checks[].context'
+   ```
+
+2. **Code owner reviews required:**
+   ```bash
+   gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews --jq '.require_code_owner_reviews'
+   ```
+
+3. **Branch behind main:**
+   ```bash
+   gh api graphql -f query='query{repository(owner:"OWNER",name:"REPO"){
+     pullRequest(number:PR){mergeStateStatus}
+   }}' --jq '.data.repository.pullRequest.mergeStateStatus'
+   # BEHIND = needs rebase
+   ```
+
+### Workflow Not Triggering
+
+**Problem:** Multiple PRs merged rapidly may skip push events for subsequent commits.
+
+**Solution:** Add `workflow_dispatch` for manual triggering:
 ```yaml
-# Check metadata for safer auto-merge
-- name: Dependabot metadata
-  id: metadata
-  uses: dependabot/fetch-metadata@v2
-  with:
-    github-token: "${{ secrets.GITHUB_TOKEN }}"
-
-- name: Auto-merge minor/patch
-  if: steps.metadata.outputs.update-type != 'version-update:semver-major'
-  run: gh pr merge --auto --squash "$PR_URL"
-  env:
-    PR_URL: ${{ github.event.pull_request.html_url }}
-    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Allow manual trigger
 ```
+
+Then trigger manually:
+```bash
+gh workflow run build.yml --repo OWNER/REPO --ref main
+```
+
+### CI Cannot Push to Protected Branch
+
+**Error:** `GH006: Protected branch update failed - Changes must be made through a pull request`
+
+**Cause:** Workflow tries to push directly to main (e.g., lock file updates).
+
+**Solution:** Use Renovate's `lockFileMaintenance` instead of CI pushing directly:
+```json
+{
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  }
+}
+```
+
+### Auto-merge Enabled by Wrong Actor
+
+**Problem:** Auto-merge shows `enabledBy: github-actions` instead of `enabledBy: renovate`.
+
+**Impact:** `github-actions` may not have bypass permissions.
+
+**Solution:** For Renovate PRs, don't enable auto-merge in workflows. Let Renovate handle it via `platformAutomerge: true`.
 
 ## Comparison: Dependabot vs Renovate
 
@@ -406,11 +562,14 @@ jobs:
 | Hosting | GitHub native | Self-hosted or app |
 | Configuration | YAML | JSON/JSON5 |
 | Grouping | Basic | Advanced |
-| Auto-merge | Via workflow | Native support |
+| Auto-merge | Via workflow | Native `platformAutomerge` |
+| Bypass permissions | Via `GITHUB_TOKEN` | Direct (when in bypass list) |
+| Lock file maintenance | Manual | Built-in |
 | Custom managers | Limited | Regex support |
 | Dashboard | Basic | Dependency Dashboard |
 | Presets | Limited | Extensive |
 | Update types | All | Granular control |
+| Rebase on demand | `@dependabot rebase` | `@renovate rebase` |
 
 ### When to Use Dependabot
 - GitHub-only projects
@@ -421,18 +580,24 @@ jobs:
 ### When to Use Renovate
 - Complex grouping requirements
 - Multiple repositories
-- Advanced auto-merge rules
+- Advanced auto-merge rules (use `platformAutomerge`)
 - Custom package managers
 - Dependency Dashboard needed
 - Cross-platform support
+- Need bypass permissions for auto-merge
 
 ## Best Practices
 
-1. **Group related updates**: Reduce PR noise
-2. **Use semantic commit prefixes**: Better changelogs
-3. **Enable auto-merge for safe updates**: minor/patch
-4. **Require CI checks**: Before auto-merge
-5. **Review major updates manually**: Breaking changes
-6. **Schedule updates**: Off-peak hours
-7. **Label PRs**: Easy filtering
-8. **Limit concurrent PRs**: Avoid CI overload
+1. **Use Renovate's `platformAutomerge`**: For bypass permissions to work correctly
+2. **Avoid `require_code_owner_reviews`**: With dependency auto-merge
+3. **Match check names exactly**: In branch protection rules
+4. **Use lock file maintenance**: Instead of CI pushing to main
+5. **Group related updates**: Reduce PR noise
+6. **Use semantic commit prefixes**: Better changelogs
+7. **Enable auto-merge for safe updates**: minor/patch/pin/digest
+8. **Require CI checks**: Before auto-merge
+9. **Review major updates manually**: Breaking changes
+10. **Schedule updates**: Off-peak hours
+11. **Label PRs**: Easy filtering
+12. **Limit concurrent PRs**: Avoid CI overload
+13. **Add `workflow_dispatch`**: For manual workflow triggers

@@ -28,6 +28,8 @@ When migrating from master to main branch, consult `references/branch-migration.
 
 When configuring automated dependency updates, consult `references/dependency-management.md` for Dependabot and Renovate configuration patterns, auto-merge workflows, and update strategies.
 
+When troubleshooting why auto-merge isn't working, consult `references/dependency-management.md` for common issues like check name mismatches, code owner review conflicts, and bypass permission problems.
+
 ### GitHub Features
 
 When working with sub-issues, consult `references/sub-issues.md` for GraphQL API usage, parent-child relationships, and issue hierarchy patterns.
@@ -286,6 +288,68 @@ gh pr merge <number> --merge
 | Squash merge | ❌ No - GitHub cannot sign squashed commit |
 
 **Important:** When enabling auto-merge, select "Create a merge commit" strategy.
+
+## Auto-merge Troubleshooting Quick Reference
+
+When dependency PRs aren't auto-merging, check these common issues:
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| PR BLOCKED, checks pass | Check names don't match | Update branch protection to use exact names (e.g., `job (variant)` not `job`) |
+| PR BLOCKED, `reviewDecision: REVIEW_REQUIRED` | `require_code_owner_reviews: true` | Disable code owner reviews or add code owner approval |
+| Renovate PR not using bypass | Workflow racing with Renovate | Only approve in workflow; let Renovate enable auto-merge via `platformAutomerge` |
+| CI can't push to main | Branch protection blocks direct push | Use Renovate `lockFileMaintenance` instead |
+| Workflow not triggering | Rapid merges skip push events | Add `workflow_dispatch` trigger, run manually |
+| "Merge method X not allowed" | Wrong merge strategy | Check `required_linear_history`; use `--rebase` if true |
+
+### Branch Protection for Auto-merge
+
+```bash
+# Check required checks vs actual check names
+gh api repos/OWNER/REPO/branches/main/protection/required_status_checks --jq '.checks[].context'
+
+# Check code owner requirement (should be false for auto-merge)
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews --jq '.require_code_owner_reviews'
+
+# Check bypass apps
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews --jq '.bypass_pull_request_allowances.apps[].slug'
+
+# Fix: Disable code owner reviews, add bypass apps
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews -X PATCH \
+  --input - << 'EOF'
+{
+  "require_code_owner_reviews": false,
+  "required_approving_review_count": 1,
+  "bypass_pull_request_allowances": {
+    "apps": ["dependabot", "renovate"]
+  }
+}
+EOF
+```
+
+### Recommended Renovate Config for Auto-merge
+
+```json
+{
+  "extends": ["config:recommended"],
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["patch", "minor", "pin", "digest"],
+      "automerge": true
+    }
+  ]
+}
+```
+
+**Key settings:**
+- `platformAutomerge: true` - Renovate enables auto-merge (uses bypass permissions)
+- `lockFileMaintenance` - Handles lock file updates via PR (not direct push)
 
 ## CodeQL Configuration (MANDATORY)
 
