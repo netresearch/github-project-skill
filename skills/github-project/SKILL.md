@@ -1,11 +1,59 @@
 ---
 name: github-project
-description: "GitHub repository setup and configuration. This skill should be used when creating new GitHub repositories, configuring branch protection or rulesets, setting up CODEOWNERS, or troubleshooting PR merge issues. By Netresearch."
+description: "GitHub repository setup, configuration, and troubleshooting. AUTOMATICALLY TRIGGER when: (1) PRs won't merge or show BLOCKED status, (2) auto-merge not working for Dependabot/Renovate, (3) branch protection issues, (4) GitHub Actions workflow problems, (5) using gh CLI or GitHub API, (6) configuring CODEOWNERS or rulesets. By Netresearch."
 ---
 
 # GitHub Project Skill
 
-GitHub repository setup, configuration, and best practices for collaboration workflows.
+GitHub repository setup, configuration, troubleshooting, and best practices for collaboration workflows.
+
+## Quick Diagnostics
+
+### PR Won't Merge / Shows BLOCKED
+
+```bash
+# Check merge state
+gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+    mergeStateStatus reviewDecision mergeable
+  }}
+}' -f owner=OWNER -f repo=REPO -F pr=NUMBER --jq '.data.repository.pullRequest'
+
+# Check required status checks vs actual
+gh api repos/OWNER/REPO/branches/main/protection/required_status_checks --jq '.checks[].context'
+
+# Check code owner requirement
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews --jq '.require_code_owner_reviews'
+```
+
+### Auto-merge Not Working
+
+```bash
+# Check who enabled auto-merge (should be app/renovate for bypass)
+gh api graphql -f query='query{repository(owner:"OWNER",name:"REPO"){
+  pullRequest(number:PR){autoMergeRequest{enabledBy{login}}}
+}}' --jq '.data.repository.pullRequest.autoMergeRequest'
+
+# Check bypass apps
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews \
+  --jq '.bypass_pull_request_allowances.apps[].slug'
+```
+
+### GitHub Actions Issues
+
+```bash
+# List recent workflow runs
+gh run list --repo OWNER/REPO --limit 10
+
+# Check failed run logs
+gh run view RUN_ID --repo OWNER/REPO --log-failed
+
+# Re-run failed workflow
+gh run rerun RUN_ID --repo OWNER/REPO
+
+# Manually trigger workflow (requires workflow_dispatch)
+gh workflow run WORKFLOW.yml --repo OWNER/REPO --ref main
+```
 
 ## Core Workflow
 
@@ -384,6 +432,212 @@ gh api repos/OWNER/REPO/code-scanning/default-setup -X PATCH -f state=not-config
 ```bash
 # Verify default setup is disabled
 gh api repos/OWNER/REPO/code-scanning/default-setup --jq 'if .state == "not-configured" then "✅ Default Setup disabled" else "❌ Default Setup still enabled - DISABLE IT" end'
+```
+
+## Essential `gh` CLI Commands Reference
+
+### Repository Information
+
+```bash
+# Get repo info
+gh repo view OWNER/REPO --json name,defaultBranchRef,description
+
+# List branches
+gh api repos/OWNER/REPO/branches --jq '.[].name'
+
+# Get branch protection rules
+gh api repos/OWNER/REPO/branches/main/protection
+```
+
+### Pull Requests
+
+```bash
+# List PRs
+gh pr list --repo OWNER/REPO --state open
+
+# View PR details
+gh pr view NUMBER --repo OWNER/REPO --json state,mergeStateStatus,reviewDecision,autoMergeRequest
+
+# Check PR merge status (GraphQL - more detailed)
+gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+    state mergeStateStatus reviewDecision mergeable
+    autoMergeRequest{enabledBy{login}mergeMethod}
+    commits(last:1){nodes{commit{statusCheckRollup{state}}}}
+  }}
+}' -f owner=OWNER -f repo=REPO -F pr=NUMBER
+
+# Approve PR
+gh pr review NUMBER --repo OWNER/REPO --approve
+
+# Enable auto-merge
+gh pr merge NUMBER --repo OWNER/REPO --auto --merge
+
+# Merge PR directly
+gh pr merge NUMBER --repo OWNER/REPO --merge  # or --squash, --rebase
+
+# Comment on PR
+gh pr comment NUMBER --repo OWNER/REPO --body "message"
+
+# Trigger bot rebase
+gh pr comment NUMBER --repo OWNER/REPO --body "@dependabot rebase"
+gh pr comment NUMBER --repo OWNER/REPO --body "@renovate rebase"
+```
+
+### Branch Protection
+
+```bash
+# Get full branch protection
+gh api repos/OWNER/REPO/branches/main/protection
+
+# Get required status checks
+gh api repos/OWNER/REPO/branches/main/protection/required_status_checks
+
+# Update required status checks
+gh api repos/OWNER/REPO/branches/main/protection/required_status_checks -X PATCH \
+  --input - << 'EOF'
+{
+  "strict": true,
+  "checks": [
+    {"context": "lint"},
+    {"context": "build"},
+    {"context": "test"}
+  ]
+}
+EOF
+
+# Get/update PR review requirements
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews
+
+# Disable code owner reviews, add bypass apps
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews -X PATCH \
+  --input - << 'EOF'
+{
+  "require_code_owner_reviews": false,
+  "required_approving_review_count": 1,
+  "bypass_pull_request_allowances": {
+    "apps": ["dependabot", "renovate"]
+  }
+}
+EOF
+```
+
+### GitHub Actions
+
+```bash
+# List workflow runs
+gh run list --repo OWNER/REPO --limit 10
+
+# List runs for specific workflow
+gh run list --repo OWNER/REPO --workflow=build.yml
+
+# View run details
+gh run view RUN_ID --repo OWNER/REPO
+
+# View failed logs
+gh run view RUN_ID --repo OWNER/REPO --log-failed
+
+# Re-run failed jobs
+gh run rerun RUN_ID --repo OWNER/REPO --failed
+
+# Manually trigger workflow
+gh workflow run WORKFLOW.yml --repo OWNER/REPO --ref main
+
+# List workflows
+gh workflow list --repo OWNER/REPO
+```
+
+### Releases and Tags
+
+```bash
+# List releases
+gh release list --repo OWNER/REPO
+
+# Create release (after pushing signed tag)
+git tag -s vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
+gh release create vX.Y.Z --repo OWNER/REPO --title "vX.Y.Z" --notes "Release notes"
+
+# Get latest release
+gh release view --repo OWNER/REPO
+
+# Download release assets
+gh release download TAG --repo OWNER/REPO
+```
+
+### Files and Content
+
+```bash
+# Get file contents (base64 encoded)
+gh api repos/OWNER/REPO/contents/PATH --jq '.content' | base64 -d
+
+# Update file via API
+gh api repos/OWNER/REPO/contents/PATH -X PUT \
+  -f message="commit message" \
+  -f content="$(base64 -w0 < file)" \
+  -f sha="$(gh api repos/OWNER/REPO/contents/PATH --jq '.sha')"
+```
+
+### Repository Settings
+
+```bash
+# Update repo settings
+gh repo edit OWNER/REPO --enable-projects --enable-wiki=false
+
+# Set topics
+gh api repos/OWNER/REPO/topics -X PUT -f names='["topic1","topic2"]'
+
+# Update description
+gh repo edit OWNER/REPO --description "New description"
+```
+
+## Common Patterns for Troubleshooting
+
+### Debug Auto-merge Pipeline
+
+```bash
+# 1. Check PR status
+gh pr view NUMBER --repo OWNER/REPO --json mergeStateStatus,reviewDecision,autoMergeRequest
+
+# 2. Check actual vs required checks
+echo "=== Required checks ===" && \
+gh api repos/OWNER/REPO/branches/main/protection/required_status_checks --jq '.checks[].context' && \
+echo "=== Actual checks ===" && \
+gh api graphql -f query='query{repository(owner:"OWNER",name:"REPO"){
+  pullRequest(number:NUMBER){commits(last:1){nodes{commit{
+    statusCheckRollup{contexts(first:30){nodes{...on CheckRun{name conclusion}}}}
+  }}}}
+}}' --jq '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts.nodes[].name'
+
+# 3. Check bypass permissions
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews \
+  --jq '{code_owner: .require_code_owner_reviews, bypass: .bypass_pull_request_allowances.apps[].slug}'
+
+# 4. Check if branch is behind
+gh api graphql -f query='query{repository(owner:"OWNER",name:"REPO"){
+  pullRequest(number:NUMBER){mergeStateStatus}
+}}' --jq '.data.repository.pullRequest.mergeStateStatus'
+```
+
+### Fix Common Issues
+
+```bash
+# Fix: Update check names in branch protection
+gh api repos/OWNER/REPO/branches/main/protection/required_status_checks -X PATCH \
+  -f strict=true \
+  --input - << 'EOF'
+{"checks": [{"context": "job-name (variant)"}]}
+EOF
+
+# Fix: Disable code owner reviews blocking auto-merge
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews -X PATCH \
+  -f require_code_owner_reviews=false
+
+# Fix: Add bypass apps
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews -X PATCH \
+  --input - << 'EOF'
+{"bypass_pull_request_allowances": {"apps": ["dependabot", "renovate"]}}
+EOF
 ```
 
 ## Related Skills
