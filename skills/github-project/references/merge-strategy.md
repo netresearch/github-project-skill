@@ -63,7 +63,8 @@ gh api repos/{owner}/{repo}/branches/main/protection -X PUT \
   },
   "restrictions": null,
   "required_linear_history": false,
-  "required_signatures": true
+  "required_signatures": true,
+  "required_conversation_resolution": true
 }
 EOF
 ```
@@ -72,6 +73,7 @@ EOF
 |---------|-------|--------|
 | `required_signatures` | `true` | Enforces signed commits |
 | `required_linear_history` | `false` | **Must be false** - blocks merge commits |
+| `required_conversation_resolution` | `true` | All review threads must be resolved before merge |
 
 ## Developer Workflow
 

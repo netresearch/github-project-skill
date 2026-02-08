@@ -24,6 +24,16 @@ gh api repos/OWNER/REPO/branches/main/protection/required_status_checks --jq '.c
 
 # Check code owner requirement
 gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews --jq '.require_code_owner_reviews'
+
+# Check conversation resolution requirement
+gh api repos/OWNER/REPO/branches/main/protection --jq '.required_conversation_resolution.enabled'
+
+# Check for unresolved review threads on a PR
+gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+    reviewThreads(first:50){nodes{isResolved comments(first:1){nodes{body}}}}
+  }}
+}' -f owner=OWNER -f repo=REPO -F pr=NUMBER --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)'
 ```
 
 ### Auto-merge Not Working
@@ -315,6 +325,7 @@ For signed commits workflow (rebase locally + merge commit):
 |-------------------|-------|-----|
 | `required_signatures` | true | Enforces GPG/SSH signed commits |
 | `required_linear_history` | **false** | Must be false - conflicts with merge commits |
+| `required_conversation_resolution` | true | All review threads must be resolved before merge |
 
 ### Workflow
 
@@ -337,6 +348,88 @@ gh pr merge <number> --merge
 
 **Important:** When enabling auto-merge, select "Create a merge commit" strategy.
 
+## Required Conversation Resolution (MANDATORY)
+
+All review threads on a PR **must be resolved** before merging. This prevents addressed feedback from being silently ignored.
+
+### Enable via API
+
+```bash
+# Enable conversation resolution requirement
+gh api repos/OWNER/REPO/branches/main/protection -X PUT \
+  --input - << 'EOF'
+{
+  ...existing settings...,
+  "required_conversation_resolution": true
+}
+EOF
+```
+
+### Enable via GitHub UI
+
+Settings → Branches → Branch protection rules → Edit → Check **"Require conversation resolution before merging"**
+
+### Verify
+
+```bash
+# Check if enabled
+gh api repos/OWNER/REPO/branches/main/protection --jq 'if .required_conversation_resolution.enabled then "✅ Conversation resolution required" else "❌ Conversation resolution NOT required - ENABLE IT" end'
+```
+
+### Resolve Threads via API
+
+```bash
+# List unresolved threads on a PR
+gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+    reviewThreads(first:50){nodes{id isResolved comments(first:1){nodes{body}}}}
+  }}
+}' -f owner=OWNER -f repo=REPO -F pr=NUMBER --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | {id, body: .comments.nodes[0].body}'
+
+# Resolve a specific thread
+gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}' -f id=THREAD_NODE_ID
+```
+
+## Required Reviews from All Requested Reviewers (MANDATORY)
+
+PRs must **not be merged until all requested reviewers have submitted their review**. This includes human reviewers and automated reviewers (e.g., GitHub Copilot). Do not merge while any reviewer's status is still "PENDING".
+
+> **Note:** GitHub branch protection only enforces a *minimum* approval count, not "all requested reviewers must respond." This rule is enforced as a **workflow policy** — agents and humans must verify before merging.
+
+### Check Reviewer Status Before Merging
+
+```bash
+# List all requested reviewers and their review state
+gh pr view NUMBER --repo OWNER/REPO --json reviewRequests,reviews --jq '{
+  pending: [.reviewRequests[].login],
+  completed: [.reviews[] | {user: .author.login, state: .state}]
+}'
+
+# GraphQL: full reviewer status (requested + completed)
+gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+    reviewRequests(first:20){nodes{requestedReviewer{...on User{login}...on Bot{login}}}}
+    reviews(last:20){nodes{author{login}state}}
+  }}
+}' -f owner=OWNER -f repo=REPO -F pr=NUMBER --jq '.data.repository.pullRequest | {
+  awaiting: [.reviewRequests.nodes[].requestedReviewer.login],
+  reviews: [.reviews.nodes[] | {user: .author.login, state: .state}]
+}'
+```
+
+If `awaiting` is non-empty, the PR is **not ready to merge** — those reviewers haven't responded yet.
+
+### PR Merge Checklist
+
+Before merging any PR, verify **all** of these:
+
+| # | Prerequisite | How to check |
+|---|-------------|--------------|
+| 1 | All CI checks pass | `gh pr checks NUMBER` |
+| 2 | All requested reviewers have responded | `gh pr view NUMBER --json reviewRequests` → must be empty |
+| 3 | All review threads resolved | `gh pr view NUMBER --json reviewThreads` or GraphQL |
+| 4 | Branch rebased on target | `gh pr view NUMBER --json mergeStateStatus` → `CLEAN` |
+
 ## Auto-merge Troubleshooting Quick Reference
 
 When dependency PRs aren't auto-merging, check these common issues:
@@ -345,6 +438,8 @@ When dependency PRs aren't auto-merging, check these common issues:
 |---------|-------|-----|
 | PR BLOCKED, checks pass | Check names don't match | Update branch protection to use exact names (e.g., `job (variant)` not `job`) |
 | PR BLOCKED, `reviewDecision: REVIEW_REQUIRED` | `require_code_owner_reviews: true` | Disable code owner reviews or add code owner approval |
+| PR BLOCKED, unresolved threads | `required_conversation_resolution: true` | Resolve all review threads before merging |
+| PR has pending reviewers | Requested reviewers haven't responded | Wait for all requested reviewers to submit their review |
 | Renovate PR not using bypass | Workflow racing with Renovate | Only approve in workflow; let Renovate enable auto-merge via `platformAutomerge` |
 | CI can't push to main | Branch protection blocks direct push | Use Renovate `lockFileMaintenance` instead |
 | Workflow not triggering | Rapid merges skip push events | Add `workflow_dispatch` trigger, run manually |
