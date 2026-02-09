@@ -1,5 +1,8 @@
 # .github/workflows/auto-merge.yml
 # Auto-merge dependency updates from Dependabot and Renovate
+# Requires: branch protection enabled (--auto flag needs it)
+# IMPORTANT: The merge method (--merge/--squash/--rebase) MUST match the
+# repository's allowed merge methods. Check Settings > General > Pull Requests.
 name: Auto-merge dependency updates
 
 on:
@@ -14,7 +17,11 @@ jobs:
   auto-merge:
     name: Auto-merge dependency PRs
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]' || github.actor == 'renovate[bot]'
+    # Use github.event.pull_request.user.login instead of github.actor
+    # because actor can change on synchronize/rerun events
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' ||
+      github.event.pull_request.user.login == 'renovate[bot]'
 
     steps:
       - name: Harden Runner
@@ -24,7 +31,7 @@ jobs:
 
       - name: Dependabot metadata
         id: metadata
-        if: github.actor == 'dependabot[bot]'
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
         uses: dependabot/fetch-metadata@v2
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
@@ -36,6 +43,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Enable auto-merge
+        # Change --squash to --merge or --rebase to match repo settings
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

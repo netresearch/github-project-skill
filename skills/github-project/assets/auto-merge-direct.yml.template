@@ -3,6 +3,8 @@
 # Use this template when: Repository has no branch protection rules
 # Note: --auto flag requires branch protection; this template uses direct merge
 # Note: PRs that modify workflow files require manual merge (GITHUB_TOKEN limitation)
+# IMPORTANT: The merge method (--merge/--squash/--rebase) in the "Merge PR" step
+# MUST match the repository's allowed merge methods. Check Settings > General > Pull Requests.
 name: Auto-merge dependency PRs
 
 on:

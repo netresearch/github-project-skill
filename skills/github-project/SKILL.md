@@ -443,7 +443,11 @@ When dependency PRs aren't auto-merging, check these common issues:
 | Renovate PR not using bypass | Workflow racing with Renovate | Only approve in workflow; let Renovate enable auto-merge via `platformAutomerge` |
 | CI can't push to main | Branch protection blocks direct push | Use Renovate `lockFileMaintenance` instead |
 | Workflow not triggering | Rapid merges skip push events | Add `workflow_dispatch` trigger, run manually |
-| "Merge method X not allowed" | Wrong merge strategy | Check `required_linear_history`; use `--rebase` if true |
+| "Merge method X not allowed" | Wrong merge strategy | Check `gh api repos/O/R --jq '{merge: .allow_merge_commit, squash: .allow_squash_merge, rebase: .allow_rebase_merge}'`; match workflow |
+| Bot detection misses reruns | `github.actor` changes on synchronize | Use `github.event.pull_request.user.login` instead of `github.actor` |
+| Gitleaks fails on bot PRs | `GITLEAKS_LICENSE` secret unavailable | Skip gitleaks for bot PRs or use `.gitleaks.toml` allowlist |
+| Old PRs not auto-merging | Opened before workflow existed | Comment `@dependabot rebase` / `@renovate rebase` to trigger `synchronize` |
+| Can't merge workflow file PRs | `GITHUB_TOKEN` lacks `workflows` scope | Merge manually; use workflow check in `auto-merge-direct.yml` template |
 
 ### Branch Protection for Auto-merge
 
