@@ -373,7 +373,11 @@ permissions:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]' || github.actor == 'renovate[bot]'
+    # Use github.event.pull_request.user.login (not github.actor)
+    # because actor can change on synchronize/rerun events
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' ||
+      github.event.pull_request.user.login == 'renovate[bot]'
     steps:
       - name: Auto-approve PR
         run: gh pr review --approve "$PR_URL"
@@ -554,6 +558,93 @@ gh workflow run build.yml --repo OWNER/REPO --ref main
 **Impact:** `github-actions` may not have bypass permissions.
 
 **Solution:** For Renovate PRs, don't enable auto-merge in workflows. Let Renovate handle it via `platformAutomerge: true`.
+
+### Merge Method Mismatch in Auto-merge Workflow
+
+**Error:** `Merge method 'rebase' is not allowed on this repository` (or squash/merge)
+
+**Cause:** The auto-merge workflow uses `--rebase` but the repository only allows merge commits (or vice versa).
+
+**Diagnosis:**
+```bash
+# Check which merge methods are allowed
+gh api repos/OWNER/REPO --jq '{merge: .allow_merge_commit, squash: .allow_squash_merge, rebase: .allow_rebase_merge}'
+```
+
+**Solution:** Update the workflow's merge command to match:
+```yaml
+# Use the method that matches repo settings:
+run: gh pr merge --auto --merge "$PR_URL"   # if allow_merge_commit: true
+run: gh pr merge --auto --squash "$PR_URL"  # if allow_squash_merge: true
+run: gh pr merge --auto --rebase "$PR_URL"  # if allow_rebase_merge: true
+```
+
+### `github.actor` Unreliable for Bot Detection
+
+**Problem:** Auto-merge workflow uses `github.actor == 'dependabot[bot]'` but the workflow doesn't trigger on `synchronize` or `rerun` events.
+
+**Cause:** `github.actor` reflects who triggered the event, not who opened the PR. On `synchronize` events (new push) or manual reruns, the actor may change to the person who triggered the rerun.
+
+**Solution:** Always use `github.event.pull_request.user.login` instead:
+```yaml
+# ❌ Wrong - actor changes on synchronize/rerun
+if: github.actor == 'dependabot[bot]'
+
+# ✅ Correct - user.login is stable for the PR author
+if: github.event.pull_request.user.login == 'dependabot[bot]'
+```
+
+### Gitleaks Fails on Dependabot/Renovate PRs
+
+**Error:** `gitleaks-action` fails with license error on bot PRs.
+
+**Cause:** `gitleaks-action@v2` requires a `GITLEAKS_LICENSE` secret, but Dependabot runs with restricted secret access — it can only access secrets prefixed with `DEPENDABOT_`.
+
+**Solution:** Skip gitleaks on bot PRs or use the free mode:
+```yaml
+- name: Gitleaks
+  uses: gitleaks/gitleaks-action@v2
+  # Skip on bot PRs where GITLEAKS_LICENSE is unavailable
+  if: github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'renovate[bot]'
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+```
+
+Or add a `.gitleaks.toml` allowlist for known false positives.
+
+### Pre-existing PRs Don't Auto-merge
+
+**Problem:** PRs opened before the auto-merge workflow was added don't get auto-merged.
+
+**Cause:** The workflow triggers on `opened`, `synchronize`, and `reopened`. Pre-existing PRs already had their `opened` event.
+
+**Solution:** Either:
+1. Comment `@dependabot rebase` or `@renovate rebase` to trigger a `synchronize` event
+2. Close and reopen the PR to trigger `reopened`
+3. Manually merge the pre-existing PRs
+
+### GITHUB_TOKEN Cannot Modify Workflow Files
+
+**Problem:** Auto-merge fails for PRs that update `.github/workflows/` files.
+
+**Cause:** `GITHUB_TOKEN` (OAuth `gho_*` tokens) lack the `workflows` scope and cannot push or merge changes to workflow files. This is a GitHub security restriction.
+
+**Solution:** The `auto-merge-direct.yml` template includes a check for workflow file changes and skips auto-merge for those PRs, leaving a comment instead:
+```yaml
+- name: Check for workflow file changes
+  run: |
+    WORKFLOW_FILES=$(gh pr diff "$PR_URL" --name-only | grep -E '^\\.github/workflows/' || true)
+    if [ -n "$WORKFLOW_FILES" ]; then
+      echo "modifies_workflows=true" >> "$GITHUB_OUTPUT"
+    fi
+
+- name: Merge PR
+  if: steps.check-workflows.outputs.modifies_workflows != 'true'
+  run: gh pr merge --rebase "$PR_URL"
+```
+
+PRs modifying workflow files require manual merge by a repository admin.
 
 ## Comparison: Dependabot vs Renovate
 
