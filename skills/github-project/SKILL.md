@@ -426,9 +426,43 @@ Before merging any PR, verify **all** of these:
 | # | Prerequisite | How to check |
 |---|-------------|--------------|
 | 1 | All CI checks pass | `gh pr checks NUMBER` |
-| 2 | All requested reviewers have responded | `gh pr view NUMBER --json reviewRequests` → must be empty |
-| 3 | All review threads resolved | `gh pr view NUMBER --json reviewThreads` or GraphQL |
-| 4 | Branch rebased on target | `gh pr view NUMBER --json mergeStateStatus` → `CLEAN` |
+| 2 | No CI annotations (warnings/errors) | See "CI Annotations" section below |
+| 3 | All requested reviewers have responded | `gh pr view NUMBER --json reviewRequests` → must be empty |
+| 4 | All review threads resolved | `gh pr view NUMBER --json reviewThreads` or GraphQL |
+| 5 | Branch rebased on target | `gh pr view NUMBER --json mergeStateStatus` → `CLEAN` |
+
+### CI Annotations - ALWAYS Check
+
+CI checks can **PASS** while emitting warning annotations (e.g., actionlint/shellcheck via reviewdog, CodeQL deprecation notices). These are invisible in the PR summary view but visible in the job detail "Annotations" section and on the Files Changed tab.
+
+**Check for annotations before declaring a PR clean:**
+
+```bash
+# Find check runs with annotations
+gh api "repos/OWNER/REPO/commits/SHA/check-runs" \
+  --jq '.check_runs[] | select(.output.annotations_count > 0) | {name: .name, id: .id, annotations: .output.annotations_count}'
+
+# View specific annotations
+gh api repos/OWNER/REPO/check-runs/CHECK_RUN_ID/annotations \
+  --jq '.[] | {message, annotation_level, path, start_line}'
+```
+
+**Prevention:** Configure linters to fail on warnings instead of just annotating. For reviewdog-based actions:
+
+```yaml
+# CORRECT (current)
+- uses: reviewdog/action-actionlint@SHA
+  with:
+    fail_level: error
+
+# WRONG (deprecated)
+- uses: reviewdog/action-actionlint@SHA
+  with:
+    fail_on_error: true  # deprecated
+    level: error          # deprecated
+```
+
+> **Note:** `fail_on_error` + `level` are deprecated in reviewdog actions. Use `fail_level` instead.
 
 ## Auto-merge Troubleshooting Quick Reference
 
@@ -448,6 +482,30 @@ When dependency PRs aren't auto-merging, check these common issues:
 | Gitleaks fails on bot PRs | `GITLEAKS_LICENSE` secret unavailable | Skip gitleaks for bot PRs or use `.gitleaks.toml` allowlist |
 | Old PRs not auto-merging | Opened before workflow existed | Comment `@dependabot rebase` / `@renovate rebase` to trigger `synchronize` |
 | Can't merge workflow file PRs | `GITHUB_TOKEN` lacks `workflows` scope | Merge manually; use workflow check in `auto-merge-direct.yml` template |
+| Auto-approve skipped, PR stuck `REVIEW_REQUIRED` | Auto-approve raced with Copilot reviewer | Re-run the auto-approve workflow after Copilot finishes (see below) |
+
+### Auto-Approve Race Condition with Copilot Reviewer
+
+When using a solo-maintainer auto-approve workflow alongside GitHub Copilot as a reviewer, a race condition can leave PRs stuck in `REVIEW_REQUIRED`:
+
+1. New push triggers both auto-approve workflow and Copilot review
+2. Auto-approve runs first, sees Copilot as a pending reviewer → skips approval
+3. Stale review dismissal clears any previous approvals from the push
+4. Copilot finishes reviewing (state: `COMMENTED`) but doesn't approve
+5. No approval exists → PR is `BLOCKED`
+
+**Symptoms:** `mergeStateStatus: BLOCKED`, `reviewDecision: REVIEW_REQUIRED`, auto-approve step shows "skipped", `reviewRequests` is empty (Copilot is done, just didn't approve).
+
+**Fix:** Re-run the auto-approve workflow after Copilot finishes:
+
+```bash
+# Find the workflow run ID
+gh api "repos/OWNER/REPO/actions/runs?per_page=5" \
+  --jq '.workflow_runs[] | select(.name == "YOUR_WORKFLOW_NAME") | {id, head_sha: .head_sha[:7]}'
+
+# Re-run it
+gh api repos/OWNER/REPO/actions/runs/RUN_ID/rerun -X POST
+```
 
 ### Branch Protection for Auto-merge
 
@@ -499,6 +557,11 @@ EOF
 - `lockFileMaintenance` - Handles lock file updates via PR (not direct push)
 
 ## CodeQL Configuration (MANDATORY)
+
+> **Deprecation:** CodeQL Action v3 will be deprecated in December 2026. Migrate all `github/codeql-action/*` references to v4. Check with:
+> ```bash
+> grep -r 'uses: github/codeql-action/' .github/workflows/ | grep -v '@v4'
+> ```
 
 Netresearch projects use custom CodeQL workflows (`.github/workflows/codeql.yml`). GitHub's "Default Setup" **MUST be disabled** - they cannot coexist.
 
