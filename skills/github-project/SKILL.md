@@ -440,7 +440,7 @@ CI checks can **PASS** while emitting warning annotations (e.g., actionlint/shel
 ```bash
 # Find check runs with annotations
 gh api "repos/OWNER/REPO/commits/SHA/check-runs" \
-  --jq '.check_runs[] | select(.output.annotations_count > 0) | {name: .name, annotations: .output.annotations_count}'
+  --jq '.check_runs[] | select(.output.annotations_count > 0) | {name: .name, id: .id, annotations: .output.annotations_count}'
 
 # View specific annotations
 gh api repos/OWNER/REPO/check-runs/CHECK_RUN_ID/annotations \
@@ -501,7 +501,7 @@ When using a solo-maintainer auto-approve workflow alongside GitHub Copilot as a
 ```bash
 # Find the workflow run ID
 gh api "repos/OWNER/REPO/actions/runs?per_page=5" \
-  --jq '.workflow_runs[] | select(.name == "PR Quality Gates") | {id, head_sha: .head_sha[:7]}'
+  --jq '.workflow_runs[] | select(.name == "YOUR_WORKFLOW_NAME") | {id, head_sha: .head_sha[:7]}'
 
 # Re-run it
 gh api repos/OWNER/REPO/actions/runs/RUN_ID/rerun -X POST
@@ -560,7 +560,7 @@ EOF
 
 > **Deprecation:** CodeQL Action v3 will be deprecated in December 2026. Migrate all `github/codeql-action/*` references to v4. Check with:
 > ```bash
-> grep -r 'codeql-action' .github/workflows/ | grep -v '# v4'
+> grep -r 'uses: github/codeql-action/' .github/workflows/ | grep -v '@v4'
 > ```
 
 Netresearch projects use custom CodeQL workflows (`.github/workflows/codeql.yml`). GitHub's "Default Setup" **MUST be disabled** - they cannot coexist.
