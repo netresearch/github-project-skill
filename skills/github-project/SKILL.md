@@ -464,6 +464,67 @@ gh api repos/OWNER/REPO/check-runs/CHECK_RUN_ID/annotations \
 
 > **Note:** `fail_on_error` + `level` are deprecated in reviewdog actions. Use `fail_level` instead.
 
+## OpenSSF Scorecard: Token-Permissions Optimization
+
+The Scorecard Token-Permissions check flags any `write` permission declared at **workflow-level**. All `write` permissions MUST be at **job-level** only.
+
+### Pattern: Workflow-level read, job-level write
+
+```yaml
+# ✅ CORRECT — write at job level only
+permissions:
+    contents: read          # workflow-level: read only
+
+jobs:
+    release:
+        permissions:
+            contents: write  # job-level: narrowed to this job
+        steps: ...
+
+    read-only-job:
+        permissions:
+            contents: read   # job-level: explicit read
+        steps: ...
+
+# ❌ WRONG — write at workflow level (Scorecard flags this)
+permissions:
+    contents: read
+    pull-requests: write    # This fails Token-Permissions check!
+```
+
+### Common workflows that need fixing
+
+| Workflow | Typical violation | Fix |
+|----------|-------------------|-----|
+| `pr-quality.yml` | `pull-requests: write` at top | Move to auto-approve job only |
+| `release-labeler.yml` | `issues: write, pull-requests: write` at top | Move to label-release job |
+| `create-release.yml` | `contents: write` at top | Move to create-release job |
+
+### Branch-Protection for Scorecard
+
+The Scorecard Branch-Protection check requires `required_approving_review_count >= 1`. For solo maintainer projects, combine with auto-approve:
+
+```bash
+# Set required_approving_review_count to 1 (auto-approve provides it)
+gh api repos/OWNER/REPO/rulesets/RULESET_ID -X PUT --input - <<'EOF'
+{
+  "rules": [{
+    "type": "pull_request",
+    "parameters": {
+      "required_approving_review_count": 1,
+      "dismiss_stale_reviews_on_push": true
+    }
+  }]
+}
+EOF
+```
+
+This works because `pr-quality.yml` auto-approve provides the required approval via `github-actions[bot]`.
+
+### SLSA Generator Pinning Exception
+
+The `slsa-framework/slsa-github-generator` reusable workflow **cannot be SHA-pinned**. It requires `@vX.Y.Z` tag references because the slsa-verifier needs the tag to verify builder identity. This is tracked as [slsa-verifier#12](https://github.com/slsa-framework/slsa-verifier/issues/12). Accept this as an unavoidable Pinned-Dependencies gap.
+
 ## Auto-merge Troubleshooting Quick Reference
 
 When dependency PRs aren't auto-merging, check these common issues:
