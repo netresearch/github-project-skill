@@ -104,7 +104,10 @@ For the full merge strategy guide, see `references/merge-strategy.md`.
 
 ## CodeQL Configuration
 
-> **Deprecation:** CodeQL Action v3 will be deprecated in December 2026. Migrate all `github/codeql-action/*` references to v4.
+> **Deprecation:** CodeQL Action v3 will be deprecated in December 2026. Migrate all `github/codeql-action/*` references to v4. Check with:
+> ```bash
+> grep -r 'uses: github/codeql-action/' .github/workflows/ | grep -v '@v4'
+> ```
 
 Netresearch projects use custom CodeQL workflows (`.github/workflows/codeql.yml`). GitHub's "Default Setup" **MUST be disabled** -- they cannot coexist.
 
@@ -133,6 +136,35 @@ gh api repos/OWNER/REPO/code-scanning/default-setup -X PATCH -f state=not-config
 gh api repos/OWNER/REPO/code-scanning/default-setup --jq 'if .state == "not-configured" then "OK: Default Setup disabled" else "FAIL: Default Setup still enabled - DISABLE IT" end'
 ```
 
+## Required Reviews from All Requested Reviewers (MANDATORY)
+
+PRs must **not be merged until all requested reviewers have submitted their review**. This includes human reviewers and automated reviewers (e.g., GitHub Copilot). Do not merge while any reviewer's status is still "PENDING".
+
+> **Note:** GitHub branch protection only enforces a *minimum* approval count, not "all requested reviewers must respond." This rule is enforced as a **workflow policy** -- agents and humans must verify before merging.
+
+### Check Reviewer Status Before Merging
+
+```bash
+# List all requested reviewers and their review state
+gh pr view NUMBER --repo OWNER/REPO --json reviewRequests,reviews --jq '{
+  pending: [.reviewRequests[].login],
+  completed: [.reviews[] | {user: .author.login, state: .state}]
+}'
+
+# GraphQL: full reviewer status (requested + completed)
+gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+    reviewRequests(first:20){nodes{requestedReviewer{...on User{login}...on Bot{login}}}}
+    reviews(last:20){nodes{author{login}state}}
+  }}
+}' -f owner=OWNER -f repo=REPO -F pr=NUMBER --jq '.data.repository.pullRequest | {
+  awaiting: [.reviewRequests.nodes[].requestedReviewer.login],
+  reviews: [.reviews.nodes[] | {user: .author.login, state: .state}]
+}'
+```
+
+If `awaiting` is non-empty, the PR is **not ready to merge** -- those reviewers haven't responded yet.
+
 ## Required Conversation Resolution
 
 All review threads on a PR **must be resolved** before merging:
@@ -148,7 +180,7 @@ gh api repos/OWNER/REPO/branches/main/protection -X PUT \
 EOF
 
 # Verify
-gh api repos/OWNER/REPO/branches/main/protection --jq 'if .required_conversation_resolution.enabled then "OK" else "NOT enabled" end'
+gh api repos/OWNER/REPO/branches/main/protection --jq 'if .required_conversation_resolution.enabled then "OK: Conversation resolution required" else "FAIL: Conversation resolution NOT required - ENABLE IT" end'
 
 # List unresolved threads
 gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){

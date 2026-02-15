@@ -150,7 +150,7 @@ Check repository compliance:
 
 ```bash
 # Check topics
-gh api repos/OWNER/REPO/topics --jq '.names | if contains(["typo3","typo3-extension","php"]) then "OK: Required topics present" else "MISSING: Required topics" end'
+gh api repos/OWNER/REPO/topics --jq 'if (.names | contains(["typo3"]) and contains(["typo3-extension"]) and contains(["php"])) then "OK: Required topics present" else "MISSING: Required topics" end'
 
 # Check has_projects
 gh api repos/OWNER/REPO --jq 'if .has_projects then "OK: Projects enabled" else "MISSING: Projects disabled" end'
