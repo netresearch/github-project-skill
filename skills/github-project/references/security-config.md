@@ -1,10 +1,10 @@
 # Security Configuration Reference
 
-OpenSSF Scorecard optimization, CodeQL setup, merge strategy for signed commits, and solo maintainer auto-approve.
+Repository security best practices: permissions, branch protection, CodeQL, signed commits, and PR merge requirements.
 
-## OpenSSF Scorecard: Token-Permissions
+## Least-Privilege Workflow Permissions
 
-The Scorecard Token-Permissions check flags any `write` permission declared at **workflow-level**. All `write` permissions MUST be at **job-level** only.
+All `write` permissions MUST be at **job-level** only. Workflow-level should be `read` or empty.
 
 ### Pattern: Workflow-level read, job-level write
 
@@ -24,10 +24,10 @@ jobs:
             contents: read   # job-level: explicit read
         steps: ...
 
-# WRONG -- write at workflow level (Scorecard flags this)
+# WRONG -- write at workflow level
 permissions:
     contents: read
-    pull-requests: write    # This fails Token-Permissions check!
+    pull-requests: write    # Too broad -- move to job level!
 ```
 
 ### Common Workflows That Need Fixing
@@ -38,30 +38,20 @@ permissions:
 | `release-labeler.yml` | `issues: write, pull-requests: write` at top | Move to label-release job |
 | `create-release.yml` | `contents: write` at top | Move to create-release job |
 
+> **Scorecard note:** The OpenSSF Scorecard Token-Permissions check flags workflow-level `write` permissions.
+
 ### SLSA Generator Pinning Exception
 
 The `slsa-framework/slsa-github-generator` reusable workflow **cannot be SHA-pinned**. It requires `@vX.Y.Z` tag references because the slsa-verifier needs the tag to verify builder identity. This is tracked as [slsa-verifier#12](https://github.com/slsa-framework/slsa-verifier/issues/12). Accept this as an unavoidable Pinned-Dependencies gap.
 
-## Branch-Protection for Scorecard (Solo Maintainer)
+## Branch Protection: Required Reviews
 
-The Scorecard Branch-Protection check requires `required_approving_review_count >= 1`. For solo maintainer projects, combine with auto-approve:
+All projects MUST have `required_approving_review_count >= 1`.
 
-```bash
-# Set required_approving_review_count to 1 (auto-approve provides it)
-gh api repos/OWNER/REPO/rulesets/RULESET_ID -X PUT --input - <<'EOF'
-{
-  "rules": [{
-    "type": "pull_request",
-    "parameters": {
-      "required_approving_review_count": 1,
-      "dismiss_stale_reviews_on_push": true
-    }
-  }]
-}
-EOF
-```
+- **Solo maintainer projects:** Use `pr-quality.yml` auto-approve workflow. See `references/auto-merge-guide.md` → "Solo Maintainer" for full setup.
+- **Team projects:** Reviews come from team members.
 
-This works because `pr-quality.yml` auto-approve provides the required approval via `github-actions[bot]`.
+> **Scorecard note:** The OpenSSF Scorecard Branch-Protection check requires `required_approving_review_count >= 1`. Setting it to 0 lowers your score.
 
 ## Merge Strategy & Signed Commits
 
@@ -218,3 +208,15 @@ gh api repos/OWNER/REPO/check-runs/CHECK_RUN_ID/annotations \
 | 3 | All requested reviewers responded | `gh pr view NUMBER --json reviewRequests` must be empty |
 | 4 | All review threads resolved | GraphQL reviewThreads query |
 | 5 | Branch rebased on target | `gh pr view NUMBER --json mergeStateStatus` is `CLEAN` |
+
+## OpenSSF Scorecard Quick Reference
+
+If your Scorecard score is low, check these common issues:
+
+| Scorecard Check | Requirement | Reference |
+|----------------|-------------|-----------|
+| Token-Permissions | No workflow-level `write` permissions | See "Least-Privilege Workflow Permissions" above |
+| Branch-Protection | `required_approving_review_count >= 1` | See "Branch Protection: Required Reviews" above |
+| Pinned-Dependencies | All actions pinned to full SHA | Pin with `uses: action@SHA # vX.Y.Z` comment |
+| Code-Review | PRs reviewed before merge | Auto-approve + `required_approving_review_count >= 1` satisfies this |
+| SAST | Static analysis enabled | CodeQL workflow (see above) |

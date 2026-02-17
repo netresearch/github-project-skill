@@ -13,6 +13,7 @@ GitHub repository setup, configuration, troubleshooting, and best practices for 
 
 - PR won't merge or shows BLOCKED status
 - Auto-merge not working for Dependabot/Renovate PRs
+- Solo maintainer needs auto-approve for their own PRs
 - Branch protection or ruleset configuration needed
 - GitHub Actions workflow problems or CI failures
 - Setting up CODEOWNERS, issue templates, or PR templates
@@ -31,6 +32,10 @@ gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
   }}
 }' -f owner=OWNER -f repo=REPO -F pr=NUMBER --jq '.data.repository.pullRequest'
 ```
+
+### Solo Maintainer: PRs Stuck on REVIEW_REQUIRED
+
+Solo maintainer projects MUST have auto-approve. Use `assets/pr-quality.yml.template` and keep `required_approving_review_count >= 1`. See `references/auto-merge-guide.md` for full setup.
 
 ### Auto-merge Not Working
 
@@ -59,7 +64,7 @@ gh run rerun RUN_ID --repo OWNER/REPO
 | Repository file layout and conventions | `references/repository-structure.md` |
 | Branch migration (master to main) | `references/branch-migration.md` |
 | Dependabot/Renovate configuration | `references/dependency-management.md` |
-| Auto-merge troubleshooting | `references/auto-merge-guide.md` |
+| Auto-approve + auto-merge (solo maintainer, bots) | `references/auto-merge-guide.md` |
 | Merge strategy for signed commits | `references/merge-strategy.md` |
 | Sub-issues and issue hierarchy | `references/sub-issues.md` |
 | Release labeling automation | `references/release-labeling.md` |
@@ -87,6 +92,7 @@ scripts/verify-github-project.sh /path/to/repository
 | `assets/PULL_REQUEST_TEMPLATE.md.template` | `.github/PULL_REQUEST_TEMPLATE.md` |
 | `assets/dependabot.yml.template` | `.github/dependabot.yml` |
 | `assets/renovate.json.template` | `renovate.json` |
+| `assets/pr-quality.yml.template` | `.github/workflows/pr-quality.yml` |
 | `assets/auto-merge.yml.template` | `.github/workflows/auto-merge.yml` |
 | `assets/auto-merge-direct.yml.template` | `.github/workflows/auto-merge.yml` |
 | `assets/auto-merge-queue.yml.template` | `.github/workflows/auto-merge.yml` |

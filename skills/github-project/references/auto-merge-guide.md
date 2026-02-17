@@ -1,6 +1,37 @@
-# Auto-merge Troubleshooting Guide
+# Auto-merge & Auto-approve Guide
 
-Quick reference for diagnosing and fixing auto-merge issues with Dependabot and Renovate.
+Auto-merge for dependency bots and auto-approve for solo maintainers.
+
+## Solo Maintainer: Auto-approve via `pr-quality.yml`
+
+Solo maintainer projects should keep `required_approving_review_count >= 1` (required for OpenSSF Scorecard and good practice) and use a `pr-quality.yml` workflow that auto-approves PRs from repo collaborators.
+
+**How it works:** The workflow checks the PR author's repository permission. If they have `write` or `admin` access, it approves the PR automatically via `github-actions[bot]`, satisfying the review requirement without manual intervention.
+
+**Use the template:** `assets/pr-quality.yml.template` → `.github/workflows/pr-quality.yml`
+
+**Branch protection settings:**
+
+```bash
+gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews -X PATCH \
+  --input - << 'EOF'
+{
+  "required_approving_review_count": 1,
+  "dismiss_stale_reviews_on_push": true,
+  "require_code_owner_reviews": false
+}
+EOF
+```
+
+**Who gets auto-approved:**
+
+| PR author | Approved by | Auto-merged by |
+|-----------|-------------|----------------|
+| Repo collaborator (write/admin) | `pr-quality.yml` | Manual merge or auto-merge rule |
+| Dependabot / Renovate / release-please | `auto-merge-deps.yml` | `auto-merge-deps.yml` (via `--auto`) |
+| External contributor | Manual review required | Manual merge |
+
+> **Bootstrap note:** When first adding `pr-quality.yml`, the PR that introduces it must be approved manually (the workflow isn't on the base branch yet). All subsequent PRs auto-approve.
 
 ## Troubleshooting Quick Reference
 
