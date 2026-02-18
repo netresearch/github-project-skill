@@ -37,20 +37,25 @@ Generic pattern for any project with a version file:
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Find semver tags at HEAD (adjust pattern for v-prefixed tags if needed)
-TAGS=$(git tag --points-at HEAD | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' || true)
+# Find semver tags at HEAD (with or without v prefix), normalize to bare version
+TAGS=$(git tag --points-at HEAD | sed -nE 's/^v?([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' || true)
 [[ -z "${TAGS}" ]] && exit 0
 
-# Extract version from your version file (adapt grep pattern per project)
-FILE_VERSION=$(grep -oP "'version'\s*=>\s*'\K[^']+" version-file.ext)
+# Extract version from your version file (adapt sed pattern per project)
+FILE_VERSION=$(sed -nE "s/.*'version'[[:space:]]*=>[[:space:]]*'([^']+)'.*/\1/p" version-file.ext)
 
-while IFS= read -r TAG; do
-    TAG_VERSION="${TAG#v}"  # Strip optional v prefix
-    if [[ "${TAG_VERSION}" != "${FILE_VERSION}" ]]; then
-        echo "ERROR: Tag ${TAG} does not match version file (${FILE_VERSION})"
-        exit 1
-    fi
-done <<< "${TAGS}"
+if [[ -z "${FILE_VERSION}" ]]; then
+    echo "ERROR: Could not extract version from version-file.ext"
+    exit 1
+fi
+
+# Check if file version matches any of the tags at HEAD
+if ! echo "${TAGS}" | grep -qFx "${FILE_VERSION}"; then
+    echo "ERROR: version file (${FILE_VERSION}) does not match any semver tag at HEAD"
+    echo "Tags found at HEAD:"
+    echo "${TAGS}"
+    exit 1
+fi
 ```
 
 ### Integration with CaptainHook
@@ -75,7 +80,11 @@ Add **before** any publish/deploy step:
   env:
     TAG_VERSION: ${{ env.version }}
   run: |
-    FILE_VERSION=$(grep -oP "'version'\s*=>\s*'\K[^']+" version-file.ext)
+    FILE_VERSION=$(sed -nE "s/.*'version'[[:space:]]*=>[[:space:]]*'([^']+)'.*/\1/p" version-file.ext)
+    if [[ -z "${FILE_VERSION}" ]]; then
+      echo "::error file=version-file.ext::Could not extract version from version-file.ext"
+      exit 1
+    fi
     if [[ "${TAG_VERSION}" != "${FILE_VERSION}" ]]; then
       echo "::error file=version-file.ext::Tag (${TAG_VERSION}) does not match version file (${FILE_VERSION})"
       exit 1
@@ -87,11 +96,11 @@ Add **before** any publish/deploy step:
 
 | Ecosystem | File | Extraction |
 |-----------|------|------------|
-| TYPO3 | `ext_emconf.php` | `grep -oP "'version'\s*=>\s*'\K[^']+"` |
+| TYPO3 | `ext_emconf.php` | `sed -nE "s/.*'version'[[:space:]]*=>[[:space:]]*'([^']+)'.*/\1/p"` |
 | Node.js | `package.json` | `jq -r .version` |
-| Python | `pyproject.toml` | `grep -oP '^version\s*=\s*"\K[^"]+'` |
-| Go | `version.go` | `grep -oP 'Version\s*=\s*"\K[^"]+'` |
-| Rust | `Cargo.toml` | `grep -oP '^version\s*=\s*"\K[^"]+'` |
+| Python | `pyproject.toml` | `sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p'` |
+| Go | `version.go` | `sed -nE 's/.*Version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p'` |
+| Rust | `Cargo.toml` | `sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p'` |
 
 ## Why Not Just Use `tailor set-version`?
 
