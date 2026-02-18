@@ -102,6 +102,35 @@ Add **before** any publish/deploy step:
 | Go | `version.go` | `sed -nE 's/.*Version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p'` |
 | Rust | `Cargo.toml` | `sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p'` |
 
+## Composer Audit Blocking Installs
+
+Composer 2.7+ blocks `composer install/require` if a dependency has a known security advisory (exit code 2). This can break CI even when the advisory is in a transitive dependency you don't control.
+
+**Temporary exemption in `composer.json`:**
+```json
+{
+    "config": {
+        "audit": {
+            "ignore": {
+                "PKSA-xxxx-yyyy": "Upstream issue via dependency-name, no fix available yet"
+            }
+        }
+    }
+}
+```
+
+Remove the exemption once the upstream fix is released.
+
+## Batch PR Merging Gotchas
+
+When merging PRs across many repos:
+
+- **Check allowed merge methods** — repos may only allow rebase, squash, or merge commits. Use `gh api repos/OWNER/REPO --jq '{allow_merge: .allow_merge_commit, allow_rebase: .allow_rebase_merge, allow_squash: .allow_squash_merge}'`
+- **`--admin` bypasses branch protection** — useful when `enforce_admins` is false and you're a repo admin
+- **`--delete-branch` fails with merge queues** — omit the flag for repos with merge queues enabled
+- **`dismiss_stale_reviews` clears approvals on force-push** — after rebasing, auto-approve workflows must re-run
+- **GitHub API content pushes aren't GPG-signed** — commits via the Contents API use GitHub's web-flow committer
+
 ## Why Not Just Use `tailor set-version`?
 
 Some tools (like TYPO3's `tailor`) can set the version at publish time. However:
