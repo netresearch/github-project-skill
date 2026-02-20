@@ -101,6 +101,7 @@ Add **before** any publish/deploy step:
 | Python | `pyproject.toml` | `sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p'` |
 | Go | `version.go` | `sed -nE 's/.*Version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p'` |
 | Rust | `Cargo.toml` | `sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p'` |
+| Claude Code Plugin | `.claude-plugin/plugin.json` | `python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])"` |
 
 ## Composer Audit Blocking Installs
 
