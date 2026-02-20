@@ -8,26 +8,41 @@ GitHub.com (cloud) does not support custom **pre-receive hooks** — those are o
 
 ## Defense-in-Depth Pattern
 
-Use two layers of protection:
+Use three layers of protection:
 
 1. **Local git hook** (pre-push) — catches mistakes before they leave the developer's machine
-2. **CI validation step** — catches anything that slips through (force-push, web UI tag creation, etc.)
+2. **CI lint validation** — catches anything that slips through (force-push, web UI tag creation, etc.)
+3. **Release workflow validation** — final gate before packaging/publishing
 
 ```
 Developer                     GitHub
     │                            │
-    ├─ git tag 1.2.3             │
+    ├─ bump version file         │
+    ├─ git commit -S             │
+    ├─ git tag -s v1.2.3         │
     ├─ git push --tags           │
-    │   └─ pre-push hook ─ FAIL  │  ← Local gate
+    │   └─ pre-push hook ─ FAIL  │  ← Layer 1: Local gate
     │      "version mismatch"    │
     │                            │
     ├─ fix version, amend, push  │
     │   └─ pre-push hook ─ PASS ─┼─► tag pushed
     │                            │
-    │                            ├─ CI workflow triggered
-    │                            ├─ Validate version ─ PASS ← Safety net
-    │                            └─ Publish/deploy
+    │                            ├─ Lint workflow (tag trigger)
+    │                            ├─ Validate version ─ PASS  ← Layer 2: CI safety net
+    │                            │
+    │                            ├─ Release workflow (tag trigger)
+    │                            ├─ Validate version ─ PASS  ← Layer 3: Release gate
+    │                            └─ Package & publish
 ```
+
+### Critical: Never Bump Versions in Release Workflows
+
+The release workflow must **only validate**, never bump version files:
+
+- The signed tag already points at a specific commit
+- Bumping the version file after tagging creates a **new commit** that the tag does NOT point to
+- The tag would then reference a commit with the wrong version — defeating the purpose
+- Correct flow: bump version → commit → sign tag → push → release validates and packages
 
 ## Local Pre-Push Hook
 
@@ -58,7 +73,29 @@ if ! echo "${TAGS}" | grep -qFx "${FILE_VERSION}"; then
 fi
 ```
 
-### Integration with CaptainHook
+### Hook Installation Methods
+
+#### direnv + `core.hooksPath` (no dependencies)
+
+For repos without Node.js or PHP tooling. Uses `Build/hooks/` directory with direnv auto-setup:
+
+**`Build/hooks/pre-push`:**
+
+```bash
+#!/usr/bin/env bash
+"$(dirname "$0")/../Scripts/check-plugin-version.sh"
+```
+
+**`.envrc`:**
+
+```bash
+# Install git hooks for version validation
+git config core.hooksPath Build/hooks
+```
+
+Developers run `direnv allow` once — hooks are active automatically on every `cd` into the project.
+
+#### CaptainHook (PHP projects)
 
 ```json
 {
@@ -71,26 +108,67 @@ fi
 }
 ```
 
-## CI Validation Step (GitHub Actions)
+#### Husky (Node.js projects)
 
-Add **before** any publish/deploy step:
+**`.husky/pre-push`:**
+
+```bash
+#!/usr/bin/env sh
+Build/Scripts/check-tag-version.sh
+```
+
+## CI Lint Validation Step (GitHub Actions)
+
+Add to `lint.yml` with `tags: ['v*']` trigger. Runs on every tag push as a safety net:
 
 ```yaml
-- name: Validate version file matches tag
-  env:
-    TAG_VERSION: ${{ env.version }}
-  run: |
-    FILE_VERSION=$(sed -nE "s/.*'version'[[:space:]]*=>[[:space:]]*'([^']+)'.*/\1/p" version-file.ext)
-    if [[ -z "${FILE_VERSION}" ]]; then
-      echo "::error file=version-file.ext::Could not extract version from version-file.ext"
-      exit 1
-    fi
-    if [[ "${TAG_VERSION}" != "${FILE_VERSION}" ]]; then
-      echo "::error file=version-file.ext::Tag (${TAG_VERSION}) does not match version file (${FILE_VERSION})"
-      exit 1
-    fi
-    echo "Version validated: ${TAG_VERSION}"
+  version:
+    name: Plugin Version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate version file matches tag
+        run: |
+          # Adapt extraction per ecosystem (see table below)
+          FILE_VERSION=$(sed -nE "s/.*'version'[[:space:]]*=>[[:space:]]*'([^']+)'.*/\1/p" version-file.ext)
+          if [[ -z "${FILE_VERSION}" ]]; then
+            echo "::error file=version-file.ext::Could not extract version from version-file.ext"
+            exit 1
+          fi
+          # On tag push, verify tag matches version file
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+            if [[ "${TAG_VERSION}" != "${FILE_VERSION}" ]]; then
+              echo "::error file=version-file.ext::Tag v${TAG_VERSION} does not match version file ${FILE_VERSION}"
+              exit 1
+            fi
+            echo "Version match confirmed: v${TAG_VERSION}"
+          else
+            # Non-tag push: just validate format
+            echo "Version format valid: ${FILE_VERSION}"
+          fi
 ```
+
+## Release Workflow Validation (GitHub Actions)
+
+Add **before** any packaging/publish step in the release workflow. This is the final gate — validation only:
+
+```yaml
+      - name: Validate version file matches tag
+        env:
+          TAG_VERSION: ${{ github.ref_name }}
+        run: |
+          # Adapt extraction command per ecosystem (see table below)
+          FILE_VERSION=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
+          TAG_BARE="${TAG_VERSION#v}"
+          if [[ "${TAG_BARE}" != "${FILE_VERSION}" ]]; then
+            echo "::error file=.claude-plugin/plugin.json::Tag ${TAG_VERSION} does not match version file ${FILE_VERSION}"
+            exit 1
+          fi
+          echo "Version validated: ${TAG_VERSION} matches ${FILE_VERSION}"
+```
+
+**Important:** Use `env:` to pass `github.ref_name` — never interpolate `${{ }}` directly in `run:` blocks (script injection risk).
 
 ## Common Version File Patterns
 
