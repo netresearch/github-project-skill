@@ -74,6 +74,70 @@ gh api "repos/OWNER/REPO/actions/runs?per_page=5" \
 gh api repos/OWNER/REPO/actions/runs/RUN_ID/rerun -X POST
 ```
 
+## Merge Queue Behavior and Pitfalls
+
+### Sequential Processing
+
+GitHub's merge queue processes PRs **one at a time**:
+
+- Full CI runs for each PR before it merges
+- Force-pushing a queued PR re-triggers CI from scratch and resets its position
+- When the preceding PR merges, queued PRs behind it are effectively **rebased behind** — they must be rebased on the new `main`, force-pushed, and re-queued
+
+### Force Push + Stale Review Dismissal Interaction
+
+Rebasing before re-queuing triggers stale review dismissal, which cascades into an auto-approve requirement:
+
+1. You force-push the rebased branch
+2. `dismiss_stale_reviews_on_push: true` clears the previous approval
+3. Auto-approve workflow must re-run to create a fresh approval
+4. **Old review threads survive force push** — threads created against now-obsolete commits are still tracked by GitHub's conversation resolution requirement and still block merge
+
+Explicitly resolve stale threads via GraphQL before re-queuing:
+
+```bash
+# Find thread IDs
+gh api repos/OWNER/REPO/pulls/NUMBER/comments --jq '.[] | {id, node_id, body}'
+
+# Resolve each thread
+gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "PRRT_xxx"}) { thread { isResolved } } }'
+```
+
+### Multi-PR Workflow Pattern
+
+When landing multiple dependent PRs, expect the dependent PRs to need rebasing after each merge:
+
+```
+1. Queue PR1 and PR2 (PR2 depends on PR1)
+2. PR1 merges
+3. PR2 is now behind — must be rebased:
+   git fetch origin
+   git rebase origin/main
+   git push --force-with-lease
+4. Force push dismisses approval → wait for auto-approve to re-run (or re-trigger it)
+5. Resolve any stale review threads from old commits
+6. Re-queue PR2:
+   gh pr merge NUMBER --merge --auto
+```
+
+**Checklist before re-queuing after rebase:**
+
+| Step | Command |
+|------|---------|
+| Rebase on latest main | `git rebase origin/main && git push --force-with-lease` |
+| Trigger auto-approve | Wait for `pr-quality.yml` to run, or re-run it manually |
+| Resolve stale threads | GraphQL `resolveReviewThread` for each stale thread |
+| Re-enable auto-merge | `gh pr merge NUMBER --merge --auto` |
+
+### Troubleshooting Merge Queue Issues
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| PR exits queue after force push | CI reset on new push | Expected — wait for CI to pass again |
+| PR stuck after preceding PR merged | PR is now behind `main` | Rebase, force push, re-queue |
+| `REVIEW_REQUIRED` after rebase | Stale review dismissal cleared approval | Re-run auto-approve workflow |
+| Unresolved threads block merge | Old threads survive rebase | Resolve via GraphQL `resolveReviewThread` |
+
 ## Recommended Renovate Config for Auto-merge
 
 ```json
