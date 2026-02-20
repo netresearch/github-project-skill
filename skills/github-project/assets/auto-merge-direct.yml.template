@@ -3,8 +3,7 @@
 # Use this template when: Repository has no branch protection rules
 # Note: --auto flag requires branch protection; this template uses direct merge
 # Note: PRs that modify workflow files require manual merge (GITHUB_TOKEN limitation)
-# IMPORTANT: The merge method (--merge/--squash/--rebase) in the "Merge PR" step
-# MUST match the repository's allowed merge methods. Check Settings > General > Pull Requests.
+# Merge strategy is auto-detected from repo settings (squash > merge > rebase).
 name: Auto-merge dependency PRs
 
 on:
@@ -88,10 +87,20 @@ jobs:
 
       - name: Merge PR
         if: steps.check-workflows.outputs.modifies_workflows != 'true'
-        run: gh pr merge --rebase "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Detect allowed merge strategy
+          # Prefer squash (works with signed commit requirements, clean for single-commit PRs)
+          # then merge (also works with signed commits), then rebase (cannot be auto-signed)
+          STRATEGY=$(gh api "repos/${{ github.repository }}" --jq '
+            if .allow_squash_merge then "--squash"
+            elif .allow_merge_commit then "--merge"
+            elif .allow_rebase_merge then "--rebase"
+            else "--squash" end')
+          echo "Using merge strategy: $STRATEGY"
+          gh pr merge $STRATEGY "$PR_URL"
 
       - name: Comment on workflow PR
         if: steps.check-workflows.outputs.modifies_workflows == 'true'

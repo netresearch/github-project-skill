@@ -44,7 +44,8 @@ EOF
 | Renovate PR not using bypass | Workflow racing with Renovate | Only approve in workflow; let Renovate enable auto-merge via `platformAutomerge` |
 | CI can't push to main | Branch protection blocks direct push | Use Renovate `lockFileMaintenance` instead |
 | Workflow not triggering | Rapid merges skip push events | Add `workflow_dispatch` trigger, run manually |
-| "Merge method X not allowed" | Wrong merge strategy | Check `gh api repos/O/R --jq '{merge: .allow_merge_commit, squash: .allow_squash_merge, rebase: .allow_rebase_merge}'`; match workflow |
+| "Merge method X not allowed" | Wrong merge strategy | Use auto-detection (see below) or check `gh api repos/O/R --jq '{merge: .allow_merge_commit, squash: .allow_squash_merge, rebase: .allow_rebase_merge}'` |
+| "Rebase merges cannot be automatically signed" | Signed commits + rebase | Enable squash merge on the repo; rebase merges cannot be auto-signed by GitHub |
 | Bot detection misses reruns | `github.actor` changes on synchronize | Use `github.event.pull_request.user.login` instead of `github.actor` |
 | Gitleaks fails on bot PRs | `GITLEAKS_LICENSE` secret unavailable | Skip gitleaks for bot PRs or use `.gitleaks.toml` allowlist |
 | Old PRs not auto-merging | Opened before workflow existed | Comment `@dependabot rebase` / `@renovate rebase` to trigger `synchronize` |
@@ -137,6 +138,38 @@ When landing multiple dependent PRs, expect the dependent PRs to need rebasing a
 | PR stuck after preceding PR merged | PR is now behind `main` | Rebase, force push, re-queue |
 | `REVIEW_REQUIRED` after rebase | Stale review dismissal cleared approval | Re-run auto-approve workflow |
 | Unresolved threads block merge | Old threads survive rebase | Resolve via GraphQL `resolveReviewThread` |
+
+## Signed Commits and Merge Strategy Compatibility
+
+GitHub can only auto-sign **merge commits** and **squash merges**. It **cannot** auto-sign rebased commits. If branch protection requires signed commits and the workflow uses `--rebase`, merges fail with:
+
+> `Base branch requires signed commits. Rebase merges cannot be automatically signed by GitHub.`
+
+### Auto-detect Merge Strategy
+
+Instead of hardcoding `--merge`, `--squash`, or `--rebase`, auto-detect from repo settings:
+
+```bash
+STRATEGY=$(gh api "repos/${{ github.repository }}" --jq '
+  if .allow_squash_merge then "--squash"
+  elif .allow_merge_commit then "--merge"
+  elif .allow_rebase_merge then "--rebase"
+  else "--squash" end')
+gh pr merge --auto $STRATEGY "$PR_URL"
+```
+
+**Priority order:** squash > merge > rebase. Squash is preferred because:
+1. Works with signed commit requirements (GitHub can sign squash merges)
+2. Clean history for single-commit dependency PRs
+3. Most universally compatible
+
+### Enabling Squash Merge on Repos
+
+If a repo only allows rebase merges and requires signed commits, enable squash:
+
+```bash
+gh api repos/OWNER/REPO -X PATCH -f allow_squash_merge=true
+```
 
 ## Recommended Renovate Config for Auto-merge
 
