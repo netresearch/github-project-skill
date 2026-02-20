@@ -33,6 +33,23 @@ gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
 }' -f owner=OWNER -f repo=REPO -F pr=NUMBER --jq '.data.repository.pullRequest'
 ```
 
+### PR Shows Too Many Commits (Stale Merge Base on Forks)
+
+When a fork's `main` is behind upstream and you create a PR after syncing, GitHub may cache the old merge base and show too many commits (e.g., 38 commits when only 1 is new). The `update-branch` API returns "There are no new commits on the base branch" and force-pushing says "Everything up-to-date" since the SHA hasn't changed.
+
+**Steps to reproduce:**
+
+1. Fork is behind upstream by N commits
+2. Create feature branch from upstream main
+3. Push fork main to catch up
+4. PR still shows N+1 commits instead of 1
+
+**Fix:** Close and reopen the PR to force GitHub to recalculate the merge base:
+
+```bash
+gh pr close NUMBER --repo OWNER/REPO && sleep 2 && gh pr reopen NUMBER --repo OWNER/REPO
+```
+
 ### Solo Maintainer: PRs Stuck on REVIEW_REQUIRED
 
 Solo maintainer projects MUST have auto-approve. Use `assets/pr-quality.yml.template` and keep `required_approving_review_count >= 1`. See `references/auto-merge-guide.md` for full setup.

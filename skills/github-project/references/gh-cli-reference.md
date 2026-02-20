@@ -185,6 +185,15 @@ gh api graphql -f query='query{repository(owner:"OWNER",name:"REPO"){
 }}' --jq '.data.repository.pullRequest.mergeStateStatus'
 ```
 
+### Fix Stale Merge Base on Fork PRs
+
+When a fork's `main` is behind upstream and a PR is created after syncing, GitHub may cache the old merge base. The PR shows too many commits (e.g., N+1 instead of 1). Neither `update-branch` API nor force-pushing fixes it because the SHA hasn't changed.
+
+```bash
+# Close and reopen the PR to force merge base recalculation
+gh pr close NUMBER --repo OWNER/REPO && sleep 2 && gh pr reopen NUMBER --repo OWNER/REPO
+```
+
 ### Fix Common Issues
 
 ```bash
