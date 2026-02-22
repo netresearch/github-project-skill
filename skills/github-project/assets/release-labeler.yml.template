@@ -68,6 +68,8 @@ jobs:
         if: steps.category.outputs.found == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_URL: ${{ github.event.release.html_url }}
           RELEASE_BODY: ${{ github.event.release.body }}
@@ -90,10 +92,10 @@ jobs:
                 }
               }
             }' \
-            -f owner="${{ github.repository_owner }}" \
-            -f name="${{ github.event.repository.name }}" \
+            -f owner="$REPO_OWNER" \
+            -f name="$REPO_NAME" \
             -f categoryId="$CATEGORY_ID" \
-            --jq '.data.repository.discussions.nodes[].title' | grep -Fx "$RELEASE_TAG" || true)
+            --jq '.data.repository.discussions.nodes[].title' | grep -Fx -- "$RELEASE_TAG" || true)
 
           if [[ -n "$EXISTING" ]]; then
             echo "Discussion for $RELEASE_TAG already exists, skipping"
@@ -124,6 +126,11 @@ jobs:
       pull-requests: write
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # v2.14.2
+        with:
+          egress-policy: audit
+
       - name: Get release info
         id: release
         env:
