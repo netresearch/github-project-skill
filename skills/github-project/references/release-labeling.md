@@ -5,10 +5,29 @@
 ## Overview
 
 When a release is published, the release-labeler workflow:
-1. Creates a label `released:vX.Y.Z`
-2. Finds all PRs merged since the previous release
-3. Labels those PRs and their linked issues
-4. Adds comments linking to the release
+1. Creates a discussion announcement in the Announcements category
+2. Creates a label `released:vX.Y.Z`
+3. Finds all PRs merged since the previous release
+4. Labels those PRs and their linked issues
+5. Adds comments linking to the release
+
+## Release Announcements
+
+The `announce-release` job automatically creates a discussion in the repository's **Discussions > Announcements** category whenever a release is published.
+
+### How it works
+
+- **Dynamic category resolution:** The Announcements category ID is resolved at runtime via a GraphQL query by name, making the workflow portable across any repository with Discussions enabled.
+- **Duplicate detection:** Before creating a discussion, the job checks the first 100 existing discussions in the Announcements category for a matching title (the release tag). If one already exists, creation is skipped.
+- **Safe body construction:** The discussion body is built using `printf` to a temporary file and passed to the GraphQL mutation via `-F body=@file`. This avoids shell expansion issues with special characters in release notes (backticks, quotes, dollar signs, etc.).
+- **Conditional execution:** The creation step only runs when `steps.category.outputs.found == 'true'`. If the repository has no Announcements category, a warning annotation is emitted and the job exits cleanly.
+- **Permissions:** Requires `discussions: write` at the job level. The top-level workflow permissions remain minimal (`contents: read` only).
+
+### Setup
+
+1. **Enable Discussions** on the repository: Settings > General > Features > Discussions
+2. Ensure an **Announcements** category exists (GitHub creates this by default when Discussions is enabled)
+3. The workflow template already includes the `announce-release` job -- no additional configuration needed
 
 ## Benefits
 
@@ -40,14 +59,19 @@ curl -o .github/workflows/release-labeler.yml \
   https://raw.githubusercontent.com/netresearch/github-project-skill/main/skills/github-project/assets/release-labeler.yml.template
 ```
 
-### 2. Ensure permissions
+### 2. Enable Discussions (for announcements)
+
+Go to Settings > General > Features and enable **Discussions**. Ensure an **Announcements** category exists (created by default).
+
+### 3. Ensure permissions
 
 The workflow needs:
 - `issues: write` - To label issues and add comments
 - `pull-requests: write` - To label PRs and add comments
 - `contents: read` - To compare releases
+- `discussions: write` - To create announcement discussions
 
-### 3. Link issues to PRs
+### 4. Link issues to PRs
 
 For automatic issue labeling, PRs must reference issues using:
 - `Fixes #123`
