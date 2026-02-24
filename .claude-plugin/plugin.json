@@ -10,8 +10,5 @@
   },
   "skills": [
     "./skills/github-project"
-  ],
-  "support": {
-    "issues": "https://github.com/netresearch/github-project-skill/issues"
-  }
+  ]
 }
