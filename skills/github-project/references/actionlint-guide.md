@@ -167,7 +167,7 @@ Error: input "node-versions" is not defined in action "actions/setup-node@v4"
     node-version: '22'   # correct: singular
 ```
 
-### Type Mismatches in Conditions
+### YAML Type Errors
 
 ```
 Error: "permissions" section should be mapping
@@ -296,7 +296,7 @@ ignore:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.7  # check for latest version
+    rev: v1.7.11  # check for latest version
     hooks:
       - id: actionlint
 ```

@@ -129,14 +129,14 @@ actionlint
 # Lint specific workflow
 actionlint .github/workflows/ci.yml
 
-# Show only errors (no warnings)
+# Force colored output
 actionlint -color
 
 # JSON output for CI
 actionlint -format '{{json .}}'
 
-# Check specific issues
-actionlint -ignore 'SC2086'  # Ignore specific shellcheck rule in run: blocks
+# Ignore specific rules
+actionlint -ignore 'SC2086'  # Suppress specific shellcheck rule in run: blocks
 ```
 
 **Common catches:**
