@@ -2,7 +2,7 @@
   "name": "github-project",
   "version": "2.6.1",
   "description": "GitHub repository setup, branch protection, and configuration",
-  "repository": "https://www.netresearch.de",
+  "repository": "https://github.com/netresearch/github-project-skill",
   "license": "MIT",
   "author": {
     "name": "Netresearch DTT GmbH",
