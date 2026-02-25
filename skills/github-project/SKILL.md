@@ -88,6 +88,7 @@ gh run rerun RUN_ID --repo OWNER/REPO
 | gh CLI commands | `references/gh-cli-reference.md` |
 | Go, TYPO3, polyglot CI checklists | `references/repo-setup-guide.md` |
 | OpenSSF Scorecard, CodeQL, security | `references/security-config.md` |
+| Workflow linting | `references/actionlint-guide.md` |
 
 ## Running Scripts
 
@@ -114,6 +115,47 @@ scripts/verify-github-project.sh /path/to/repository
 | `assets/auto-merge-direct.yml.template` | `.github/workflows/auto-merge.yml` |
 | `assets/auto-merge-queue.yml.template` | `.github/workflows/auto-merge.yml` |
 | `assets/release-labeler.yml.template` | `.github/workflows/release-labeler.yml` |
+
+## Workflow Linting
+
+### actionlint - GitHub Actions Linter
+
+Lint GitHub Actions workflow files for syntax errors, type mismatches, and security issues.
+
+```bash
+# Lint all workflows
+actionlint
+
+# Lint specific workflow
+actionlint .github/workflows/ci.yml
+
+# Show only errors (no warnings)
+actionlint -color
+
+# JSON output for CI
+actionlint -format '{{json .}}'
+
+# Check specific issues
+actionlint -ignore 'SC2086'  # Ignore specific shellcheck rule in run: blocks
+```
+
+**Common catches:**
+- Invalid expression syntax (`${{ }}` errors)
+- Undefined action inputs/outputs
+- Type mismatches in `if:` conditions
+- Deprecated action versions
+- ShellCheck issues in `run:` blocks
+- Missing `permissions:` declarations
+
+**Rule:** Always run `actionlint` after modifying `.github/workflows/*.yml` files. Catches errors that only surface after pushing to CI.
+
+**Integration with reviewdog:**
+```yaml
+# In CI workflow
+- uses: reviewdog/action-actionlint@v1
+  with:
+    fail_level: error
+```
 
 ## Related Skills
 
