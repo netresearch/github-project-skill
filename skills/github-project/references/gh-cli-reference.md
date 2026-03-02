@@ -194,6 +194,33 @@ When a fork's `main` is behind upstream and a PR is created after syncing, GitHu
 gh pr close NUMBER --repo OWNER/REPO && sleep 2 && gh pr reopen NUMBER --repo OWNER/REPO
 ```
 
+### GraphQL with Special Characters (--input pattern)
+
+When GraphQL variables contain backticks, dollar signs, or other characters that cause bash escaping issues, write the query + variables to a JSON file and use `--input`:
+
+```bash
+# PROBLEM: Backticks and $ in body cause bash escaping errors
+gh api graphql -f query='mutation($body: String!) { ... }' -f body='Fixed `@rollup/plugin-terser`'
+# Error: Expected VAR_SIGN, actual: UNKNOWN_CHAR
+
+# SOLUTION: Use --input with JSON file
+cat > /tmp/gql.json << 'ENDJSON'
+{
+  "query": "mutation($body: String!, $threadId: ID!) { addPullRequestReviewThreadReply(input: {body: $body, pullRequestReviewThreadId: $threadId}) { comment { id } } }",
+  "variables": {
+    "body": "Fixed `@rollup/plugin-terser` in `dependencies`.",
+    "threadId": "PRRT_kwDOxxxxxx"
+  }
+}
+ENDJSON
+gh api graphql --input /tmp/gql.json
+```
+
+This pattern is especially useful when:
+- Replying to PR review threads with markdown formatting
+- Any GraphQL mutation where the body contains code references
+- Variables contain characters that interact with bash quoting (`$`, `` ` ``, `!`, `\`)
+
 ### Fix Common Issues
 
 ```bash
