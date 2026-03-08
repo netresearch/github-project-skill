@@ -203,6 +203,42 @@ project/
 └── utils/
 ```
 
+## Fork Workflow Pattern
+
+When contributing to upstream projects via a fork:
+
+### Remote Naming Convention
+```bash
+# origin = upstream (the original project)
+# <org-name> = your fork
+git remote add origin https://github.com/upstream-org/project.git
+git remote add myorg https://github.com/myorg/project.git
+```
+
+### PR Strategy
+1. **Upstream PRs**: Push branch to fork, create PR targeting upstream `main`
+2. **Intra-fork PRs**: For changes not ready for upstream, create PR within fork
+3. **Branch hierarchy**: Feature branches based on fix branches for incremental work
+
+```bash
+# Push fixes upstream
+gh pr create --repo upstream-org/project --head myorg:fix/branch --base main
+
+# Intra-fork PR for additional work
+gh pr create --repo myorg/project --head feat/new-feature --base fix/branch
+```
+
+### Archived Upstream Actions
+Before inheriting CI workflows from upstream, verify all GitHub Actions are still maintained:
+```bash
+# Check if an action's repo is archived
+gh api repos/OWNER/ACTION-REPO --jq '.archived'
+```
+
+Common archived TYPO3 CI actions:
+- `TYPO3-Continuous-Integration/TYPO3-CI-Xliff-Lint` — archived 2021, Docker image 403
+- Always check `TYPO3-Continuous-Integration/*` repos before relying on them
+
 ## Best Practices
 
 1. **Keep root clean**: Only essential config files at root
