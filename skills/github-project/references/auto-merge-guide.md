@@ -171,6 +171,47 @@ If a repo only allows rebase merges and requires signed commits, enable squash:
 gh api repos/OWNER/REPO -X PATCH -f allow_squash_merge=true
 ```
 
+## Workflow File Changes Cannot Be Auto-merged
+
+PRs that modify `.github/workflows/` files cannot be merged by `GITHUB_TOKEN` — it lacks the `workflows` permission scope. This commonly affects Dependabot/Renovate PRs that update GitHub Actions versions.
+
+**Detection:** The `auto-merge-deps.yml` workflow should check for workflow file changes before attempting merge:
+
+```bash
+WORKFLOW_FILES=$(gh pr diff "$PR_URL" --name-only | grep -E '^\.github/workflows/' || true)
+if [ -n "$WORKFLOW_FILES" ]; then
+  echo "PR modifies workflow files — requires manual merge"
+fi
+```
+
+**Resolution:** Merge manually using a local clone with SSH authentication:
+
+```bash
+# For repos without branch protection (direct push allowed):
+git clone --depth=5 git@github.com:OWNER/REPO.git /tmp/REPO
+cd /tmp/REPO
+BRANCH=$(gh pr view NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
+git fetch origin "$BRANCH"
+git merge --no-ff -S --signoff "origin/$BRANCH" -m "Merge pull request #NUMBER from OWNER/$BRANCH"
+git push origin MAIN_BRANCH
+```
+
+**For repos with multiple workflow PRs:** Merge sequentially — each subsequent PR may need rebasing after the previous one merges since they typically touch the same workflow files.
+
+## Batch Auto-merge for Multiple PRs
+
+When enabling auto-merge across many repos/PRs at once:
+
+```bash
+gh pr merge NUMBER --repo OWNER/REPO --auto --merge
+```
+
+**Limitations discovered:**
+- GitHub may reject auto-merge on a second PR in the same repo if the first is still pending: "Pull request Auto merge is not allowed for this repository"
+- This is typically a timing issue — once the first PR merges, re-enable auto-merge on remaining PRs
+- Some repos need the "Allow auto-merge" setting enabled in repository settings first
+- Repos where you lack admin/maintainer access will fail with permission errors
+
 ## Recommended Renovate Config for Auto-merge
 
 ```json
