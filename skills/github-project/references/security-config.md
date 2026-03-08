@@ -44,6 +44,25 @@ permissions:
 
 The `slsa-framework/slsa-github-generator` reusable workflow **cannot be SHA-pinned**. It requires `@vX.Y.Z` tag references because the slsa-verifier needs the tag to verify builder identity. This is tracked as [slsa-verifier#12](https://github.com/slsa-framework/slsa-verifier/issues/12). Accept this as an unavoidable Pinned-Dependencies gap.
 
+### Composite Action Sub-Action Allow-List Gotcha
+
+When a GitHub org has an **Actions allow-list**, composite actions' **internal sub-actions** must ALSO be in the allow-list. Even if the top-level action is permitted (e.g. `ddev/github-action-add-on-test@*`), any `uses:` inside its `action.yaml` must independently pass the org's allow-list check.
+
+**Symptoms:** CI fails at "Set up job" with error listing disallowed actions from inside the composite action.
+
+**Fix options:**
+1. Add the sub-actions to the org allow-list (requires org admin)
+2. Inline the composite action's steps directly in your workflow using only allowed actions + shell commands
+3. Fork/vendor the composite action and replace disallowed sub-actions
+
+**Example:** `ddev/github-action-add-on-test` internally uses `homebrew/actions/setup-homebrew@main` and `mxschmitt/action-tmate@v3` — neither is typically in org allow-lists. Solution: inline the steps (checkout + brew install via shell + bats).
+
+**Tip:** `ubuntu-latest` runners have Homebrew pre-installed. Instead of `homebrew/actions/setup-homebrew`, just add PATH entries:
+```bash
+echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
+echo "/home/linuxbrew/.linuxbrew/sbin" >> "$GITHUB_PATH"
+```
+
 ## Branch Protection: Required Reviews
 
 All projects MUST have `required_approving_review_count >= 1`.
@@ -217,6 +236,6 @@ If your Scorecard score is low, check these common issues:
 |----------------|-------------|-----------|
 | Token-Permissions | No workflow-level `write` permissions | See "Least-Privilege Workflow Permissions" above |
 | Branch-Protection | `required_approving_review_count >= 1` | See "Branch Protection: Required Reviews" above |
-| Pinned-Dependencies | All actions pinned to full SHA | Pin with `uses: action@SHA # vX.Y.Z` comment |
+| Pinned-Dependencies | All actions pinned to full SHA | Pin with `uses: action@SHA # vX.Y.Z` comment. Note: composite action sub-actions must also be pinned/allowed (see above) |
 | Code-Review | PRs reviewed before merge | Auto-approve + `required_approving_review_count >= 1` satisfies this |
 | SAST | Static analysis enabled | CodeQL workflow (see above) |
