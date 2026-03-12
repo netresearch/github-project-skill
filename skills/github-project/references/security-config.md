@@ -59,8 +59,7 @@ When a GitHub org has an **Actions allow-list**, composite actions' **internal s
 
 **Tip:** `ubuntu-latest` runners have Homebrew pre-installed. Instead of `homebrew/actions/setup-homebrew`, just add PATH entries:
 ```bash
-echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
-echo "/home/linuxbrew/.linuxbrew/sbin" >> "$GITHUB_PATH"
+printf "%s\n" "/home/linuxbrew/.linuxbrew/bin" "/home/linuxbrew/.linuxbrew/sbin" >> "$GITHUB_PATH"
 ```
 
 ## Branch Protection: Required Reviews
