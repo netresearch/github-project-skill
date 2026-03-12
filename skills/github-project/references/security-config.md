@@ -235,6 +235,6 @@ If your Scorecard score is low, check these common issues:
 |----------------|-------------|-----------|
 | Token-Permissions | No workflow-level `write` permissions | See "Least-Privilege Workflow Permissions" above |
 | Branch-Protection | `required_approving_review_count >= 1` | See "Branch Protection: Required Reviews" above |
-| Pinned-Dependencies | All actions pinned to full SHA | Pin with `uses: action@SHA # vX.Y.Z` comment. Note: composite action sub-actions must also be pinned/allowed (see above) |
+| Pinned-Dependencies | All actions pinned to full SHA | Pin with `uses: action@SHA # vX.Y.Z` comment. Note: composite action sub-actions must also be pinned/allowed (see [Composite Action Sub-Action Allow-List Gotcha](#composite-action-sub-action-allow-list-gotcha)) |
 | Code-Review | PRs reviewed before merge | Auto-approve + `required_approving_review_count >= 1` satisfies this |
 | SAST | Static analysis enabled | CodeQL workflow (see above) |
