@@ -97,6 +97,33 @@ mechanical:
     severity: warning
     desc: "Dependabot should monitor GitHub Actions"
 
+  # === GITIGNORE ===
+  - id: GH-17
+    type: file_exists
+    target: .gitignore
+    severity: error
+    desc: ".gitignore must exist"
+
+  # === RENOVATE (alternative to Dependabot) ===
+  - id: GH-18
+    type: file_exists
+    target: renovate.json
+    severity: info
+    desc: "Renovate config may exist as alternative to Dependabot"
+
+  # === SECURITY CONFIG ===
+  - id: GH-19
+    type: file_exists
+    target: .github/workflows/codeql.yml
+    severity: warning
+    desc: "CodeQL workflow should exist for code scanning"
+
+  - id: GH-20
+    type: file_exists
+    target: .github/workflows/scorecard.yml
+    severity: info
+    desc: "OpenSSF Scorecard workflow should exist"
+
 llm_reviews:
   # === SUBJECTIVE CHECKS (require LLM judgment) ===
   - id: GH-15
