@@ -71,6 +71,38 @@ All projects MUST have `required_approving_review_count >= 1`.
 
 > **Scorecard note:** The OpenSSF Scorecard Branch-Protection check requires `required_approving_review_count >= 1`. Setting it to 0 lowers your score.
 
+## Repository Rulesets vs Branch Protection
+
+Repository rulesets (newer API) offer more granular control than branch protection:
+
+```bash
+# List rulesets
+gh api repos/OWNER/REPO/rulesets --jq '.[] | {id, name, enforcement}'
+
+# Add pull_request rule to existing ruleset
+gh api repos/OWNER/REPO/rulesets/RULESET_ID -X PUT --input - <<'EOF'
+{
+  "rules": [
+    {"type": "pull_request", "parameters": {
+      "required_approving_review_count": 0,
+      "dismiss_stale_reviews_on_push": true,
+      "required_review_thread_resolution": true
+    }}
+  ]
+}
+EOF
+```
+
+### Limitation: Cannot Block on Pending Reviews
+
+Neither branch protection NOR rulesets can block merge when a review is **requested but not yet submitted**.
+
+- `required_approving_review_count: 1` requires an approval (blocks always until approved, not just when pending)
+- `required_review_thread_resolution: true` blocks on unresolved threads, not pending reviews
+- `copilot_code_review` ruleset triggers review but doesn't block merge while reviewing
+
+**Workaround:** GitHub Actions status check that queries pending reviewers via API and fails if any are outstanding.
+
 ## Merge Strategy & Signed Commits
 
 For signed commits workflow (rebase locally + merge commit):
