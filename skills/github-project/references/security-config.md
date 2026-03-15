@@ -44,6 +44,8 @@ permissions:
 
 The `slsa-framework/slsa-github-generator` reusable workflow **cannot be SHA-pinned**. It requires `@vX.Y.Z` tag references because the slsa-verifier needs the tag to verify builder identity. This is tracked as [slsa-verifier#12](https://github.com/slsa-framework/slsa-verifier/issues/12). Accept this as an unavoidable Pinned-Dependencies gap.
 
+> **Immutable releases:** GitHub releases are immutable. Once a release is published and deleted, the `tag_name` is permanently locked -- you cannot create a new release on the same tag. Never delete and recreate releases to "fix" provenance. Instead, bump the version and create a new tag.
+
 ### Composite Action Sub-Action Allow-List Gotcha
 
 When a GitHub org has an **Actions allow-list**, composite actions' **internal sub-actions** must ALSO be in the allow-list. Even if the top-level action is permitted (e.g. `ddev/github-action-add-on-test@*`), any `uses:` inside its `action.yaml` must independently pass the org's allow-list check.

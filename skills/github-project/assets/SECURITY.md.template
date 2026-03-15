@@ -40,7 +40,16 @@ This project implements:
 
 ### Verifying Releases
 
-#### Binary Verification
+#### Using GitHub Attestations (Recommended)
+```bash
+# Download release archive
+gh release download v1.0.0 --pattern '*.tar.gz'
+
+# Verify provenance via GitHub's built-in attestation
+gh attestation verify {{BINARY}}.tar.gz --repo {{ORG}}/{{REPO}}
+```
+
+#### Using slsa-verifier (Legacy)
 ```bash
 # Download release assets
 gh release download v1.0.0 --pattern '*.tar.gz'
