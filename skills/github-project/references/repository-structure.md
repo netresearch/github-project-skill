@@ -209,10 +209,10 @@ When contributing to upstream projects via a fork:
 
 ### Remote Naming Convention
 ```bash
-# origin = upstream (the original project)
-# <org-name> = your fork
-git remote add origin https://github.com/upstream-org/project.git
-git remote add myorg https://github.com/myorg/project.git
+# 'origin' should point to your fork (this is the default when you clone it).
+# 'upstream' should point to the original project.
+# After cloning your fork, you just need to add the upstream remote:
+git remote add upstream https://github.com/upstream-org/project.git
 ```
 
 ### PR Strategy
