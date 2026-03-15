@@ -37,10 +37,10 @@ mechanical:
     desc: "CODEOWNERS should exist for review assignments"
 
   - id: GH-06
-    type: file_exists
-    target: .github/dependabot.yml
+    type: command
+    target: "test -f .github/dependabot.yml || test -f renovate.json || test -f .github/renovate.json || test -f .renovaterc.json || test -f .renovaterc"
     severity: warning
-    desc: "Dependabot config should exist"
+    desc: "Dependency update automation should be configured (Dependabot or Renovate)"
 
   - id: GH-07
     type: file_exists
