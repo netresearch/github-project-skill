@@ -95,22 +95,40 @@ This is an **Agent Skill** following the [open standard](https://agentskills.io)
 
 ## Installation
 
-### Option 1: Via Netresearch Marketplace (Recommended)
+### Marketplace (Recommended)
+
+Add the [Netresearch marketplace](https://github.com/netresearch/claude-code-marketplace) once, then browse and install skills:
 
 ```bash
+# Claude Code
 /plugin marketplace add netresearch/claude-code-marketplace
 ```
 
-Then browse skills with `/plugin`.
+### npx ([skills.sh](https://skills.sh))
 
-### Option 2: Download Release
+Install with any [Agent Skills](https://agentskills.io)-compatible agent:
 
-Download the [latest release](https://github.com/netresearch/github-project-skill/releases/latest) and extract to `~/.claude/skills/github-project/`
+```bash
+npx skills add https://github.com/netresearch/github-project-skill --skill github-project
+```
 
-### Option 3: Manual Installation
+### Download Release
 
-Clone or download this repository to your Claude Code skills directory.
+Download the [latest release](https://github.com/netresearch/github-project-skill/releases/latest) and extract to your agent's skills directory.
 
+### Git Clone
+
+```bash
+git clone https://github.com/netresearch/github-project-skill.git
+```
+
+### Composer (PHP Projects)
+
+```bash
+composer require netresearch/github-project-skill
+```
+
+Requires [netresearch/composer-agent-skill-plugin](https://github.com/netresearch/composer-agent-skill-plugin).
 ## Workflows
 
 ### New Repository Setup
