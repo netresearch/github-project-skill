@@ -1,6 +1,13 @@
 ---
 name: github-project
-description: "Use when PRs won't merge or show BLOCKED, auto-merge fails for Dependabot/Renovate, branch protection needs configuring, GitHub Actions have issues, or setting up CODEOWNERS and rulesets."
+description: "USE THIS SKILL when PRs won't merge or show BLOCKED status, auto-merge fails for Dependabot/Renovate, branch protection or rulesets need configuring, GitHub Actions workflows have issues or CI is failing, setting up CODEOWNERS or PR templates, or diagnosing any GitHub repository configuration problem."
+license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
+compatibility: "Requires gh CLI, git."
+metadata:
+  author: Netresearch DTT GmbH
+  version: "2.8.0"
+  repository: https://github.com/netresearch/github-project-skill
+allowed-tools: Bash(gh:*) Bash(git:*) Bash(grep:*) Read Write
 ---
 
 # GitHub Project Skill

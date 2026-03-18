@@ -1,0 +1,32 @@
+[
+  {
+    "name": "setup_branch_protection",
+    "prompt": "Set up branch protection for this repo requiring PR reviews and status checks",
+    "assertions": [
+      {
+        "type": "tool_use",
+        "tool": "Bash",
+        "pattern": "gh api.*repos/.*/branches/.*/protection"
+      },
+      {
+        "type": "content",
+        "pattern": "(branch protection|ruleset|required_pull_request_reviews)"
+      }
+    ]
+  },
+  {
+    "name": "fix_blocked_pr_merge",
+    "prompt": "Fix this blocked PR merge - PR #42 shows BLOCKED status",
+    "assertions": [
+      {
+        "type": "tool_use",
+        "tool": "Bash",
+        "pattern": "gh api graphql.*mergeStateStatus"
+      },
+      {
+        "type": "content",
+        "pattern": "(BLOCKED|reviewDecision|mergeStateStatus)"
+      }
+    ]
+  }
+]
