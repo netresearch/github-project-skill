@@ -63,7 +63,7 @@ Before adopting a new reusable workflow or action:
 
 ```bash
 # Download and inspect an action's internal references
-gh api repos/OWNER/ACTION/contents/action.yml --jq '.content' | base64 -d | grep 'uses:'
+gh api repos/OWNER/ACTION/contents/action.yml --jq '.content' | base64 --decode | grep 'uses:'
 ```
 
 ## Shared Workflow Repos Pattern
@@ -106,4 +106,4 @@ jobs:
             language: go
 ```
 
-> **See also:** `references/org-security-settings.md` for org-level SHA pinning and allow-list configuration.
+> **See also:** [`org-security-settings.md`](./org-security-settings.md) for org-level SHA pinning and allow-list configuration.

@@ -8,7 +8,7 @@ Forces all GitHub Actions in the organization to use full SHA references instead
 
 ### Key behavior
 
-- **Enforced:** All `uses:` directives must reference actions by full commit SHA (e.g., `actions/checkout@b4ffde65f46...`)
+- **Enforced:** All `uses:` directives must reference actions by full commit SHA (e.g., `actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd`)
 - **Exempt:** Reusable workflows called with `@main` or `@vX.Y.Z` are exempt -- they can still use branch/tag refs
 - **Scope:** Applies to all repositories in the organization
 
@@ -56,13 +56,17 @@ REPOS=$(gh repo list "$ORG" --no-archived --json nameWithOwner -q '.[].nameWithO
 for REPO in $REPOS; do
     echo "Processing $REPO..."
     TMPDIR=$(mktemp -d)
-    gh repo clone "$REPO" "$TMPDIR" -- --depth 1 2>/dev/null || continue
+    if ! gh repo clone "$REPO" "$TMPDIR" -- --depth 1; then
+        echo "Error: Failed to clone $REPO. Skipping." >&2
+        rm -rf "$TMPDIR"
+        continue
+    fi
 
     WORKFLOWS=("$TMPDIR/.github/workflows/"*.yml)
     [[ -e "${WORKFLOWS[0]}" ]] || { rm -rf "$TMPDIR"; continue; }
 
     GITHUB_TOKEN=$(gh auth token) npx pin-github-action@latest "${WORKFLOWS[@]}" \
-        --allow "$ORG/*" --continue-on-error 2>/dev/null
+        --allow "$ORG/*" --continue-on-error
 
     cd "$TMPDIR"
     if ! git diff --quiet .github/workflows/; then
@@ -138,4 +142,4 @@ EOF
 | `verified_allowed` | Allow actions from verified marketplace creators |
 | `patterns_allowed` | List of glob patterns for additional allowed actions |
 
-> **Important:** Composite actions' internal sub-actions must also be in the allow-list. See `references/security-config.md` for the Composite Action Sub-Action Allow-List Gotcha.
+> **Important:** Composite actions' internal sub-actions must also be in the allow-list. See [`security-config.md`](./security-config.md#composite-action-sub-action-allow-list-gotcha) for the Composite Action Sub-Action Allow-List Gotcha.
