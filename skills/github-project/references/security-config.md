@@ -40,11 +40,24 @@ permissions:
 
 > **Scorecard note:** The OpenSSF Scorecard Token-Permissions check flags workflow-level `write` permissions.
 
-### SLSA Generator Pinning Exception
+### SLSA Provenance: Use actions/attest-build-provenance (not slsa-github-generator)
 
-The `slsa-framework/slsa-github-generator` reusable workflow **cannot be SHA-pinned**. It requires `@vX.Y.Z` tag references because the slsa-verifier needs the tag to verify builder identity. This is tracked as [slsa-verifier#12](https://github.com/slsa-framework/slsa-verifier/issues/12). Accept this as an unavoidable Pinned-Dependencies gap.
+`slsa-framework/slsa-github-generator` **cannot be SHA-pinned** — known unfixable limitation ([#4440](https://github.com/slsa-framework/slsa-github-generator/issues/4440), [slsa-verifier#12](https://github.com/slsa-framework/slsa-verifier/issues/12)). Its internal actions use tag refs that conflict with SHA-pinning rulesets.
 
-> **Immutable releases:** GitHub releases are immutable. Once a release is published and deleted, the `tag_name` is permanently locked -- you cannot create a new release on the same tag. Never delete and recreate releases to "fix" provenance. Instead, bump the version and create a new tag.
+**Recommended replacement:** `actions/attest-build-provenance` (v4.1.0+), fully SHA-pinnable. For SLSA Build Level 3, host the build workflow as a **reusable workflow in the org `.github` repo** (e.g., `org/.github/.github/workflows/build-go-attest.yml`). This provides true L3 isolation — callers cannot modify the build process.
+
+Verification uses `gh attestation verify` instead of `slsa-verifier`:
+```bash
+gh attestation verify binary-name --repo OWNER/REPO
+```
+
+> **Immutable releases and tags:** GitHub releases are immutable. Once a release is published and deleted, the `tag_name` is permanently locked -- you cannot create a new release on the same tag. Signed tags are cryptographic commitments and must never be deleted or recreated. If a release has issues, bump the version and create a new tag.
+
+### require_last_push_approval + Merge Queue Incompatibility
+
+`require_last_push_approval: true` is **incompatible with merge queues** for solo-maintainer projects. The merge queue creates a new merge commit (a new "push") which dismisses the existing approval. The auto-approve bot cannot re-approve within the merge queue context, permanently blocking PRs.
+
+**Keep `require_last_push_approval: false`** when using merge queues with auto-approve.
 
 ### Composite Action Sub-Action Allow-List Gotcha
 
