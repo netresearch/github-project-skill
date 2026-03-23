@@ -84,16 +84,16 @@ mechanical:
 
   # === DEPENDABOT CHECKS ===
   - id: GH-13
-    type: contains
+    type: regex
     target: .github/dependabot.yml
-    pattern: 'package-ecosystem: "composer"'
+    pattern: 'package-ecosystem:\s*"?(composer|gomod|npm|pip)"?'
     severity: warning
-    desc: "Dependabot should monitor composer dependencies"
+    desc: "Dependabot should monitor language-specific dependencies (composer, gomod, npm, pip)"
 
   - id: GH-14
-    type: contains
+    type: regex
     target: .github/dependabot.yml
-    pattern: 'package-ecosystem: "github-actions"'
+    pattern: 'package-ecosystem:\s*"?github-actions"?'
     severity: warning
     desc: "Dependabot should monitor GitHub Actions"
 
