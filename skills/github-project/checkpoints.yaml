@@ -124,7 +124,31 @@ mechanical:
     severity: info
     desc: "OpenSSF Scorecard workflow should exist"
 
+  # === SLSA PROVENANCE ===
+  - id: GH-21
+    type: regex_not
+    target: .github/workflows/*.yml
+    pattern: 'slsa-framework/slsa-github-generator'
+    severity: warning
+    desc: "Should migrate from slsa-github-generator to actions/attest-build-provenance (cannot be SHA-pinned)"
+
 llm_reviews:
+  # === BRANCH PROTECTION + MERGE QUEUE COMPATIBILITY ===
+  - id: GH-22
+    domain: security
+    prompt: |
+      Check repository ruleset for merge queue + branch protection compatibility:
+      1. If merge_queue is enabled, require_last_push_approval MUST be false
+         (merge queue commits dismiss approvals, causing permanent blocks)
+      2. If require_code_owner_review is true, verify CODEOWNERS file exists
+         on the default branch (enabling without the file blocks all PRs)
+      3. For solo-maintainer repos: required_approving_review_count should be 1
+         (not 0) paired with an auto-approve workflow
+
+      Check via: gh api repos/OWNER/REPO/rulesets --jq '.[].rules[]'
+    severity: error
+    desc: "Verify branch protection rules are compatible with merge queue configuration"
+
   # === SUBJECTIVE CHECKS (require LLM judgment) ===
   - id: GH-15
     domain: repo-health
