@@ -443,6 +443,7 @@ echo "  - Require approvals (1+ based on team size)"
 echo "  - Dismiss stale reviews on new commits"
 echo "  - Require review from CODEOWNERS"
 echo "  - Require conversation resolution"
+echo "  - Enforce for admins (enforce_admins)"
 echo "  - Do not allow force pushes"
 echo "  - Do not allow deletions"
 echo "  - Enable merge queue (with MERGE method)"
@@ -456,6 +457,39 @@ fi
 
 if [ -d ".github/workflows" ] && ls .github/workflows/*.yml > /dev/null 2>&1; then
     pass "CI workflows present (enables required status checks)"
+fi
+
+# Check branch protection via API if gh CLI is available
+if command -v gh &> /dev/null && [ -n "$REPO_SLUG" ]; then
+    BRANCH="${GH_DEFAULT:-main}"
+    PROTECTION=$(gh api "repos/$REPO_SLUG/branches/$BRANCH/protection" 2>/dev/null || echo "")
+
+    if [ -n "$PROTECTION" ]; then
+        # Check enforce_admins
+        ENFORCE_ADMINS=$(echo "$PROTECTION" | jq -r '.enforce_admins.enabled // false')
+        if [ "$ENFORCE_ADMINS" = "true" ]; then
+            pass "enforce_admins enabled (admins cannot bypass branch protection)"
+        else
+            fail "enforce_admins disabled — admins can bypass required status checks and review requirements"
+        fi
+
+        # Check required_conversation_resolution
+        CONV_RESOLUTION=$(echo "$PROTECTION" | jq -r '.required_conversation_resolution.enabled // false')
+        if [ "$CONV_RESOLUTION" = "true" ]; then
+            pass "required_conversation_resolution enabled"
+        else
+            fail "required_conversation_resolution disabled — unresolved review threads do not block merges"
+        fi
+
+        # Combined check
+        if [ "$ENFORCE_ADMINS" = "true" ] && [ "$CONV_RESOLUTION" = "true" ]; then
+            pass "Review enforcement complete: unresolved threads block ALL merges including admins"
+        elif [ "$CONV_RESOLUTION" = "true" ] && [ "$ENFORCE_ADMINS" != "true" ]; then
+            warn "Conversation resolution enabled but admins can bypass it (enable enforce_admins)"
+        fi
+    else
+        info "Could not fetch branch protection (may not be configured or insufficient permissions)"
+    fi
 fi
 
 # ─────────────────────────────────────────────────────────────────

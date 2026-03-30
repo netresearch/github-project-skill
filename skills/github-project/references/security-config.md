@@ -77,6 +77,23 @@ When a GitHub org has an **Actions allow-list**, composite actions' **internal s
 printf "%s\n" "/home/linuxbrew/.linuxbrew/bin" "/home/linuxbrew/.linuxbrew/sbin" >> "$GITHUB_PATH"
 ```
 
+## Branch Protection: Enforce for Admins
+
+`enforce_admins` **MUST be `true`** on the default branch. Without it, repository admins can bypass all branch protection rules including required status checks, required reviews, required conversation resolution, and signed commit requirements.
+
+```bash
+# Check current state
+gh api repos/OWNER/REPO/branches/main/protection --jq '.enforce_admins.enabled'
+
+# Enable enforce_admins
+gh api repos/OWNER/REPO/branches/main/protection/enforce_admins -X POST
+
+# Verify
+gh api repos/OWNER/REPO/branches/main/protection --jq 'if .enforce_admins.enabled then "OK: Admin enforcement enabled" else "FAIL: Admins can bypass branch protection" end'
+```
+
+> **Security note:** Even with `required_conversation_resolution: true`, admins can merge with unresolved review threads if `enforce_admins` is `false`. Both settings must be enabled together for effective protection.
+
 ## Branch Protection: Required Reviews
 
 All projects MUST have `required_approving_review_count >= 1`.
@@ -222,7 +239,7 @@ If `awaiting` is non-empty, the PR is **not ready to merge** -- those reviewers 
 
 ## Required Conversation Resolution
 
-All review threads on a PR **must be resolved** before merging:
+All review threads on a PR **must be resolved** before merging. Combined with `enforce_admins: true`, this ensures unresolved review threads block **ALL** merges, including those by admins.
 
 ```bash
 # Enable
@@ -234,8 +251,13 @@ gh api repos/OWNER/REPO/branches/main/protection -X PUT \
 }
 EOF
 
-# Verify
-gh api repos/OWNER/REPO/branches/main/protection --jq 'if .required_conversation_resolution.enabled then "OK: Conversation resolution required" else "FAIL: Conversation resolution NOT required - ENABLE IT" end'
+# Verify both conversation resolution AND admin enforcement
+gh api repos/OWNER/REPO/branches/main/protection --jq '{
+  conversation_resolution: .required_conversation_resolution.enabled,
+  enforce_admins: .enforce_admins.enabled
+} | if .conversation_resolution and .enforce_admins then "OK: Review threads enforced for all users"
+  elif .conversation_resolution then "PARTIAL: Conversation resolution enabled but admins can bypass (enable enforce_admins)"
+  else "FAIL: Conversation resolution NOT required - ENABLE IT" end'
 
 # List unresolved threads
 gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
