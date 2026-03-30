@@ -132,6 +132,41 @@ mechanical:
     severity: warning
     desc: "Should migrate from slsa-github-generator to actions/attest-build-provenance (cannot be SHA-pinned)"
 
+  # === AUTO-MERGE WORKFLOW CHECKS ===
+  - id: GH-23
+    type: command
+    target: "test -f .github/workflows/auto-merge-deps.yml || test -f .github/workflows/auto-merge.yml"
+    severity: warning
+    desc: "Auto-merge workflow should exist for Dependabot/Renovate PRs"
+
+  - id: GH-24
+    type: regex
+    target: .github/workflows/auto-merge-deps.yml
+    pattern: 'on:\s*\n\s*pull_request_target:'
+    severity: error
+    desc: "Auto-merge workflow must use pull_request_target trigger (not pull_request) for bot PR write permissions"
+
+  - id: GH-25
+    type: regex
+    target: .github/workflows/auto-merge-deps.yml
+    pattern: 'github\.event\.pull_request\.user\.login'
+    severity: warning
+    desc: "Auto-merge should check github.event.pull_request.user.login (not github.actor which changes on reruns)"
+
+  - id: GH-26
+    type: regex
+    target: .github/workflows/auto-merge-deps.yml
+    pattern: '--auto'
+    severity: warning
+    desc: "Auto-merge should use gh pr merge --auto (not direct merge) to respect branch protection and merge queues"
+
+  - id: GH-27
+    type: regex
+    target: .github/workflows/auto-merge-deps.yml
+    pattern: 'gh api.*repos/\$'
+    severity: info
+    desc: "Auto-merge should dynamically detect merge strategy from repo settings"
+
 llm_reviews:
   # === BRANCH PROTECTION + MERGE QUEUE COMPATIBILITY ===
   - id: GH-22
@@ -148,6 +183,43 @@ llm_reviews:
       Check via: gh api repos/OWNER/REPO/rulesets --jq '.[].rules[]'
     severity: error
     desc: "Verify branch protection rules are compatible with merge queue configuration"
+
+  # === AUTO-MERGE CORRECTNESS ===
+  - id: GH-28
+    domain: ci
+    prompt: |
+      Verify auto-merge workflow end-to-end correctness:
+      1. Trigger must be pull_request_target (not pull_request) — bot PRs
+         need write permissions from the base branch context
+      2. Bot detection must use github.event.pull_request.user.login
+         (not github.actor — actor changes on manual reruns)
+      3. Merge command must use --auto flag (respects branch protection,
+         merge queues, and required checks)
+      4. Merge strategy should be dynamically detected from repo settings
+         via gh api, not hardcoded (repos may enable different strategies)
+      5. If repo has branch protection requiring reviews, the workflow must
+         also approve the PR (gh pr review --approve) before enabling auto-merge
+      6. Check for step-security/harden-runner presence
+      Report specific issues found.
+    severity: warning
+    desc: "Verify auto-merge workflow uses correct trigger, bot detection, merge flags, and strategy detection"
+
+  - id: GH-29
+    domain: ci
+    prompt: |
+      Check if pr-quality.yml or auto-approve workflow correctly handles bot accounts:
+      1. Bot accounts (dependabot[bot], renovate[bot]) have author_association
+         of NONE or CONTRIBUTOR — they are NOT org members/collaborators
+      2. If auto-approve checks author_association for OWNER/MEMBER/COLLABORATOR,
+         it will NEVER approve bot PRs — this is a common misconfiguration
+      3. Correct patterns: check user.login explicitly for known bots,
+         OR use gh api collaborators permission check (which works for apps
+         with collaborator access)
+      4. If branch protection requires approving reviews, bot PRs will be
+         permanently BLOCKED without a working auto-approve mechanism
+      Report if bot approval flow has this misconfiguration.
+    severity: error
+    desc: "Verify auto-approve workflow correctly handles bot accounts (author_association is NONE for bots)"
 
   # === SUBJECTIVE CHECKS (require LLM judgment) ===
   - id: GH-15

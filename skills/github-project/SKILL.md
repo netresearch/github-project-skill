@@ -44,6 +44,16 @@ gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
 
 Solo maintainer projects MUST have auto-approve. Use `assets/pr-quality.yml.template` and keep `required_approving_review_count >= 1`. See `references/auto-merge-guide.md` for full setup.
 
+### Auto-merge Setup for New Repos
+
+Every repo with Dependabot/Renovate needs auto-merge. Key requirements:
+- Enable `allow_auto_merge` on repo
+- Use `pull_request_target` trigger (not `pull_request`)
+- Check `user.login` (not `github.actor`)
+- Use `gh pr merge --auto` with dynamic strategy
+
+See `references/auto-merge-guide.md` for the canonical workflow and common pitfalls.
+
 ### Auto-merge Not Working
 
 ```bash
