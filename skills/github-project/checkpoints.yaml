@@ -200,10 +200,17 @@ mechanical:
       if [ "$RESULT" = "true" ]; then
         exit 0
       fi
-      # Fallback: check rulesets for required_review_thread_resolution when classic branch protection is not configured
+      # Fallback: check rulesets for review thread resolution
+      JQ_FILTER='map(select(
+        .enforcement == "active" and .target == "branch"
+        and ((.bypass_actors // []) | length == 0)
+        and any(.rules[]?;
+          .type == "pull_request" and
+          (.parameters.required_review_thread_resolution // false)
+        )
+      )) | any'
       RULESET_OK=$(gh api "repos/$REPO_SLUG/rulesets" \
-        --jq 'map(select(.enforcement == "active" and .target == "branch" and ((.bypass_actors // []) | length == 0) and any(.rules[]?; .type == "pull_request" and (.parameters.required_review_thread_resolution // false)))) | any' \
-        2>/dev/null || echo 'false')
+        --jq "$JQ_FILTER" 2>/dev/null || echo 'false')
       test "$RULESET_OK" = "true"
     severity: error
     desc: "required_conversation_resolution must be enabled — combined with enforce_admins, ensures unresolved review threads block ALL merges including admins"
