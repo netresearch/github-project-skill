@@ -44,30 +44,15 @@ gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
 
 Solo maintainer projects MUST have auto-approve. Use `assets/pr-quality.yml.template` and keep `required_approving_review_count >= 1`. See `references/auto-merge-guide.md` for full setup.
 
-### Auto-merge Checklist for New Repos
+### Auto-merge Setup for New Repos
 
-Every repository with Dependabot/Renovate should have auto-merge configured:
+Every repo with Dependabot/Renovate needs auto-merge. Key requirements:
+- Enable `allow_auto_merge` on repo
+- Use `pull_request_target` trigger (not `pull_request`)
+- Check `user.login` (not `github.actor`)
+- Use `gh pr merge --auto` with dynamic strategy
 
-1. **Enable auto-merge on repo**: `gh api repos/OWNER/REPO -X PATCH -f allow_auto_merge=true`
-2. **Add workflow** `.github/workflows/auto-merge-deps.yml`:
-   - Trigger: `pull_request_target` (NOT `pull_request`)
-   - Bot check: `github.event.pull_request.user.login` (NOT `github.actor`)
-   - Approve: `gh pr review --approve`
-   - Merge: `gh pr merge --auto $STRATEGY` with dynamic detection
-3. **Bot approval**: If branch protection requires reviews, ensure the auto-approve
-   job handles bot accounts (author_association is NONE for bots)
-
-See `references/auto-merge-guide.md` for the canonical workflow template.
-
-### Common Auto-merge Pitfalls
-
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| Bot PRs stuck on REVIEW_REQUIRED | author_association check excludes bots | Add explicit bot login checks |
-| Auto-merge queued but never fires | No merge strategy flag | Add dynamic `--auto $STRATEGY` |
-| Workflow doesn't trigger on bot PRs | Using `pull_request` trigger | Change to `pull_request_target` |
-| Different behavior on PR reruns | Using `github.actor` | Use `github.event.pull_request.user.login` |
-| Merge fails in repos with merge queue | Using `gh pr merge --merge` directly | Use `gh pr merge --auto` |
+See `references/auto-merge-guide.md` for the canonical workflow and common pitfalls.
 
 ### Auto-merge Not Working
 
