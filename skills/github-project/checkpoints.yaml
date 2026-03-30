@@ -171,20 +171,40 @@ mechanical:
   - id: GH-30
     type: command
     target: |
-      REPO_SLUG=$(git config --get remote.origin.url 2>/dev/null | sed -E 's|.*github\.com[:/](.+/[^.]+)(\.git)?$|\1|');
-      DEFAULT_BRANCH=$(gh api "repos/$REPO_SLUG" --jq '.default_branch' 2>/dev/null || echo 'main');
-      RESULT=$(gh api "repos/$REPO_SLUG/branches/$DEFAULT_BRANCH/protection" --jq '.enforce_admins.enabled' 2>/dev/null);
-      test "$RESULT" = "true"
+      # Require GitHub CLI and a valid GitHub remote slug
+      command -v gh >/dev/null 2>&1 || exit 1
+      REPO_SLUG=$(git config --get remote.origin.url 2>/dev/null | sed -E 's|.*github\.com[:/](.+/[^.]+)(\.git)?$|\1|')
+      test -n "$REPO_SLUG" || exit 1
+      DEFAULT_BRANCH=$(gh api "repos/$REPO_SLUG" --jq '.default_branch' 2>/dev/null || echo 'main')
+      RESULT=$(gh api "repos/$REPO_SLUG/branches/$DEFAULT_BRANCH/protection" --jq '.enforce_admins.enabled' 2>/dev/null || echo '')
+      if [ "$RESULT" = "true" ]; then
+        exit 0
+      fi
+      # Fallback: check rulesets when classic branch protection is not configured
+      RULESET_OK=$(gh api "repos/$REPO_SLUG/rulesets" \
+        --jq 'map(select(.enforcement == "active" and .target == "branch" and ((.bypass_actors // []) | length == 0))) | any' \
+        2>/dev/null || echo 'false')
+      test "$RULESET_OK" = "true"
     severity: error
     desc: "enforce_admins must be true on default branch — without it admins can bypass required status checks and review requirements"
 
   - id: GH-31
     type: command
     target: |
-      REPO_SLUG=$(git config --get remote.origin.url 2>/dev/null | sed -E 's|.*github\.com[:/](.+/[^.]+)(\.git)?$|\1|');
-      DEFAULT_BRANCH=$(gh api "repos/$REPO_SLUG" --jq '.default_branch' 2>/dev/null || echo 'main');
-      RESULT=$(gh api "repos/$REPO_SLUG/branches/$DEFAULT_BRANCH/protection" --jq '.required_conversation_resolution.enabled' 2>/dev/null);
-      test "$RESULT" = "true"
+      # Require GitHub CLI and a valid GitHub remote slug
+      command -v gh >/dev/null 2>&1 || exit 1
+      REPO_SLUG=$(git config --get remote.origin.url 2>/dev/null | sed -E 's|.*github\.com[:/](.+/[^.]+)(\.git)?$|\1|')
+      test -n "$REPO_SLUG" || exit 1
+      DEFAULT_BRANCH=$(gh api "repos/$REPO_SLUG" --jq '.default_branch' 2>/dev/null || echo 'main')
+      RESULT=$(gh api "repos/$REPO_SLUG/branches/$DEFAULT_BRANCH/protection" --jq '.required_conversation_resolution.enabled' 2>/dev/null || echo '')
+      if [ "$RESULT" = "true" ]; then
+        exit 0
+      fi
+      # Fallback: check rulesets for required_review_thread_resolution when classic branch protection is not configured
+      RULESET_OK=$(gh api "repos/$REPO_SLUG/rulesets" \
+        --jq 'map(select(.enforcement == "active" and .target == "branch" and ((.bypass_actors // []) | length == 0) and any(.rules[]?; .type == "pull_request" and (.parameters.required_review_thread_resolution // false)))) | any' \
+        2>/dev/null || echo 'false')
+      test "$RULESET_OK" = "true"
     severity: error
     desc: "required_conversation_resolution must be enabled — combined with enforce_admins, ensures unresolved review threads block ALL merges including admins"
 
