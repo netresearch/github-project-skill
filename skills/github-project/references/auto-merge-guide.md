@@ -236,6 +236,53 @@ gh pr merge NUMBER --repo OWNER/REPO --auto --merge
 - `platformAutomerge: true` - Renovate enables auto-merge (uses bypass permissions)
 - `lockFileMaintenance` - Handles lock file updates via PR (not direct push)
 
+## Canonical Auto-merge Workflow Template
+
+```yaml
+name: Auto-merge dependency PRs
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' ||
+      github.event.pull_request.user.login == 'renovate[bot]'
+    steps:
+      - name: Approve PR
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr review --approve "$PR_URL"
+
+      - name: Enable auto-merge
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          STRATEGY=$(gh api "repos/$REPO" --jq '
+            if .allow_squash_merge then "--squash"
+            elif .allow_merge_commit then "--merge"
+            elif .allow_rebase_merge then "--rebase"
+            else "--merge" end')
+          gh pr merge --auto "$STRATEGY" "$PR_URL"
+```
+
+### Key Design Decisions
+
+- **`pull_request_target`**: Required for bot PRs — `pull_request` runs with read-only tokens for fork-like contexts
+- **`user.login`**: Immutable PR author field — `github.actor` changes when humans re-run workflows
+- **`--auto`**: Respects branch protection, merge queues, and required checks — direct merge bypasses these
+- **Dynamic strategy**: Repos may only allow specific merge methods — hardcoding breaks when config changes
+
 ## Branch Protection for Auto-merge
 
 ```bash
