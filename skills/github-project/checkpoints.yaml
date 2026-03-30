@@ -167,6 +167,54 @@ mechanical:
     severity: info
     desc: "Auto-merge should dynamically detect merge strategy from repo settings"
 
+  # === BRANCH PROTECTION AUDIT ===
+  - id: GH-30
+    type: command
+    target: |
+      # Require GitHub CLI and a valid GitHub remote slug
+      command -v gh >/dev/null 2>&1 || exit 1
+      REPO_SLUG=$(git config --get remote.origin.url 2>/dev/null | sed -E 's|.*github\.com[:/](.+/[^.]+)(\.git)?$|\1|')
+      test -n "$REPO_SLUG" || exit 1
+      DEFAULT_BRANCH=$(gh api "repos/$REPO_SLUG" --jq '.default_branch' 2>/dev/null || echo 'main')
+      RESULT=$(gh api "repos/$REPO_SLUG/branches/$DEFAULT_BRANCH/protection" --jq '.enforce_admins.enabled' 2>/dev/null || echo '')
+      if [ "$RESULT" = "true" ]; then
+        exit 0
+      fi
+      # Fallback: check rulesets when classic branch protection is not configured
+      RULESET_OK=$(gh api "repos/$REPO_SLUG/rulesets" \
+        --jq 'map(select(.enforcement == "active" and .target == "branch" and ((.bypass_actors // []) | length == 0))) | any' \
+        2>/dev/null || echo 'false')
+      test "$RULESET_OK" = "true"
+    severity: error
+    desc: "enforce_admins must be true on default branch — without it admins can bypass required status checks and review requirements"
+
+  - id: GH-31
+    type: command
+    target: |
+      # Require GitHub CLI and a valid GitHub remote slug
+      command -v gh >/dev/null 2>&1 || exit 1
+      REPO_SLUG=$(git config --get remote.origin.url 2>/dev/null | sed -E 's|.*github\.com[:/](.+/[^.]+)(\.git)?$|\1|')
+      test -n "$REPO_SLUG" || exit 1
+      DEFAULT_BRANCH=$(gh api "repos/$REPO_SLUG" --jq '.default_branch' 2>/dev/null || echo 'main')
+      RESULT=$(gh api "repos/$REPO_SLUG/branches/$DEFAULT_BRANCH/protection" --jq '.required_conversation_resolution.enabled' 2>/dev/null || echo '')
+      if [ "$RESULT" = "true" ]; then
+        exit 0
+      fi
+      # Fallback: check rulesets for review thread resolution
+      JQ_FILTER='map(select(
+        .enforcement == "active" and .target == "branch"
+        and ((.bypass_actors // []) | length == 0)
+        and any(.rules[]?;
+          .type == "pull_request" and
+          (.parameters.required_review_thread_resolution // false)
+        )
+      )) | any'
+      RULESET_OK=$(gh api "repos/$REPO_SLUG/rulesets" \
+        --jq "$JQ_FILTER" 2>/dev/null || echo 'false')
+      test "$RULESET_OK" = "true"
+    severity: error
+    desc: "required_conversation_resolution must be enabled — combined with enforce_admins, ensures unresolved review threads block ALL merges including admins"
+
 llm_reviews:
   # === BRANCH PROTECTION + MERGE QUEUE COMPATIBILITY ===
   - id: GH-22
@@ -220,6 +268,28 @@ llm_reviews:
       Report if bot approval flow has this misconfiguration.
     severity: error
     desc: "Verify auto-approve workflow correctly handles bot accounts (author_association is NONE for bots)"
+
+  # === BRANCH PROTECTION ENFORCEMENT AUDIT ===
+  - id: GH-32
+    domain: security
+    prompt: |
+      Audit branch protection enforcement on the default branch:
+      1. Run: gh api repos/OWNER/REPO/branches/BRANCH/protection --jq '.enforce_admins.enabled'
+         Must be true. Without enforce_admins, repository admins can bypass ALL
+         branch protection rules: required status checks, required reviews,
+         required conversation resolution, and signed commit requirements.
+      2. Run: gh api repos/OWNER/REPO/branches/BRANCH/protection --jq '.required_conversation_resolution.enabled'
+         Must be true. Without this, unresolved review threads do not block merges.
+      3. Verify BOTH are enabled together. enforce_admins alone is insufficient if
+         conversation resolution is not required (admins could merge with unresolved
+         feedback). Conversation resolution alone is insufficient if enforce_admins
+         is false (admins bypass it entirely).
+      4. If using rulesets instead of branch protection, check the equivalent:
+         gh api repos/OWNER/REPO/rulesets --jq '.[].rules[] | select(.type=="pull_request") | .parameters'
+         Look for required_review_thread_resolution: true and bypass_actors being empty.
+      Report which settings are missing and the specific security risk each creates.
+    severity: error
+    desc: "Verify enforce_admins and required_conversation_resolution are both enabled to prevent bypassing review requirements"
 
   # === SUBJECTIVE CHECKS (require LLM judgment) ===
   - id: GH-15

@@ -443,6 +443,7 @@ echo "  - Require approvals (1+ based on team size)"
 echo "  - Dismiss stale reviews on new commits"
 echo "  - Require review from CODEOWNERS"
 echo "  - Require conversation resolution"
+echo "  - Enforce for admins (enforce_admins)"
 echo "  - Do not allow force pushes"
 echo "  - Do not allow deletions"
 echo "  - Enable merge queue (with MERGE method)"
@@ -456,6 +457,63 @@ fi
 
 if [ -d ".github/workflows" ] && ls .github/workflows/*.yml > /dev/null 2>&1; then
     pass "CI workflows present (enables required status checks)"
+fi
+
+# Check branch protection via API if gh CLI is available
+if command -v gh &> /dev/null && [ -n "$REPO_SLUG" ]; then
+    BRANCH="${GH_DEFAULT:-main}"
+    PROTECTION=$(gh api "repos/$REPO_SLUG/branches/$BRANCH/protection" 2>/dev/null || echo "")
+
+    if [ -n "$PROTECTION" ]; then
+        # Check enforce_admins
+        ENFORCE_ADMINS=$(echo "$PROTECTION" | jq -r '.enforce_admins.enabled // false')
+        if [ "$ENFORCE_ADMINS" = "true" ]; then
+            pass "enforce_admins enabled (admins cannot bypass branch protection)"
+        else
+            fail "enforce_admins disabled — admins can bypass required status checks and review requirements"
+        fi
+
+        # Check required_conversation_resolution
+        CONV_RESOLUTION=$(echo "$PROTECTION" | jq -r '.required_conversation_resolution.enabled // false')
+        if [ "$CONV_RESOLUTION" = "true" ]; then
+            pass "required_conversation_resolution enabled"
+        else
+            fail "required_conversation_resolution disabled — unresolved review threads do not block merges"
+        fi
+
+        # Combined check
+        if [ "$ENFORCE_ADMINS" = "true" ] && [ "$CONV_RESOLUTION" = "true" ]; then
+            pass "Review enforcement complete: unresolved threads block ALL merges including admins"
+        elif [ "$CONV_RESOLUTION" = "true" ] && [ "$ENFORCE_ADMINS" != "true" ]; then
+            warn "Conversation resolution enabled but admins can bypass it (enable enforce_admins)"
+        fi
+    else
+        # Fallback: check rulesets when classic branch protection is not configured
+        RULESETS=$(gh api "repos/$REPO_SLUG/rulesets" 2>/dev/null || echo "")
+        if [ -n "$RULESETS" ] && [ "$RULESETS" != "[]" ]; then
+            info "No classic branch protection found — checking rulesets"
+
+            # Check for active branch rulesets with no bypass actors (equivalent to enforce_admins)
+            RULESET_NO_BYPASS=$(echo "$RULESETS" | jq -r \
+                'map(select(.enforcement == "active" and .target == "branch" and ((.bypass_actors // []) | length == 0))) | any')
+            if [ "$RULESET_NO_BYPASS" = "true" ]; then
+                pass "Active branch ruleset with no bypass actors (equivalent to enforce_admins)"
+            else
+                fail "No active branch ruleset without bypass actors — admins may bypass protection"
+            fi
+
+            # Check for required_review_thread_resolution in rulesets
+            RULESET_CONV=$(echo "$RULESETS" | jq -r \
+                'map(select(.enforcement == "active" and .target == "branch" and any(.rules[]?; .type == "pull_request" and (.parameters.required_review_thread_resolution // false)))) | any')
+            if [ "$RULESET_CONV" = "true" ]; then
+                pass "Ruleset requires review thread resolution (equivalent to required_conversation_resolution)"
+            else
+                fail "No ruleset requiring review thread resolution — unresolved threads do not block merges"
+            fi
+        else
+            info "Could not fetch branch protection or rulesets (may not be configured or insufficient permissions)"
+        fi
+    fi
 fi
 
 # ─────────────────────────────────────────────────────────────────
