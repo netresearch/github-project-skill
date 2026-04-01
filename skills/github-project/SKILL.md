@@ -12,26 +12,26 @@ allowed-tools: Bash(gh:*) Bash(git:*) Bash(grep:*) Read Write
 
 # GitHub Project Skill
 
-## Overview
-
-GitHub repository setup, configuration, troubleshooting, and best practices for collaboration workflows.
+GitHub repository configuration, troubleshooting, and collaboration workflow best practices.
 
 ## When to Use
 
-- PR won't merge or shows BLOCKED status
+- PR won't merge, shows BLOCKED, or has unresolved review threads
 - Auto-merge not working for Dependabot/Renovate PRs
 - Solo maintainer needs auto-approve for their own PRs
-- Branch protection or ruleset configuration needed
-- GitHub Actions workflow problems or CI failures
-- Setting up CODEOWNERS, issue templates, or PR templates
-- Repository standards compliance (TYPO3, Go, polyglot)
+- Branch protection, rulesets, or `enforce_admins` audit
+- GitHub Actions workflow problems, CI failures, or permission issues
+- Signed commit merge failures (rebase cannot be auto-signed)
+- CodeQL default setup conflicts with custom workflows
+- OpenSSF Scorecard improvements (token permissions, pinned deps)
+- Setting up CODEOWNERS, issue templates, PR templates, or release labeling
+- Fork PR merge base issues (too many commits shown)
 
 ## Quick Diagnostics
 
 ### PR Won't Merge
 
 ```bash
-# Check merge state, review decision, and unresolved threads
 gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
   repository(owner:$owner,name:$repo){pullRequest(number:$pr){
     mergeStateStatus reviewDecision mergeable
@@ -42,22 +42,15 @@ gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
 
 ### Solo Maintainer: PRs Stuck on REVIEW_REQUIRED
 
-Solo maintainer projects MUST have auto-approve. Use `assets/pr-quality.yml.template` and keep `required_approving_review_count >= 1`. See `references/auto-merge-guide.md` for full setup.
+Use `assets/pr-quality.yml.template` for auto-approve with `required_approving_review_count >= 1`. See `references/auto-merge-guide.md`.
 
-### Auto-merge Setup for New Repos
+### Auto-merge Setup
 
-Every repo with Dependabot/Renovate needs auto-merge. Key requirements:
-- Enable `allow_auto_merge` on repo
-- Use `pull_request_target` trigger (not `pull_request`)
-- Check `user.login` (not `github.actor`)
-- Use `gh pr merge --auto` with dynamic strategy
-
-See `references/auto-merge-guide.md` for the canonical workflow and common pitfalls.
+Requirements: `allow_auto_merge` on repo, `pull_request_target` trigger (not `pull_request`), check `user.login` (not `github.actor`), `gh pr merge --auto` with dynamic strategy. See `references/auto-merge-guide.md`.
 
 ### Auto-merge Not Working
 
 ```bash
-# Check who enabled auto-merge and bypass apps
 gh api graphql -f query='query{repository(owner:"OWNER",name:"REPO"){
   pullRequest(number:PR){autoMergeRequest{enabledBy{login}}}
 }}' --jq '.data.repository.pullRequest.autoMergeRequest'
@@ -74,9 +67,23 @@ gh run view RUN_ID --repo OWNER/REPO --log-failed
 gh run rerun RUN_ID --repo OWNER/REPO
 ```
 
-## Running Scripts
+### Security & Compliance Quick Checks
 
-Verify repository configuration against best practices:
+```bash
+gh api repos/OWNER/REPO/branches/main/protection --jq '.enforce_admins.enabled'
+gh api repos/OWNER/REPO/code-scanning/default-setup --jq '.state'
+gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+    reviewThreads(first:50){nodes{id isResolved}}
+  }}
+}' -f owner=OWNER -f repo=REPO -F pr=NUMBER
+```
+
+### Merge Strategy Issues
+
+Rebase merge fails with signed commits: enable squash or auto-detect strategy. Workflow file PRs need manual merge (GITHUB_TOKEN lacks `workflows` scope). Copilot reviewer race conditions: re-run auto-approve workflow. See `references/auto-merge-guide.md`.
+
+## Running Scripts
 
 ```bash
 scripts/verify-github-project.sh /path/to/repository
