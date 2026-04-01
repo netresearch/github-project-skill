@@ -10,7 +10,7 @@
       },
       {
         "type": "content",
-        "pattern": "(branch protection|ruleset|required_pull_request_reviews)"
+        "pattern": "(branch protection|ruleset|required_pull_request_reviews|enforce_admins)"
       }
     ]
   },
@@ -25,7 +25,267 @@
       },
       {
         "type": "content",
-        "pattern": "(BLOCKED|reviewDecision|mergeStateStatus)"
+        "pattern": "(BLOCKED|reviewDecision|mergeStateStatus|reviewThreads)"
+      }
+    ]
+  },
+  {
+    "name": "setup_auto_merge_workflow",
+    "prompt": "Set up auto-merge for Dependabot and Renovate PRs in this repository",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "pull_request_target"
+      },
+      {
+        "type": "content",
+        "pattern": "(user\\.login|dependabot\\[bot\\]|renovate\\[bot\\])"
+      },
+      {
+        "type": "content",
+        "pattern": "--auto"
+      }
+    ]
+  },
+  {
+    "name": "diagnose_auto_merge_failure",
+    "prompt": "Auto-merge is not working on PR #15 - Dependabot PR stays open after checks pass",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(pull_request_target|user\\.login|github\\.actor|autoMergeRequest)"
+      },
+      {
+        "type": "content",
+        "pattern": "(bypass|allow_auto_merge|merge strategy|--auto)"
+      }
+    ]
+  },
+  {
+    "name": "solo_maintainer_pr_stuck",
+    "prompt": "I'm a solo maintainer and my PRs are stuck on REVIEW_REQUIRED even though I'm the only contributor",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(auto-approve|pr-quality|required_approving_review_count)"
+      },
+      {
+        "type": "content",
+        "pattern": "(solo maintainer|collaborator|write.*permission|admin)"
+      }
+    ]
+  },
+  {
+    "name": "setup_codeowners",
+    "prompt": "Set up CODEOWNERS for this repository with automatic review assignments",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(CODEOWNERS|\\.github/CODEOWNERS)"
+      },
+      {
+        "type": "content",
+        "pattern": "(@|review)"
+      }
+    ]
+  },
+  {
+    "name": "fix_github_actions_failure",
+    "prompt": "CI is failing on this repo - the build workflow keeps erroring out on the latest push",
+    "assertions": [
+      {
+        "type": "tool_use",
+        "tool": "Bash",
+        "pattern": "gh run (list|view)"
+      },
+      {
+        "type": "content",
+        "pattern": "(log-failed|rerun|workflow)"
+      }
+    ]
+  },
+  {
+    "name": "migrate_master_to_main",
+    "prompt": "Migrate the default branch from master to main for this repository",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(default_branch|default-branch)"
+      },
+      {
+        "type": "content",
+        "pattern": "(branch -m|rename|master.*main)"
+      }
+    ]
+  },
+  {
+    "name": "setup_dependabot",
+    "prompt": "Configure Dependabot for a Go project that also uses GitHub Actions",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "dependabot\\.yml"
+      },
+      {
+        "type": "content",
+        "pattern": "(gomod|github-actions|package-ecosystem)"
+      }
+    ]
+  },
+  {
+    "name": "codeql_default_setup_conflict",
+    "prompt": "CodeQL is failing with 'analyses from advanced configurations cannot be processed when default setup is enabled'",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(default-setup|not-configured|code-scanning)"
+      },
+      {
+        "type": "tool_use",
+        "tool": "Bash",
+        "pattern": "gh api.*code-scanning"
+      }
+    ]
+  },
+  {
+    "name": "signed_commits_merge_failure",
+    "prompt": "Merge is failing with 'Rebase merges cannot be automatically signed by GitHub' - how do I fix this?",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(squash|merge commit|allow_squash_merge|signed)"
+      },
+      {
+        "type": "content",
+        "pattern": "(rebase.*cannot.*sign|merge strategy|auto-detect)"
+      }
+    ]
+  },
+  {
+    "name": "pr_too_many_commits",
+    "prompt": "My PR on a fork shows 38 commits but I only added 1 - the merge base seems wrong",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(merge base|close.*reopen|fork)"
+      },
+      {
+        "type": "content",
+        "pattern": "(gh pr close|cache|recalculate)"
+      }
+    ]
+  },
+  {
+    "name": "enforce_admins_audit",
+    "prompt": "Audit whether admins can bypass branch protection on the default branch of this repo",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "enforce_admins"
+      },
+      {
+        "type": "tool_use",
+        "tool": "Bash",
+        "pattern": "gh api.*protection"
+      }
+    ]
+  },
+  {
+    "name": "resolve_review_threads",
+    "prompt": "PR #23 has unresolved review threads blocking merge - help me find and resolve them",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(reviewThreads|isResolved|resolveReviewThread)"
+      },
+      {
+        "type": "tool_use",
+        "tool": "Bash",
+        "pattern": "gh api graphql"
+      }
+    ]
+  },
+  {
+    "name": "openssf_scorecard_improvement",
+    "prompt": "Our OpenSSF Scorecard score is low - what should we fix first?",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(Scorecard|Token-Permissions|Branch-Protection|Pinned-Dependencies)"
+      },
+      {
+        "type": "content",
+        "pattern": "(workflow.*write|SHA.*pin|required_approving_review_count)"
+      }
+    ]
+  },
+  {
+    "name": "workflow_permissions_least_privilege",
+    "prompt": "Fix the workflow permissions in our CI - we have write permissions at the workflow level",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(job-level|workflow-level|permissions)"
+      },
+      {
+        "type": "content",
+        "pattern": "(contents: read|pull-requests: write|least.privilege)"
+      }
+    ]
+  },
+  {
+    "name": "setup_release_labeling",
+    "prompt": "Set up automated release labeling so PRs and issues get labeled when a release is published",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(release-labeler|released:v)"
+      },
+      {
+        "type": "content",
+        "pattern": "(release.*published|label|announcement)"
+      }
+    ]
+  },
+  {
+    "name": "merge_queue_troubleshooting",
+    "prompt": "PRs keep getting stuck in the merge queue after force-pushing a rebase",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(merge queue|stale review|dismiss_stale_reviews)"
+      },
+      {
+        "type": "content",
+        "pattern": "(force.push|re-queue|resolveReviewThread|auto-approve)"
+      }
+    ]
+  },
+  {
+    "name": "copilot_reviewer_race_condition",
+    "prompt": "Auto-approve keeps getting skipped and PRs stay REVIEW_REQUIRED - we use Copilot as a reviewer",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(race condition|Copilot|pending reviewer)"
+      },
+      {
+        "type": "content",
+        "pattern": "(re-run|rerun|auto-approve|COMMENTED)"
+      }
+    ]
+  },
+  {
+    "name": "workflow_file_pr_cannot_merge",
+    "prompt": "A Dependabot PR that updates a GitHub Actions version can't be auto-merged - it modifies workflow files",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(\\.github/workflows/|workflow.*files|GITHUB_TOKEN)"
+      },
+      {
+        "type": "content",
+        "pattern": "(manual.*merge|workflows.*permission|cannot.*auto-merge)"
       }
     ]
   }
