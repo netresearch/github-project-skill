@@ -105,6 +105,7 @@ scripts/verify-github-project.sh /path/to/repository
 | OpenSSF Scorecard, CodeQL, security | `references/security-config.md` |
 | Workflow linting (actionlint) | `references/actionlint-guide.md` |
 | PR shows too many commits (fork merge base) | `references/pr-commit-cleanup.md` |
+| Multi-repo batch ops (releases, rebases, config rollouts) | `references/multi-repo-operations.md` |
 
 ---
 
