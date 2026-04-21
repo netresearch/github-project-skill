@@ -55,7 +55,7 @@ Dependabot's update job runs on the ecosystems configured, whether or not the ma
 
 ```bash
 # Latest Dependabot run conclusions
-gh api "repos/OWNER/REPO/actions/runs?event=dynamic&per_page=10" --jq '
+gh api "repos/OWNER/REPO/actions/runs?per_page=10" --jq '
   [.workflow_runs[] | select(.name == "Dependabot Updates" or .name == "Dependabot")
     | {conclusion, created_at, html_url}]'
 
