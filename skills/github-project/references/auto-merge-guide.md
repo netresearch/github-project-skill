@@ -102,7 +102,7 @@ for pr in "${prs[@]}"; do
   u=$(gh api graphql -f query="{
     repository(owner: \"$OWNER\", name: \"$NAME\") {
       pullRequest(number: $N) {
-        reviewThreads(first: 50) { nodes { isResolved } }
+        reviewThreads(first: 100) { nodes { isResolved } }
       }
     }
   }" | jq '[.data.repository.pullRequest.reviewThreads.nodes[]
@@ -113,9 +113,9 @@ done
 
 For each unresolved thread:
 
-1. Read the full comment body via `reviewThreads(first: 50) { nodes { id isResolved comments(first: 1) { nodes { author { login } body } } } }`.
+1. Read the initial comment body via `reviewThreads(first: 100) { nodes { id isResolved comments(first: 1) { nodes { author { login } body } } } }`. Bump `comments(first:)` or paginate if you need follow-up replies on the same thread rather than just the initiating comment.
 2. If valid → open a follow-up PR that addresses it, referencing the PR + thread by URL in the commit message.
-3. Reply on the thread using the GraphQL mutations in [`references/gh-cli-reference.md`](./gh-cli-reference.md): `addPullRequestReviewThreadReply` + `resolveReviewThread`.
+3. Reply on the thread using the GraphQL mutations in [`gh-cli-reference.md`](./gh-cli-reference.md): `addPullRequestReviewThreadReply` + `resolveReviewThread`.
 4. If not valid (false positive, design-intent) → reply with the reasoning (cite evidence — tested behavior, design docs, etc.) then resolve.
 
 **Don't silently dismiss review threads.** Even for false positives, leave a reply explaining why so the next person who opens the PR sees the decision.
