@@ -1,6 +1,6 @@
 ---
 name: github-project
-description: "Use when PRs won't merge or show BLOCKED status, auto-merge fails for Dependabot/Renovate, branch protection or rulesets need configuring, GitHub Actions workflows have issues or CI is failing, setting up CODEOWNERS or PR templates, or diagnosing any GitHub repository configuration problem."
+description: "Use when PRs won't merge or show BLOCKED status (including green-CI + Copilot reviewer race conditions), auto-approve / auto-merge fails for Dependabot/Renovate, branch protection or rulesets need configuring, GitHub Actions workflows have issues or CI is failing, setting up CODEOWNERS or PR templates, or diagnosing any GitHub repository configuration problem."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
 compatibility: "Requires gh CLI, git."
 metadata:
@@ -81,7 +81,7 @@ gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
 
 ### Merge Strategy Issues
 
-Rebase merge fails with signed commits: enable squash or auto-detect strategy. Workflow file PRs need manual merge (GITHUB_TOKEN lacks `workflows` scope). Copilot reviewer race conditions: re-run auto-approve workflow. See `references/auto-merge-guide.md`.
+Rebase merge fails with signed commits: enable squash or auto-detect strategy. Workflow file PRs need manual merge (GITHUB_TOKEN lacks `workflows` scope). Copilot reviewer race conditions (PR `BLOCKED` despite green CI + empty `reviewDecision`): re-run auto-approve workflow; long-term fix is adding `pull_request_review` trigger. See `references/auto-merge-guide.md` → "Auto-Approve Race Condition with Copilot Reviewer" (canonical).
 
 ## Running Scripts
 
