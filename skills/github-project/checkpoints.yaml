@@ -178,7 +178,7 @@ mechanical:
       # with Copilot Reviewer".
       WF=.github/workflows/pr-quality.yml
       test -f "$WF" || exit 0   # not applicable if workflow doesn't exist
-      grep -qE '^\s*pull_request_review\s*:' "$WF"
+      grep -qE '^[[:space:]]*pull_request_review[[:space:]]*:' "$WF"
     severity: warning
     desc: >-
       pr-quality.yml should also trigger on pull_request_review to avoid the

@@ -76,14 +76,17 @@ In both cases: all CI status checks are `SUCCESS`, there are no `CHANGES_REQUEST
 Confirm the silent-skip is the cause before re-running anything:
 
 ```bash
-# 1. Find the latest auto-approve run and its job id
-RUN_ID=$(gh api "repos/OWNER/REPO/actions/runs?per_page=10" \
-  --jq '.workflow_runs[] | select(.name == "PR Quality Gates") | .id' | head -1)
+# 1. Find the latest auto-approve run for THIS PR's head commit and its job id.
+#    Scoping by head_sha prevents picking up runs from other PRs/branches.
+HEAD_SHA=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefOid --jq .headRefOid)
+RUN_ID=$(gh api "repos/OWNER/REPO/actions/runs?head_sha=$HEAD_SHA&per_page=20" \
+  --jq '[.workflow_runs[] | select(.name == "PR Quality Gates")] | .[0].id')
 JOB_ID=$(gh api "repos/OWNER/REPO/actions/runs/$RUN_ID/jobs" \
-  --jq '.jobs[] | select(.name | test("Auto-[Aa]pprove")) | .id')
+  --jq '.jobs[] | select(.name | test("Auto-[Aa]pprove")) | .id' | head -1)
 
-# 2. Inspect the job log for the skip marker
-gh api "repos/OWNER/REPO/actions/jobs/$JOB_ID/logs" \
+# 2. Inspect the job log for the skip marker. Use `gh run view --log` — the
+#    raw /logs API returns a zip archive that won't grep cleanly.
+gh run view --log --job="$JOB_ID" --repo OWNER/REPO \
   | grep -iE "skip|copilot|pending reviewer|requested_reviewers"
 ```
 
@@ -101,12 +104,14 @@ An empty `requested_reviewers` after Copilot's review has landed confirms Copilo
 ### Fix — re-run the workflow
 
 ```bash
-# Find the most recent PR Quality Gates run for this PR's head commit
-gh api "repos/OWNER/REPO/actions/runs?per_page=5" \
-  --jq '.workflow_runs[] | select(.name == "PR Quality Gates") | {id, head_sha: .head_sha[:7]}'
+# Scope the lookup to THIS PR's head commit — filtering only by workflow name
+# can return runs from other PRs/branches.
+HEAD_SHA=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefOid --jq .headRefOid)
+RUN_ID=$(gh api "repos/OWNER/REPO/actions/runs?head_sha=$HEAD_SHA&per_page=20" \
+  --jq '[.workflow_runs[] | select(.name == "PR Quality Gates")] | .[0].id')
 
 # Re-run it
-gh api repos/OWNER/REPO/actions/runs/RUN_ID/rerun -X POST
+gh api repos/OWNER/REPO/actions/runs/$RUN_ID/rerun -X POST
 ```
 
 Wait ~2 minutes, then re-check `gh pr view N --json mergeStateStatus,reviewDecision`. Expected result: `{"mergeStateStatus":"CLEAN", "reviewDecision":"APPROVED"}`.
