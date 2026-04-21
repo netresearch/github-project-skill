@@ -104,6 +104,8 @@ scripts/verify-github-project.sh /path/to/repository
 | Go, TYPO3, polyglot CI checklists | `references/repo-setup-guide.md` |
 | OpenSSF Scorecard, CodeQL, security | `references/security-config.md` |
 | Workflow linting (actionlint) | `references/actionlint-guide.md` |
+| Bash pitfalls inside workflow `run:` steps (set -e, pipefail, stderr merging, expression context) | `references/workflow-bash-patterns.md` |
+| Reusable workflow trust + transitive supply chain | `references/reusable-workflow-security.md` |
 | PR shows too many commits (fork merge base) | `references/pr-commit-cleanup.md` |
 | Multi-repo batch ops (releases, rebases, config rollouts) | `references/multi-repo-operations.md` |
 
