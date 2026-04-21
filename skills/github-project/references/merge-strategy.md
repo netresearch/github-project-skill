@@ -180,7 +180,7 @@ If you need to hold merge until Copilot (or any other requested reviewer) has ac
 pending=$(gh api "repos/$REPO/pulls/$PR" \
   --jq '((.requested_reviewers // []) | length) + ((.requested_teams // []) | length)')
 if [[ "$pending" -gt 0 ]]; then
-  echo "::error::Still waiting on $pending requested reviewer(s)"
+  echo "::error::Still waiting on $pending review request(s) (user/team)"
   exit 1
 fi
 ```
