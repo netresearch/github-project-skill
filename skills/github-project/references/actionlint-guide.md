@@ -459,3 +459,20 @@ Complex matrix expressions with `fromJSON()` may cause type-check warnings. Thes
 ignore:
   - 'fromJSON'
 ```
+
+### yamllint `empty-lines` rejects trailing blank lines
+
+Unrelated to actionlint itself, but bites right next to it in CI: if you run `yamllint` in the same lane, its default `empty-lines` rule rejects a file that ends with more than one newline. Workflow files end with exactly one newline.
+
+Generators that use `echo "$CONTENT" > file.yml` frequently add a trailing blank; prefer:
+
+```bash
+printf '%s\n' "$CONTENT" > file.yml
+```
+
+Verify after writing:
+
+```bash
+# Bytes at end of file — should be `0a` (one newline), not `0a0a`.
+tail -c 2 file.yml | xxd -p
+```

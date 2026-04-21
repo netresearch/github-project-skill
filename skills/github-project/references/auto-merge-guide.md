@@ -122,6 +122,48 @@ For each unresolved thread:
 
 **Re-sweep after follow-up PRs merge.** Copilot often reviews the follow-up PR itself and posts new threads. The sweep isn't one-shot — run it again until the count hits zero across all touched PRs.
 
+## CI Annotations — Always Check Before Declaring a PR Clean
+
+CI checks can report `success` at the status-run level while still emitting **warning annotations** (typical for actionlint / shellcheck via reviewdog, CodeQL deprecation notices, YAML-lint). These annotations don't show up in `gh pr checks` or in the PR summary page — they only appear on the job's detail page or on the Files-Changed tab. Declaring a PR "clean" based on `gh pr checks` alone leaves real findings un-addressed.
+
+**Check explicitly:**
+
+```bash
+# Annotations on a specific check run:
+gh api repos/OWNER/REPO/check-runs/CHECK_RUN_ID/annotations --jq \
+  '.[] | {message, annotation_level, path, start_line}'
+
+# All check runs for a commit that have any annotations:
+gh api "repos/OWNER/REPO/commits/SHA/check-runs" --jq \
+  '.check_runs[] | select(.output.annotations_count > 0) |
+   {name, annotations: .output.annotations_count}'
+```
+
+**Make warnings blocking.** reviewdog-based linters default to posting warnings that don't fail the workflow. Configure them to fail:
+
+```yaml
+- uses: reviewdog/action-actionlint@v1   # or -shellcheck, -yamllint, etc.
+  with:
+    fail_level: error
+```
+
+`fail_level: error` is the modern input; the deprecated `fail_on_error` + `level` combination still works but is going away. When a new reviewdog-based linter is added, grep the caller for `fail_level:` and set it to `error` up front — otherwise real findings silently accumulate.
+
+## CI Re-runs Replay the Same Commit
+
+`gh run rerun <run-id>` **re-executes the ORIGINAL commit SHA**, not `HEAD`. If you push a fix and re-run a failed old workflow, the rerun still fails against the pre-fix code.
+
+**Right way:** push the fix, then either wait for the automatic run triggered by the push, or re-run the LATEST run:
+
+```bash
+# Latest run ID for a workflow on a branch:
+gh api "repos/OWNER/REPO/actions/runs?per_page=5" --jq \
+  '.workflow_runs[] | select(.name == "CI") | {id, head_sha: .head_sha[:7]}' \
+  | head -1
+
+gh api repos/OWNER/REPO/actions/runs/RUN_ID/rerun -X POST
+```
+
 ## Merge Queue Behavior and Pitfalls
 
 ### Sequential Processing

@@ -164,6 +164,26 @@ EOF
 
 **Fix:** Update auto-merge workflow to use `--merge` flag instead of `--rebase` or `--squash`.
 
+### Rulesets cannot block merge on a pending review
+
+Neither branch protection nor rulesets support "block merge while any requested reviewer hasn't submitted yet". The options available are adjacent but not equivalent:
+
+| Setting | What it does | Not what you want |
+|---|---|---|
+| `required_approving_review_count: 1` | Needs **one approval** | Doesn't wait for other requested reviewers |
+| `required_review_thread_resolution: true` | Blocks on **unresolved threads** | Doesn't block before any thread is created |
+
+If you need to hold merge until Copilot (or any other requested reviewer) has actually posted its review, the workaround is a custom GitHub Actions status check that queries pending reviewers and fails if any are outstanding — then require that check in branch protection.
+
+```bash
+# Example: fail the check if any reviewer is still requested.
+pending=$(gh api "repos/$REPO/pulls/$PR" --jq '.requested_reviewers | length')
+if [[ "$pending" -gt 0 ]]; then
+  echo "::error::Still waiting on $pending requested reviewer(s)"
+  exit 1
+fi
+```
+
 ## References
 
 - [GitHub Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)
