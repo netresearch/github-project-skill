@@ -26,6 +26,40 @@ name specific repos to skip.)
 
 Wait for "go" (or an equivalent affirmative). Silence is not approval.
 
+## Pre-Flight Per-Repo Checks
+
+Before touching each repo in the batch, check three things the dry-run manifest won't catch — they tend to surface as 30 silent failures across a fleet loop:
+
+### 1. Default branch name
+
+Not every repo uses `main`. Some legacy repos are on `master`; forks can be on anything.
+
+```bash
+DEFAULT_BRANCH=$(gh api "repos/$REPO" --jq '.default_branch')
+```
+
+Use `$DEFAULT_BRANCH` everywhere a script would otherwise hard-code `main`. Pushing to the wrong branch either silently creates a new branch or fails with a confusing rejection.
+
+### 2. Archived repos
+
+Archived repos reject most writes with a generic permission error. Dependabot/Renovate sometimes still open PRs on them (via the pre-archive config), and a batch loop that tries to merge them fails cryptically.
+
+```bash
+ARCHIVED=$(gh api "repos/$REPO" --jq '.archived')
+if [[ "$ARCHIVED" == "true" ]]; then
+  # Skip, or handle specially: unarchive → close PR → re-archive.
+  continue
+fi
+```
+
+Never enable auto-merge on archived repos — the auto-merge plumbing fails at set-up time with "archived" errors.
+
+### 3. Contents API vs branch protection
+
+`gh api -X PUT repos/.../contents/...` is the fastest path for tiny single-file edits across a fleet — but it returns HTTP 409 on any repo that requires PRs, a merge queue, or signed commits. If your batch mixes repos with and without branch protection, this path breaks mid-loop and leaves half the fleet updated.
+
+**Safer default for batch file edits**: open a one-commit PR per repo even when the Contents API would work. Gives you a reviewable diff, matches any future signing/protection rule tightening, and keeps behavior consistent across the fleet.
+
 ## Parallel PR Rebasing
 
 For N PRs that need rebasing on their default branches, dispatch parallel subagents — one per PR — with failure isolation.
