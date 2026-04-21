@@ -93,10 +93,10 @@ scripts/verify-github-project.sh /path/to/repository
 
 | Topic | Reference |
 |-------|-----------|
-| Repository file layout and conventions | `references/repository-structure.md` |
+| Repository file layout | `references/repository-structure.md` |
 | Branch migration (master to main) | `references/branch-migration.md` |
 | Dependabot/Renovate configuration | `references/dependency-management.md` |
-| Auto-approve + auto-merge (solo maintainer, bots) | `references/auto-merge-guide.md` |
+| Auto-approve + auto-merge | `references/auto-merge-guide.md` |
 | Merge strategy for signed commits | `references/merge-strategy.md` |
 | Sub-issues and issue hierarchy | `references/sub-issues.md` |
 | Release labeling automation | `references/release-labeling.md` |
@@ -104,10 +104,9 @@ scripts/verify-github-project.sh /path/to/repository
 | Go, TYPO3, polyglot CI checklists | `references/repo-setup-guide.md` |
 | OpenSSF Scorecard, CodeQL, security | `references/security-config.md` |
 | Workflow linting (actionlint) | `references/actionlint-guide.md` |
-| Bash pitfalls inside workflow `run:` steps (set -e, pipefail, stderr merging, expression context) | `references/workflow-bash-patterns.md` |
-| Reusable workflow trust + transitive supply chain | `references/reusable-workflow-security.md` |
+| Bash pitfalls in workflow `run:` steps | `references/workflow-bash-patterns.md` |
 | PR shows too many commits (fork merge base) | `references/pr-commit-cleanup.md` |
-| Multi-repo batch ops (releases, rebases, config rollouts) | `references/multi-repo-operations.md` |
+| Multi-repo batch ops | `references/multi-repo-operations.md` |
 
 ---
 
