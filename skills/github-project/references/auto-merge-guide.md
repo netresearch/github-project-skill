@@ -111,6 +111,8 @@ for pr in "${prs[@]}"; do
 done
 ```
 
+`reviewThreads(first: 100)` covers GitHub's per-page maximum. Paginate with `pageInfo { hasNextPage endCursor }` + `after:` for PRs that might exceed 100 threads (long-running PRs on hot files).
+
 For each unresolved thread:
 
 1. Read the initial comment body via `reviewThreads(first: 100) { nodes { id isResolved comments(first: 1) { nodes { author { login } body } } } }`. Bump `comments(first:)` or paginate if you need follow-up replies on the same thread rather than just the initiating comment.
