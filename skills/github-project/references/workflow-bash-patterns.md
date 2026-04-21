@@ -42,7 +42,7 @@ if [[ -z "$BUILD_TS" ]]; then
 fi
 ```
 
-Keep the empty-string check separately — `git show` can exit 0 and print nothing in edge cases (e.g. shallow clone with `fetch-depth=0` on a freshly-init'd repo).
+Keep the empty-string check separately — `git show` can exit 0 and print nothing in edge cases (e.g. shallow clone with `fetch-depth: 1` on a freshly-init'd repo; note that `fetch-depth: 0` in `actions/checkout` means full history, not shallow).
 
 ## Pipefail + early readers
 
@@ -55,7 +55,7 @@ set -euo pipefail
 find . -maxdepth 1 -name '*.go' -exec grep -l '^package main' {} \; -print | grep -q .
 ```
 
-When multiple files match, `find` keeps writing to the pipe while `grep -q .` exits on the first line. `find` gets SIGPIPE, the pipeline returns 141 under `pipefail`, the whole `if` evaluates as false — even though there ARE matching files.
+When multiple files match, `find` keeps writing to the pipe while `grep -q .` exits on the first line. `find` gets SIGPIPE, so the pipeline returns 141 under `pipefail` and the step fails — even though there ARE matching files. Wrapping the pipeline in `if pipeline; then …` has the same effect (the `if` branch evaluates as false).
 
 **Fix 1 — capture into a variable (no reader):**
 

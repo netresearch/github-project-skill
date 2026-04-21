@@ -176,8 +176,9 @@ Neither branch protection nor rulesets support "block merge while any requested 
 If you need to hold merge until Copilot (or any other requested reviewer) has actually posted its review, the workaround is a custom GitHub Actions status check that queries pending reviewers and fails if any are outstanding — then require that check in branch protection.
 
 ```bash
-# Example: fail the check if any reviewer is still requested.
-pending=$(gh api "repos/$REPO/pulls/$PR" --jq '.requested_reviewers | length')
+# Example: fail the check if any reviewer — user or team — is still requested.
+pending=$(gh api "repos/$REPO/pulls/$PR" \
+  --jq '((.requested_reviewers // []) | length) + ((.requested_teams // []) | length)')
 if [[ "$pending" -gt 0 ]]; then
   echo "::error::Still waiting on $pending requested reviewer(s)"
   exit 1
