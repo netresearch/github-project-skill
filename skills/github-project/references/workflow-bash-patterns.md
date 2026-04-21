@@ -160,6 +160,76 @@ Reusable workflows run under the **caller's** token. If the reusable job declare
 
 When reviewing PRs that touch caller workflows, the first thing to check is that the caller's `permissions:` is ≥ what every reusable workflow it calls declares.
 
+## Expression gotchas — release & multi-trigger workflows
+
+Workflows that accept both a "normal" trigger (e.g. `push: tags`) and a manual override (`workflow_dispatch` with inputs) repeatedly trip over the same expression-context quirks. Each cost us a round of Copilot back-and-forth in the release-process doc; bundling them here so the next reader finds them in one place.
+
+### `inputs.*` is not defined outside `workflow_dispatch` / `workflow_call`
+
+```yaml
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag: { required: true }
+
+jobs:
+  publish:
+    steps:
+      - uses: actions/checkout@...
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}   # FAILS on push.tags
+```
+
+On `push.tags`, GitHub evaluates `inputs.tag` and raises *"Unrecognized named-value: 'inputs'"*. The workflow fails before any step runs.
+
+**Fix:** use `github.event.inputs.*`, which resolves to an empty string on non-dispatch events:
+
+```yaml
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+```
+
+### On `workflow_dispatch`, `github.ref_name` is the dispatch source, not a tag
+
+A workflow triggered via the Actions UI from `main` has `github.ref_name == 'main'`, even if the user supplied a tag via an input. Tag-source-of-truth workflows (release publishes, asset builds) must **explicitly** checkout the input tag, or they'll build assets from `main` HEAD and upload them to the tag's release:
+
+```yaml
+      - uses: actions/checkout@...
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          fetch-tags: true
+```
+
+### GitHub Actions expressions have no ternary
+
+`a ? b : c` is a YAML-level syntax error — GHA expressions only support `&&` / `||`. The idiom is:
+
+```yaml
+# "if cond then A else B" -->  cond && A || B
+make_latest: ${{ github.event_name == 'workflow_dispatch' && 'false' || 'true' }}
+```
+
+Watch for the **truthy-string trap**: `'false'` is a non-empty string, so it's truthy. If you're branching on a boolean input, wrap it in `fromJSON()` to convert the string `'false'` to actual `false`:
+
+```yaml
+make_latest: ${{ fromJSON(github.event.inputs.make_latest || 'true') && 'true' || 'false' }}
+```
+
+Without `fromJSON`, `'false' && 'true' || 'false'` evaluates to `'true'` because the string `'false'` is truthy.
+
+### Hyphenated input names force bracket-expression access
+
+```yaml
+inputs:
+  make-latest: { type: boolean }   # hyphen
+
+# Must be referenced as:
+${{ inputs['make-latest'] }}       # not inputs.make-latest (parsed as subtraction!)
+```
+
+Prefer underscored names (`make_latest`) so dot-notation works. Matches GitHub's own action parameter style (`softprops/action-gh-release` uses `make_latest`, not `make-latest`).
+
 ## Related
 
 - [actionlint-guide.md](./actionlint-guide.md) — how to catch these at author-time
