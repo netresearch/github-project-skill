@@ -35,6 +35,37 @@ updates:
 | github-actions | GitHub Actions |
 | terraform | Terraform |
 
+### Ecosystem Hygiene — Only Declare What the Repo Actually Has
+
+Dependabot's update job runs on the ecosystems configured, whether or not the manifest files exist. Some ecosystems **hard-fail** when their manifest is missing; others silently no-op. Declaring ecosystems that don't apply turns main red on every scheduled Dependabot run, for no benefit:
+
+| Ecosystem | Missing manifest behavior |
+|-----------|---------------------------|
+| `npm` | **Hard error** — `dependency_file_not_found: /package.json not found` |
+| `devcontainers` | **Hard error** — `no devcontainers configs found` |
+| `docker` | Silent no-op (scans Dockerfile only if present) |
+| `gomod` | Silent no-op (scans go.mod only if present) |
+| `github-actions` | Silent no-op (scans workflows only if present) |
+| `pip` | **Hard error** — fails if no requirements*.txt / pyproject.toml |
+| `composer` | **Hard error** — fails if no composer.json |
+
+**Rule:** match the template's ecosystem set to the **class** of repo. A `go-lib` template shouldn't ship with `npm` and `devcontainers` entries because libraries don't have `package.json` or `.devcontainer/`. A `go-app` template can reasonably include `npm` because some Go apps ship frontend assets — but the first consumer without frontend assets will fail weekly until someone removes the entry or adds the manifest.
+
+**Diagnosing a weekly Dependabot failure on main:**
+
+```bash
+# Latest Dependabot run conclusions
+gh api "repos/OWNER/REPO/actions/runs?per_page=10" --jq '
+  [.workflow_runs[] | select(.name == "Dependabot Updates" or .name == "Dependabot")
+    | {conclusion, created_at, html_url}]'
+
+# Open the failing run's log to find the specific ecosystem:
+gh run view <RUN_ID> --repo OWNER/REPO --log-failed |
+  grep -iE "dependency_file_not_found|no .* configs found" | head -5
+```
+
+If the failure comes from a template-derived ecosystem that doesn't apply: fix the template (so new consumers inherit the fix) *and* open a consumer-side PR to drop the ecosystem (so the existing repo stops failing). Running only one half leaves the drift check failing on the PR or the schedule failing on main. See [multi-repo-operations.md](./multi-repo-operations.md) for the template-consumer coordination pattern.
+
 ### Grouping Dependencies
 ```yaml
 updates:

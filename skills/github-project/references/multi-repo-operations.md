@@ -195,6 +195,35 @@ done
 
 This is the same worktree-authority rule as `git-workflow`, enforced inside the batch loop.
 
+## Template-Drift Resolution Pattern
+
+When a consumer repo's template-drift check fails and the fix is "remove a thing that doesn't apply here" (ecosystem, workflow, config entry), the drift is usually a **template bug**, not a consumer bug — the template was written too broad for the class of repo it's applied to.
+
+**Naive fix:** patch only the consumer. The drift check stays red forever because the template still declares the thing the consumer is missing. Adding an `intentional-drift:` exception works but accumulates per-repo carve-outs that future template authors don't see.
+
+**Correct fix:** patch the template AND the consumer in the same sweep. The template PR is the forward fix (next consumer inherits the correction); the consumer PR clears the current red.
+
+```
+1. Identify all consumers of the affected template path
+   gh search code --owner netresearch "templates/<template-name>" --limit 20
+
+2. Open the template-side PR first
+   - Remove the bad entry / tighten the template
+   - Reference the first observed consumer failure (URL of the red run)
+   - Flag that consumers will drift until synced; list them in the PR body
+
+3. Open the consumer-side PR(s) matching the template change
+   - Cross-reference: "Matches netresearch/.github#NN"
+   - Merge both in the same session so the drift window closes quickly
+
+4. Enable auto-merge on both. The consumer waits on its drift check,
+   which starts passing the moment the template PR lands.
+```
+
+**Rule of thumb for template scope:** the template should carry only what EVERY consumer of that class actually needs. A `go-lib` template with an `npm` dependabot entry is wrong because most Go libraries don't ship `package.json`. A `go-app` template with an `npm` entry is defensible — some go-apps DO ship frontend assets — but the class is loose enough that per-consumer overrides become common. When you see carve-outs accumulating in `intentional-drift:` lists, that's a signal the template is too broad for its consumer base and the classes should be split (e.g. `go-app` vs `go-app-headless`).
+
+See [dependency-management.md](./dependency-management.md) for which Dependabot ecosystems hard-fail when their manifest is missing (the common source of template drift on Go repos).
+
 ## Common Anti-Patterns
 
 | Anti-pattern | Consequence | Fix |

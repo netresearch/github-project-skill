@@ -124,6 +124,40 @@ For each unresolved thread:
 
 **Re-sweep after follow-up PRs merge.** Copilot often reviews the follow-up PR itself and posts new threads. The sweep isn't one-shot — run it again until the count hits zero across all touched PRs.
 
+### Wait for Copilot Before Merging (prevents the cascade)
+
+Copilot's review is **asynchronous**: it usually lands 1–3 min after the PR opens, sometimes longer on a busy day. If you enable `--auto --merge` the instant CI passes, you merge *before* Copilot has reviewed — and the review lands on an already-merged PR, which then needs a follow-up PR to address. Copilot reviews that follow-up too, so the same race repeats. A single round of non-trivial review can easily cascade to 5–6 follow-up PRs.
+
+**Prevention — poll for Copilot before enabling auto-merge:**
+
+```bash
+# Wait up to 5 min for Copilot's review to appear. If it never does
+# (skill-only docs PRs, repos without Copilot review enabled), the loop
+# exits on timeout and you proceed.
+for _ in $(seq 1 30); do
+  reviewed=$(gh pr view "$PR" --repo "$REPO" --json reviews --jq '
+    [.reviews[] | select(.author.login == "copilot-pull-request-reviewer")] | length')
+  [ "$reviewed" -ge 1 ] && break
+  sleep 10
+done
+
+# Now address any unresolved threads, THEN enable auto-merge.
+gh pr merge "$PR" --repo "$REPO" --auto --merge
+```
+
+**Or enforce via branch protection:** add `copilot-pull-request-reviewer` as a required reviewer so branch protection blocks merge until the review exists. GitHub's UI for this is under *Settings → Branches → Branch protection rules → Require review from Code Owners / specific reviewers*; for rulesets, set `required_pull_request_reviews.required_approving_review_count >= 1` with `dismiss_stale_reviews_on_push: true`. Note that *requested* isn't the same as *approved* — see [merge-strategy.md](./merge-strategy.md) on blocking on pending reviews.
+
+**If you still cascade**, expect it: budget 2–3 sweep rounds mentally rather than claiming "done" after the first merge. The Copilot-review → fix → merge → Copilot-reviews-the-fix loop is the norm on non-trivial text changes, not the exception.
+
+### Validate Copilot Suggestions Before Applying
+
+Copilot occasionally suggests syntactically invalid or semantically wrong code. Recent examples from this fleet:
+
+- **`?:` ternary** in a GitHub Actions expression — not supported; GHA expressions use `&&` / `||` chains
+- **`inputs.make_latest`** in a workflow that triggers on both `push.tags` and `workflow_dispatch` — the `inputs` context is undefined on `push` events and raises *"Unrecognized named-value: 'inputs'"*; use `github.event.inputs.*` for safety across events
+
+Treat suggestions as reviewer *input*, not ground truth. Read the code, verify against docs (see [workflow-bash-patterns.md](./workflow-bash-patterns.md) for the GHA expression specifics), and apply in the form that's actually correct. Reply with your adjusted reasoning on the thread rather than silently applying a broken suggestion and having to patch it two sweeps later.
+
 ## CI Annotations — Always Check Before Declaring a PR Clean
 
 CI checks can report `success` at the status-run level while still emitting **warning annotations** (typical for actionlint / shellcheck via reviewdog, CodeQL deprecation notices, YAML-lint). These annotations don't show up in `gh pr checks` or in the PR summary page — they only appear on the job's detail page or on the Files-Changed tab. Declaring a PR "clean" based on `gh pr checks` alone leaves real findings un-addressed.
