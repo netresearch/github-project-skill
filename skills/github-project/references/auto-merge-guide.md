@@ -75,6 +75,53 @@ gh api "repos/OWNER/REPO/actions/runs?per_page=5" \
 gh api repos/OWNER/REPO/actions/runs/RUN_ID/rerun -X POST
 ```
 
+## Post-Merge Review Sweep
+
+**Symptom:** you admin-merge a PR that was CLEAN, then hours/days later `gh api graphql` shows unresolved review threads on it. The reviewer posted comments AFTER the merge landed.
+
+**Why this happens:**
+
+1. Admin-merging bypasses the "all threads resolved" check that a normal merge would enforce. A Copilot / human review that was still being authored at merge time lands afterwards.
+2. Automated reviewers (GitHub Copilot, Advanced Security code-scanning, gosec/semgrep via reviewdog) often post on the final commit AFTER CI finishes — which can be after the merge.
+3. In a batch workflow (e.g. closing out a multi-repo rollout), you move on to the next PR before the previous one settles.
+
+**Consequences:** legitimate review findings go unanswered. If the finding was substantive (correctness bug, dead code, doc drift) it silently ships.
+
+**Sweep process — run at the end of any batched-merge session:**
+
+```bash
+# List every PR you merged + check unresolved threads on each.
+prs=(
+  "owner/repo1#123"
+  "owner/repo2#456"
+  ...
+)
+for pr in "${prs[@]}"; do
+  R="${pr%#*}"; N="${pr#*#}"
+  OWNER="${R%/*}"; NAME="${R#*/}"
+  u=$(gh api graphql -f query="{
+    repository(owner: \"$OWNER\", name: \"$NAME\") {
+      pullRequest(number: $N) {
+        reviewThreads(first: 50) { nodes { isResolved } }
+      }
+    }
+  }" | jq '[.data.repository.pullRequest.reviewThreads.nodes[]
+            | select(.isResolved == false)] | length')
+  [ "$u" -gt 0 ] && echo "UNRESOLVED: $pr ($u)"
+done
+```
+
+For each unresolved thread:
+
+1. Read the full comment body via `reviewThreads(first: 50) { nodes { id isResolved comments(first: 1) { nodes { author { login } body } } } }`.
+2. If valid → open a follow-up PR that addresses it, referencing the PR + thread by URL in the commit message.
+3. Reply on the thread using the GraphQL mutations in [`references/gh-cli-reference.md`](./gh-cli-reference.md): `addPullRequestReviewThreadReply` + `resolveReviewThread`.
+4. If not valid (false positive, design-intent) → reply with the reasoning (cite evidence — tested behavior, design docs, etc.) then resolve.
+
+**Don't silently dismiss review threads.** Even for false positives, leave a reply explaining why so the next person who opens the PR sees the decision.
+
+**Re-sweep after follow-up PRs merge.** Copilot often reviews the follow-up PR itself and posts new threads. The sweep isn't one-shot — run it again until the count hits zero across all touched PRs.
+
 ## Merge Queue Behavior and Pitfalls
 
 ### Sequential Processing
