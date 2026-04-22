@@ -167,6 +167,24 @@ mechanical:
     severity: info
     desc: "Auto-merge should dynamically detect merge strategy from repo settings"
 
+  # === AUTO-APPROVE (pr-quality.yml) COPILOT RACE CONDITION ===
+  - id: GH-33
+    type: command
+    target: |
+      # If pr-quality.yml exists, verify it triggers on pull_request_review as
+      # well as pull_request_target. Without pull_request_review, the approval
+      # job races with Copilot and leaves PRs BLOCKED with empty reviewDecision.
+      # See references/auto-merge-guide.md → "Auto-Approve Race Condition
+      # with Copilot Reviewer".
+      WF=.github/workflows/pr-quality.yml
+      test -f "$WF" || exit 0   # not applicable if workflow doesn't exist
+      grep -qE '^[[:space:]]*pull_request_review[[:space:]]*:' "$WF"
+    severity: warning
+    desc: >-
+      pr-quality.yml should also trigger on pull_request_review to avoid the
+      Copilot auto-approve race condition (PR stuck BLOCKED with empty
+      reviewDecision)
+
   # === BRANCH PROTECTION AUDIT ===
   - id: GH-30
     type: command

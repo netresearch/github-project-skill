@@ -50,30 +50,99 @@ EOF
 | Gitleaks fails on bot PRs | `GITLEAKS_LICENSE` secret unavailable | Skip gitleaks for bot PRs or use `.gitleaks.toml` allowlist |
 | Old PRs not auto-merging | Opened before workflow existed | Comment `@dependabot rebase` / `@renovate rebase` to trigger `synchronize` |
 | Can't merge workflow file PRs | `GITHUB_TOKEN` lacks `workflows` scope | Merge manually; use workflow check in `auto-merge-direct.yml` template |
-| Auto-approve skipped, PR stuck `REVIEW_REQUIRED` | Auto-approve raced with Copilot reviewer | Re-run the auto-approve workflow after Copilot finishes (see below) |
+| Auto-approve skipped, PR stuck `REVIEW_REQUIRED` or blank `reviewDecision` | Auto-approve raced with Copilot reviewer | Re-run the auto-approve workflow after Copilot finishes; long-term fix is adding `pull_request_review` trigger — see [Auto-Approve Race Condition with Copilot Reviewer](#auto-approve-race-condition-with-copilot-reviewer) |
 
 ## Auto-Approve Race Condition with Copilot Reviewer
 
-When using a solo-maintainer auto-approve workflow alongside GitHub Copilot as a reviewer, a race condition can leave PRs stuck in `REVIEW_REQUIRED`:
+**This section is the canonical home for the "PR stuck BLOCKED despite green CI + explicit approval" gotcha.** Project-level `CLAUDE.md` entries should cross-reference this file rather than restating the details.
 
-1. New push triggers both auto-approve workflow and Copilot review
-2. Auto-approve runs first, sees Copilot as a pending reviewer, skips approval
-3. Stale review dismissal clears any previous approvals from the push
-4. Copilot finishes reviewing (state: `COMMENTED`) but doesn't approve
-5. No approval exists, PR is `BLOCKED`
+When using a solo-maintainer auto-approve workflow alongside GitHub Copilot as a reviewer, a race condition can leave PRs stuck blocked even though every gate appears satisfied:
 
-**Symptoms:** `mergeStateStatus: BLOCKED`, `reviewDecision: REVIEW_REQUIRED`, auto-approve step shows "skipped", `reviewRequests` is empty.
+1. New push triggers both the auto-approve workflow and Copilot review
+2. Auto-approve runs first, sees Copilot as a pending reviewer, skips approval silently
+3. Stale review dismissal (`dismiss_stale_reviews_on_push: true`) clears any previous approvals from the push
+4. Copilot finishes reviewing with state `COMMENTED` (not `APPROVED`) — Copilot almost never actively approves
+5. No approval exists anywhere; PR stays `BLOCKED`
 
-**Fix:** Re-run the auto-approve workflow after Copilot finishes:
+**Symptoms** — `gh pr view N --json mergeStateStatus,reviewDecision` returns one of:
+
+- `{"mergeStateStatus":"BLOCKED", "reviewDecision":"REVIEW_REQUIRED"}` (classic case)
+- `{"mergeStateStatus":"BLOCKED", "reviewDecision":""}` (no review decision computed yet — seen when Copilot is mid-review and the repo has `required_approving_review_count >= 1`)
+
+In both cases: all CI status checks are `SUCCESS`, there are no `CHANGES_REQUESTED` reviews, no unresolved review threads, and the auto-approve job reports `success` in `gh run list`. The approval simply never happened.
+
+### Diagnosis
+
+Confirm the silent-skip is the cause before re-running anything:
 
 ```bash
-# Find the workflow run ID
-gh api "repos/OWNER/REPO/actions/runs?per_page=5" \
-  --jq '.workflow_runs[] | select(.name == "YOUR_WORKFLOW_NAME") | {id, head_sha: .head_sha[:7]}'
+# 1. Find the latest auto-approve run for THIS PR's head commit and its job id.
+#    Scoping by head_sha prevents picking up runs from other PRs/branches.
+HEAD_SHA=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefOid --jq .headRefOid)
+RUN_ID=$(gh api "repos/OWNER/REPO/actions/runs?head_sha=$HEAD_SHA&per_page=20" \
+  --jq '[.workflow_runs[] | select(.name == "PR Quality Gates")] | .[0].id')
+JOB_ID=$(gh api "repos/OWNER/REPO/actions/runs/$RUN_ID/jobs" \
+  --jq '.jobs[] | select(.name | test("Auto-[Aa]pprove")) | .id' | head -1)
+
+# 2. Inspect the job log for the skip marker. Use `gh run view --log` — the
+#    raw /logs API returns a zip archive that won't grep cleanly.
+gh run view --log --job="$JOB_ID" --repo OWNER/REPO \
+  | grep -iE "skip|copilot|pending reviewer|requested_reviewers"
+```
+
+If the log contains a line like "Skipping approval: pending reviewers" or shows `requested_reviewers` containing `copilot-pull-request-reviewer[bot]`, the race condition is confirmed.
+
+Also useful — current reviewer state:
+
+```bash
+gh api repos/OWNER/REPO/pulls/PR_NUMBER \
+  --jq '{requested_reviewers: [.requested_reviewers[]?.login], requested_teams: [.requested_teams[]?.slug]}'
+```
+
+An empty `requested_reviewers` after Copilot's review has landed confirms Copilot is no longer blocking — so a rerun will now succeed.
+
+### Fix — re-run the workflow
+
+```bash
+# Scope the lookup to THIS PR's head commit — filtering only by workflow name
+# can return runs from other PRs/branches.
+HEAD_SHA=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefOid --jq .headRefOid)
+RUN_ID=$(gh api "repos/OWNER/REPO/actions/runs?head_sha=$HEAD_SHA&per_page=20" \
+  --jq '[.workflow_runs[] | select(.name == "PR Quality Gates")] | .[0].id')
 
 # Re-run it
-gh api repos/OWNER/REPO/actions/runs/RUN_ID/rerun -X POST
+gh api repos/OWNER/REPO/actions/runs/$RUN_ID/rerun -X POST
 ```
+
+Wait ~2 minutes, then re-check `gh pr view N --json mergeStateStatus,reviewDecision`. Expected result: `{"mergeStateStatus":"CLEAN", "reviewDecision":"APPROVED"}`.
+
+> **Why the rerun works:** `gh run rerun` on the latest run re-reads the current reviewer list. By that point Copilot has submitted its review, so it's no longer in `requested_reviewers` and auto-approve proceeds. See also [CI Re-runs Replay the Same Commit](#ci-re-runs-replay-the-same-commit) — use the LATEST run id (not an older failed one) so the rerun executes against current HEAD.
+
+### Prevention
+
+Pick one of these patterns when authoring or updating a `pr-quality.yml` / auto-approve workflow. See [`../assets/pr-quality.yml.template`](../assets/pr-quality.yml.template) for the baseline.
+
+**Option A — also trigger on review submission (simplest):**
+
+```yaml
+on:
+    pull_request_target:
+        types: [opened, synchronize, reopened]
+    pull_request_review:
+        types: [submitted, dismissed]
+```
+
+When Copilot submits its review, the workflow re-fires and now sees an empty `requested_reviewers` list. This is the lowest-effort fix and works for most solo-maintainer setups.
+
+**Option B — poll with retry inside the approval step (race-free, slower):**
+
+Before approving, poll `requested_reviewers` until it's empty or a timeout elapses. Typical timeout: 5 minutes. Use this when Copilot reviews are slow or when missed-approval events are expensive (e.g. repos with tight merge SLOs).
+
+**Option C — wait for Copilot explicitly:**
+
+Gate the approval step on `github.event.review.user.login == 'copilot-pull-request-reviewer[bot]' && github.event.review.state != 'changes_requested'` in a `pull_request_review`-triggered job. Race-free but fires only after Copilot posts — not useful when Copilot isn't actually assigned to the PR.
+
+**Do NOT** "fix" this by dropping `required_approving_review_count` to `0` — that loses the OpenSSF Scorecard Code-Review point and removes the audit trail that shows a deliberate approval happened.
 
 ## Post-Merge Review Sweep
 
