@@ -130,7 +130,9 @@ mechanical:
     target: .github/workflows/*.yml
     pattern: 'uses:[[:space:]]*ossf/scorecard-action|uses:[[:space:]]*netresearch/[.]github/[.]github/workflows/scorecard[.]yml'
     severity: info
-    desc: "OpenSSF Scorecard must be wired up (dedicated workflow or reusable-workflow job calling ossf/scorecard-action or netresearch/.github/...scorecard.yml)"
+    desc: >-
+      OpenSSF Scorecard must be wired up (dedicated workflow or reusable-workflow
+      job calling ossf/scorecard-action or netresearch/.github/...scorecard.yml)
 
   # === SLSA PROVENANCE ===
   - id: GH-21
