@@ -152,31 +152,34 @@ mechanical:
   # uses: 'foo', uses: "foo"). Glob target accepts either auto-merge-deps.yml
   # or auto-merge.yml (GH-23 already treats both as valid filenames).
 
+  # The netresearch reusable-workflow path is unique enough to match without
+  # caring about uses:-line quoting (uses: foo, uses: 'foo', uses: "foo" all
+  # contain the netresearch/... substring identically).
   - id: GH-24
     type: regex
     target: .github/workflows/auto-merge*.yml
-    pattern: 'uses:[[:space:]]*["'\'']?netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|on:[[:space:]]*\n[[:space:]]*pull_request_target:'
+    pattern: 'netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|on:[[:space:]]*\n[[:space:]]*pull_request_target:'
     severity: error
     desc: "Auto-merge workflow must delegate to netresearch reusable workflow OR use pull_request_target trigger for bot PR write permissions"
 
   - id: GH-25
     type: regex
     target: .github/workflows/auto-merge*.yml
-    pattern: 'uses:[[:space:]]*["'\'']?netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|github\.event\.pull_request\.user\.login'
+    pattern: 'netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|github\.event\.pull_request\.user\.login'
     severity: warning
     desc: "Auto-merge should delegate to reusable workflow OR check github.event.pull_request.user.login (not github.actor which changes on reruns)"
 
   - id: GH-26
     type: regex
     target: .github/workflows/auto-merge*.yml
-    pattern: 'uses:[[:space:]]*["'\'']?netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|--auto'
+    pattern: 'netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|--auto'
     severity: warning
     desc: "Auto-merge should delegate to reusable workflow OR use gh pr merge --auto to respect branch protection and merge queues"
 
   - id: GH-27
     type: regex
     target: .github/workflows/auto-merge*.yml
-    pattern: 'uses:[[:space:]]*["'\'']?netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|gh api.*repos/\$'
+    pattern: 'netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|gh api.*repos/\$'
     severity: info
     desc: "Auto-merge should delegate to reusable workflow OR dynamically detect merge strategy from repo settings"
 
