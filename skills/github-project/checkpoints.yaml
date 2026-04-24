@@ -48,17 +48,20 @@ mechanical:
     severity: info
     desc: "PR template should exist"
 
+  # Issue templates: prefer the modern `.yml` form templates (structured
+  # fields, validation, required inputs) over legacy `.md` files. Accept
+  # either, but `.yml` is the recommended Netresearch standard.
   - id: GH-08
     type: file_exists
-    target: .github/ISSUE_TEMPLATE/bug_report.md
+    target: "{.github/ISSUE_TEMPLATE/bug_report.yml,.github/ISSUE_TEMPLATE/bug_report.md}"
     severity: info
-    desc: "Bug report template should exist"
+    desc: "Bug report template should exist (prefer .yml form template — structured fields + validation)"
 
   - id: GH-09
     type: file_exists
-    target: .github/ISSUE_TEMPLATE/feature_request.md
+    target: "{.github/ISSUE_TEMPLATE/feature_request.yml,.github/ISSUE_TEMPLATE/feature_request.md}"
     severity: info
-    desc: "Feature request template should exist"
+    desc: "Feature request template should exist (prefer .yml form template — structured fields + validation)"
 
   # === CONTENT CHECKS ===
   - id: GH-10
@@ -112,17 +115,22 @@ mechanical:
     desc: "Renovate config may exist as alternative to Dependabot"
 
   # === SECURITY CONFIG ===
+  # CodeQL / Scorecard can be a dedicated workflow file OR a job in another
+  # workflow that delegates to the netresearch reusable workflow. Same
+  # pattern as ER-19/20 in enterprise-readiness-skill PR #55.
   - id: GH-19
-    type: file_exists
-    target: .github/workflows/codeql.yml
+    type: regex
+    target: .github/workflows/*.yml
+    pattern: 'uses:[[:space:]]*github/codeql-action|uses:[[:space:]]*netresearch/[.]github/[.]github/workflows/codeql[.]yml'
     severity: warning
-    desc: "CodeQL workflow should exist for code scanning"
+    desc: "CodeQL must be wired up (dedicated workflow or reusable-workflow job calling github/codeql-action or netresearch/.github/...codeql.yml)"
 
   - id: GH-20
-    type: file_exists
-    target: .github/workflows/scorecard.yml
+    type: regex
+    target: .github/workflows/*.yml
+    pattern: 'uses:[[:space:]]*ossf/scorecard-action|uses:[[:space:]]*netresearch/[.]github/[.]github/workflows/scorecard[.]yml'
     severity: info
-    desc: "OpenSSF Scorecard workflow should exist"
+    desc: "OpenSSF Scorecard must be wired up (dedicated workflow or reusable-workflow job calling ossf/scorecard-action or netresearch/.github/...scorecard.yml)"
 
   # === SLSA PROVENANCE ===
   - id: GH-21
