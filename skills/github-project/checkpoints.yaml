@@ -139,33 +139,42 @@ mechanical:
     severity: warning
     desc: "Auto-merge workflow should exist for Dependabot/Renovate PRs"
 
+  # Auto-merge workflows can either:
+  #   (a) delegate to the netresearch org reusable workflow
+  #       (netresearch/.github/.github/workflows/auto-merge-deps.yml), which
+  #       encapsulates the trigger, bot-gating, --auto merging, and dynamic
+  #       merge-strategy detection; or
+  #   (b) inline the full implementation with pull_request_target: + the
+  #       same bot-gating and --auto patterns.
+  # GH-24..27 accept either path.
+
   - id: GH-24
     type: regex
     target: .github/workflows/auto-merge-deps.yml
-    pattern: 'on:\s*\n\s*pull_request_target:'
+    pattern: 'uses:\s*netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|on:\s*\n\s*pull_request_target:'
     severity: error
-    desc: "Auto-merge workflow must use pull_request_target trigger (not pull_request) for bot PR write permissions"
+    desc: "Auto-merge workflow must delegate to netresearch reusable workflow OR use pull_request_target trigger for bot PR write permissions"
 
   - id: GH-25
     type: regex
     target: .github/workflows/auto-merge-deps.yml
-    pattern: 'github\.event\.pull_request\.user\.login'
+    pattern: 'uses:\s*netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|github\.event\.pull_request\.user\.login'
     severity: warning
-    desc: "Auto-merge should check github.event.pull_request.user.login (not github.actor which changes on reruns)"
+    desc: "Auto-merge should delegate to reusable workflow OR check github.event.pull_request.user.login (not github.actor which changes on reruns)"
 
   - id: GH-26
     type: regex
     target: .github/workflows/auto-merge-deps.yml
-    pattern: '--auto'
+    pattern: 'uses:\s*netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|--auto'
     severity: warning
-    desc: "Auto-merge should use gh pr merge --auto (not direct merge) to respect branch protection and merge queues"
+    desc: "Auto-merge should delegate to reusable workflow OR use gh pr merge --auto to respect branch protection and merge queues"
 
   - id: GH-27
     type: regex
     target: .github/workflows/auto-merge-deps.yml
-    pattern: 'gh api.*repos/\$'
+    pattern: 'uses:\s*netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|gh api.*repos/\$'
     severity: info
-    desc: "Auto-merge should dynamically detect merge strategy from repo settings"
+    desc: "Auto-merge should delegate to reusable workflow OR dynamically detect merge strategy from repo settings"
 
   # === AUTO-APPROVE (pr-quality.yml) COPILOT RACE CONDITION ===
   - id: GH-33
