@@ -26,9 +26,12 @@ skills/github-project/
 ## Distribution Channels
 
 - **Composer**: `netresearch/github-project-skill` via `composer.json` (requires `composer-agent-skill-plugin`)
+- **npm**: `github:netresearch/github-project-skill` via `package.json` (requires `@netresearch/agent-skill-coordinator`, which discovers the skill in `node_modules` and registers it in `AGENTS.md` via a `postinstall` hook)
 - **Claude Code plugin**: `.claude-plugin/plugin.json` for marketplace distribution
 - **npx / skills.sh**: Direct install via `npx skills add`
 - **Git clone / release download**: Manual installation
+
+When making changes to release or distribution logic, all five channels must be considered. The npm channel ships from a `package.json` allowlist (`files: ["skills/github-project/", LICENSE files, README.md]`) — anything outside that allowlist is invisible to npm consumers.
 
 ## Key Design Decisions
 

@@ -103,7 +103,8 @@ The canonical order is: **version-bump PR merged → tag pushed**, never the rev
 
 Before touching any repo, validate:
 
-- `plugin.json.version` / `composer.json.version` / `package.json.version` parity against each other
+- `plugin.json.version` / `composer.json.version` parity against each other
+- For repos that also ship via npm: `package.json.version` is either the placeholder `0.0.0-source` (publish-time-rewritten by the Release workflow) **or** matches the others (release marker, e.g. `@netresearch/agent-skill-coordinator`). Mixing the two within one repo is the bug pattern to look for.
 - Current git tag on default branch is not already the target version
 - CI on default branch is green
 - No pending version-bump PR already open
@@ -116,7 +117,7 @@ skills/skill-repo/scripts/check-version-parity.sh            # parity only
 skills/skill-repo/scripts/check-version-parity.sh v1.2.4     # also require tag parity
 ```
 
-That script handles the Netresearch conventions (`plugin.json` has the authoritative version, `composer.json` must not have one, `SKILL.md` `metadata.version` in frontmatter matches `plugin.json`). Don't copy the snippet below inline — it was a sketch for illustration; the real script handles empty-arg mode, missing files, glob-empty iteration, and the quoted-or-unquoted frontmatter form. Call the shipped script.
+That script handles the Netresearch conventions (`plugin.json` has the authoritative version, `composer.json` must not have one, `SKILL.md` `metadata.version` in frontmatter matches `plugin.json`, and `package.json.version` is either `0.0.0-source` for git-installed skill packages or matches `plugin.json` for npm-published coordinator-style packages). Don't copy the snippet below inline — it was a sketch for illustration; the real script handles empty-arg mode, missing files, glob-empty iteration, and the quoted-or-unquoted frontmatter form. Call the shipped script.
 
 ```bash
 # Illustrative only — for non-skill repos, adapt the shape but handle empties
