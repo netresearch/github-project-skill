@@ -1,0 +1,34 @@
+{
+  "name": "@netresearch/github-project-skill",
+  "version": "0.0.0-source",
+  "description": "Netresearch AI skill for GitHub repository setup, branch protection and project configuration.",
+  "license": "(MIT AND CC-BY-SA-4.0)",
+  "author": "Netresearch DTT GmbH (https://www.netresearch.de/)",
+  "homepage": "https://github.com/netresearch/github-project-skill",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/netresearch/github-project-skill.git"
+  },
+  "bugs": {
+    "url": "https://github.com/netresearch/github-project-skill/issues"
+  },
+  "keywords": [
+    "ai-agent-skill",
+    "github",
+    "branch-protection",
+    "rulesets",
+    "ci-cd",
+    "anthropic",
+    "claude-code"
+  ],
+  "aiAgentSkill": "skills/github-project/SKILL.md",
+  "files": [
+    "skills/github-project/",
+    "LICENSE-MIT",
+    "LICENSE-CC-BY-SA-4.0",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@netresearch/agent-skill-coordinator": "^0.1"
+  }
+}
