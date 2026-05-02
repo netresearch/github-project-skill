@@ -31,7 +31,7 @@ skills/github-project/
 - **npx / skills.sh**: Direct install via `npx skills add`
 - **Git clone / release download**: Manual installation
 
-When making changes to release or distribution logic, all five channels must be considered. The npm channel ships from a `package.json` allowlist (`files: ["skills/github-project/", LICENSE files, README.md]`) — anything outside that allowlist is invisible to npm consumers.
+When making changes to release or distribution logic, all five channels must be considered. The npm channel ships from a `package.json` allowlist (`files: ["skills/github-project/", "LICENSE-MIT", "LICENSE-CC-BY-SA-4.0", "README.md"]`) — anything outside that allowlist is invisible to npm consumers.
 
 ## Key Design Decisions
 

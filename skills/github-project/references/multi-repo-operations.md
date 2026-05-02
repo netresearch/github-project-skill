@@ -103,8 +103,8 @@ The canonical order is: **version-bump PR merged → tag pushed**, never the rev
 
 Before touching any repo, validate:
 
-- `plugin.json.version` / `composer.json.version` parity against each other
-- For repos that also ship via npm: `package.json.version` is either the placeholder `0.0.0-source` (publish-time-rewritten by the Release workflow) **or** matches the others (release marker, e.g. `@netresearch/agent-skill-coordinator`). Mixing the two within one repo is the bug pattern to look for.
+- `plugin.json.version` is present (authoritative) and `composer.json` has **no** `version` field (Packagist derives the version from git tags); if `SKILL.md` frontmatter carries a `metadata.version`, it must match `plugin.json.version`
+- For repos that also ship via npm: `package.json.version` is either the placeholder `0.0.0-source` (publish-time-rewritten by the Release workflow) **or** matches `plugin.json` (for coordinator-style packages, e.g. `@netresearch/agent-skill-coordinator`). Mixing the two within one repo is the bug pattern to look for.
 - Current git tag on default branch is not already the target version
 - CI on default branch is green
 - No pending version-bump PR already open
