@@ -14,9 +14,9 @@ mechanical:
 
   - id: GH-02
     type: file_exists
-    target: LICENSE
+    target: "{LICENSE,LICENSE.md,LICENSE.txt,LICENSE-MIT,LICENSE-APACHE,LICENSE-APACHE-2.0,LICENSE-BSD,LICENSE-CC-BY-SA-4.0,LICENSE-CC0-1.0,LICENSE-GPL,LICENSE-AGPL,LICENSE-MPL}"
     severity: error
-    desc: "LICENSE file must exist"
+    desc: "LICENSE file must exist (split licenses with multi-file naming like LICENSE-MIT/LICENSE-CC-BY-SA-4.0 are accepted)"
 
   - id: GH-03
     type: file_exists
