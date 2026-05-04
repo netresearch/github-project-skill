@@ -12,11 +12,17 @@ mechanical:
     severity: error
     desc: "README.md must exist"
 
+  # Brace expansion covers SPDX-style split-license filenames common in
+  # multi-licence skill repos plus the GNU COPYING convention. Single line
+  # because the runner's YAML parser doesn't unfold `>-` folded scalars
+  # for `target:` fields (it's bash regex, not a real YAML parser).
   - id: GH-02
     type: file_exists
-    target: "{LICENSE,LICENSE.md,LICENSE.txt,LICENSE-MIT,LICENSE-APACHE,LICENSE-APACHE-2.0,LICENSE-BSD,LICENSE-CC-BY-SA-4.0,LICENSE-CC0-1.0,LICENSE-GPL,LICENSE-AGPL,LICENSE-MPL}"
+    target: "{LICENSE,LICENSE.md,LICENSE.txt,COPYING,COPYING.md,COPYING.txt,LICENSE-MIT,LICENSE-APACHE,LICENSE-APACHE-2.0,LICENSE-BSD,LICENSE-BSD-2-Clause,LICENSE-BSD-3-Clause,LICENSE-CC-BY-SA-4.0,LICENSE-CC0-1.0,LICENSE-GPL,LICENSE-GPL-2.0,LICENSE-GPL-3.0,LICENSE-LGPL,LICENSE-LGPL-3.0,LICENSE-AGPL,LICENSE-AGPL-3.0,LICENSE-MPL,LICENSE-MPL-2.0}"
     severity: error
-    desc: "LICENSE file must exist (split licenses with multi-file naming like LICENSE-MIT/LICENSE-CC-BY-SA-4.0 are accepted)"
+    desc: >-
+      LICENSE file must exist. Accepts split-license naming (LICENSE-MIT,
+      LICENSE-CC-BY-SA-4.0, etc.) and the GNU COPYING convention.
 
   - id: GH-03
     type: file_exists
@@ -33,14 +39,22 @@ mechanical:
   - id: GH-05
     type: file_exists
     target: "{.github/CODEOWNERS,CODEOWNERS,docs/CODEOWNERS}"
-    severity: info
-    desc: "CODEOWNERS should exist for review assignments (satisfied org-wide if the GitHub owner has a `.github` repo providing these files)"
+    severity: warning
+    desc: >-
+      CODEOWNERS must exist in the repository itself for GitHub to assign
+      reviewers (only `.github/`, root, or `docs/` on the default branch are
+      recognised). Org-wide `.github` does NOT satisfy CODEOWNERS — that
+      mechanism only provides templates and community-health files, not
+      review-routing rules.
 
   - id: GH-06
     type: file_exists
-    target: "{.github/dependabot.yml,renovate.json,.github/renovate.json,.renovaterc.json,.renovaterc}"
+    target: "{.github/dependabot.yml,.github/dependabot.yaml,renovate.json,renovate.json5,.github/renovate.json,.github/renovate.json5,.renovaterc.json,.renovaterc.json5,.renovaterc}"
     severity: warning
-    desc: "Dependency update automation should be configured (Dependabot or Renovate)"
+    desc: >-
+      Dependency update automation should be configured (Dependabot or
+      Renovate). Accepts both .yml/.yaml for Dependabot and .json/.json5
+      for Renovate.
 
   - id: GH-07
     type: file_exists
@@ -88,14 +102,14 @@ mechanical:
   # === DEPENDABOT CHECKS ===
   - id: GH-13
     type: regex
-    target: .github/dependabot.yml
+    target: "{.github/dependabot.yml,.github/dependabot.yaml}"
     pattern: 'package-ecosystem:\s*"?(composer|gomod|npm|pip)"?'
     severity: warning
     desc: "Dependabot should monitor language-specific dependencies (composer, gomod, npm, pip)"
 
   - id: GH-14
     type: regex
-    target: .github/dependabot.yml
+    target: "{.github/dependabot.yml,.github/dependabot.yaml}"
     pattern: 'package-ecosystem:\s*"?github-actions"?'
     severity: warning
     desc: "Dependabot should monitor GitHub Actions"
@@ -120,14 +134,14 @@ mechanical:
   # pattern as ER-19/20 in enterprise-readiness-skill PR #55.
   - id: GH-19
     type: regex
-    target: .github/workflows/*.yml
+    target: ".github/workflows/*.{yml,yaml}"
     pattern: 'uses:[[:space:]]*github/codeql-action|uses:[[:space:]]*netresearch/[.]github/[.]github/workflows/codeql[.]yml'
     severity: warning
     desc: "CodeQL must be wired up (dedicated workflow or reusable-workflow job calling github/codeql-action or netresearch/.github/...codeql.yml)"
 
   - id: GH-20
     type: regex
-    target: .github/workflows/*.yml
+    target: ".github/workflows/*.{yml,yaml}"
     pattern: 'uses:[[:space:]]*ossf/scorecard-action|uses:[[:space:]]*netresearch/[.]github/[.]github/workflows/scorecard[.]yml'
     severity: info
     desc: >-
@@ -137,7 +151,7 @@ mechanical:
   # === SLSA PROVENANCE ===
   - id: GH-21
     type: regex_not
-    target: .github/workflows/*.yml
+    target: ".github/workflows/*.{yml,yaml}"
     pattern: 'slsa-framework/slsa-github-generator'
     severity: warning
     desc: "Should migrate from slsa-github-generator to actions/attest-build-provenance (cannot be SHA-pinned)"
@@ -167,28 +181,28 @@ mechanical:
   # contain the netresearch/... substring identically).
   - id: GH-24
     type: regex
-    target: .github/workflows/auto-merge*.yml
+    target: ".github/workflows/auto-merge*.{yml,yaml}"
     pattern: 'netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|on:[[:space:]]*\n[[:space:]]*pull_request_target:'
     severity: error
     desc: "Auto-merge workflow must delegate to netresearch reusable workflow OR use pull_request_target trigger for bot PR write permissions"
 
   - id: GH-25
     type: regex
-    target: .github/workflows/auto-merge*.yml
+    target: ".github/workflows/auto-merge*.{yml,yaml}"
     pattern: 'netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|github\.event\.pull_request\.user\.login'
     severity: warning
     desc: "Auto-merge should delegate to reusable workflow OR check github.event.pull_request.user.login (not github.actor which changes on reruns)"
 
   - id: GH-26
     type: regex
-    target: .github/workflows/auto-merge*.yml
+    target: ".github/workflows/auto-merge*.{yml,yaml}"
     pattern: 'netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|--auto'
     severity: warning
     desc: "Auto-merge should delegate to reusable workflow OR use gh pr merge --auto to respect branch protection and merge queues"
 
   - id: GH-27
     type: regex
-    target: .github/workflows/auto-merge*.yml
+    target: ".github/workflows/auto-merge*.{yml,yaml}"
     pattern: 'netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|gh api.*repos/\$'
     severity: info
     desc: "Auto-merge should delegate to reusable workflow OR dynamically detect merge strategy from repo settings"
@@ -221,14 +235,21 @@ mechanical:
     endpoint: "repos/{owner}/{repo}/branches/{default_branch}/protection"
     json_path: ".enforce_admins.enabled"
     severity: error
-    desc: "enforce_admins must be true on default branch — without it admins can bypass required status checks and review requirements (audited by GH-32 llm_review; runner skips because gh API access requires auth)"
+    desc: >-
+      enforce_admins must be true on default branch — without it admins can
+      bypass required status checks and review requirements (audited by
+      GH-32 llm_review; runner skips because gh API access requires auth).
 
   - id: GH-31
     type: gh_api
     endpoint: "repos/{owner}/{repo}/branches/{default_branch}/protection"
     json_path: ".required_conversation_resolution.enabled"
     severity: error
-    desc: "required_conversation_resolution must be enabled — combined with enforce_admins, ensures unresolved review threads block ALL merges including admins (audited by GH-32 llm_review; runner skips because gh API access requires auth)"
+    desc: >-
+      required_conversation_resolution must be enabled — combined with
+      enforce_admins, ensures unresolved review threads block ALL merges
+      including admins (audited by GH-32 llm_review; runner skips because
+      gh API access requires auth).
 
 llm_reviews:
   # === BRANCH PROTECTION + MERGE QUEUE COMPATIBILITY ===
