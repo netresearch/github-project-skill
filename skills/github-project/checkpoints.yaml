@@ -20,21 +20,21 @@ mechanical:
 
   - id: GH-03
     type: file_exists
-    target: SECURITY.md
-    severity: warning
-    desc: "SECURITY.md should exist for vulnerability reporting"
+    target: "{SECURITY.md,.github/SECURITY.md,docs/SECURITY.md}"
+    severity: info
+    desc: "SECURITY.md should exist for vulnerability reporting (satisfied org-wide if the GitHub owner has a `.github` repo providing these files)"
 
   - id: GH-04
     type: file_exists
-    target: CONTRIBUTING.md
-    severity: warning
-    desc: "CONTRIBUTING.md should exist"
+    target: "{CONTRIBUTING.md,.github/CONTRIBUTING.md,docs/CONTRIBUTING.md}"
+    severity: info
+    desc: "CONTRIBUTING.md should exist (satisfied org-wide if the GitHub owner has a `.github` repo providing these files)"
 
   - id: GH-05
     type: file_exists
-    target: .github/CODEOWNERS
-    severity: warning
-    desc: "CODEOWNERS should exist for review assignments"
+    target: "{.github/CODEOWNERS,CODEOWNERS,docs/CODEOWNERS}"
+    severity: info
+    desc: "CODEOWNERS should exist for review assignments (satisfied org-wide if the GitHub owner has a `.github` repo providing these files)"
 
   - id: GH-06
     type: file_exists
