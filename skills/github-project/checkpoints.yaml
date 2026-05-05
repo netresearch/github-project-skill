@@ -60,10 +60,10 @@ mechanical:
 
   - id: GH-07
     type: file_exists
-    target: "{.github/PULL_REQUEST_TEMPLATE.md,.github/pull_request_template.md,PULL_REQUEST_TEMPLATE.md,pull_request_template.md}"
-    org_provides: pull_request_template.md
+    target: "{.github/PULL_REQUEST_TEMPLATE.md,.github/pull_request_template.md,PULL_REQUEST_TEMPLATE.md,pull_request_template.md,docs/PULL_REQUEST_TEMPLATE.md,docs/pull_request_template.md}"
+    org_provides: "{PULL_REQUEST_TEMPLATE.md,pull_request_template.md}"
     severity: info
-    desc: "PR template should exist. Satisfied org-wide via {owner}/.github/pull_request_template.md when present."
+    desc: "PR template should exist (also accepted in docs/). Satisfied org-wide via {owner}/.github/PULL_REQUEST_TEMPLATE.md or pull_request_template.md when present."
 
   # Issue templates: prefer the modern `.yml` form templates (structured
   # fields, validation, required inputs) over legacy `.md` files. Accept
@@ -71,16 +71,16 @@ mechanical:
   - id: GH-08
     type: file_exists
     target: "{.github/ISSUE_TEMPLATE/bug_report.yml,.github/ISSUE_TEMPLATE/bug_report.md}"
-    org_provides: .github/ISSUE_TEMPLATE/bug_report.yml
+    org_provides: "{ISSUE_TEMPLATE/bug_report.yml,ISSUE_TEMPLATE/bug_report.md}"
     severity: info
-    desc: "Bug report template should exist (prefer .yml form template). Satisfied org-wide via {owner}/.github when present."
+    desc: "Bug report template should exist (prefer .yml form template). Satisfied org-wide via {owner}/.github/ISSUE_TEMPLATE/bug_report.yml or .md when present."
 
   - id: GH-09
     type: file_exists
     target: "{.github/ISSUE_TEMPLATE/feature_request.yml,.github/ISSUE_TEMPLATE/feature_request.md}"
-    org_provides: .github/ISSUE_TEMPLATE/feature_request.yml
+    org_provides: "{ISSUE_TEMPLATE/feature_request.yml,ISSUE_TEMPLATE/feature_request.md}"
     severity: info
-    desc: "Feature request template should exist (prefer .yml form template). Satisfied org-wide via {owner}/.github when present."
+    desc: "Feature request template should exist (prefer .yml form template). Satisfied org-wide via {owner}/.github/ISSUE_TEMPLATE/feature_request.yml or .md when present."
 
   # === CONTENT CHECKS ===
   - id: GH-10
@@ -333,21 +333,24 @@ llm_reviews:
     prompt: |
       Audit branch protection enforcement on the default branch:
       1. Run: gh api repos/OWNER/REPO/branches/BRANCH/protection --jq '.enforce_admins.enabled'
-         Must be true. Without enforce_admins, repository admins can bypass ALL
-         branch protection rules: required status checks, required reviews,
-         required conversation resolution, and signed commit requirements.
+         Recommended (informational only — see GH-30). When false, repository
+         admins can bypass branch protection rules. Netresearch's org default
+         leaves this off so admins retain bypass for emergency response;
+         tighten to true only if your org requires admin-bind policy. Do NOT
+         report this as an error on its own — flag it as info/advisory.
       2. Run: gh api repos/OWNER/REPO/branches/BRANCH/protection --jq '.required_conversation_resolution.enabled'
          Must be true. Without this, unresolved review threads do not block merges.
-      3. Verify BOTH are enabled together. enforce_admins alone is insufficient if
-         conversation resolution is not required (admins could merge with unresolved
-         feedback). Conversation resolution alone is insufficient if enforce_admins
-         is false (admins bypass it entirely).
+         This is the primary error-level enforcement check (paired with GH-31).
+      3. Note the interaction: enforce_admins=false means admins COULD bypass
+         required_conversation_resolution. Surface this as an advisory trade-off,
+         not a blocking failure, since it matches the documented org default.
       4. If using rulesets instead of branch protection, check the equivalent:
          gh api repos/OWNER/REPO/rulesets --jq '.[].rules[] | select(.type=="pull_request") | .parameters'
          Look for required_review_thread_resolution: true and bypass_actors being empty.
-      Report which settings are missing and the specific security risk each creates.
+      Report required_conversation_resolution gaps as errors; report
+      enforce_admins gaps as info (advisory).
     severity: error
-    desc: "Verify enforce_admins and required_conversation_resolution are both enabled to prevent bypassing review requirements"
+    desc: "Verify required_conversation_resolution is enabled (error); enforce_admins is advisory only (see GH-30)."
 
   # === SUBJECTIVE CHECKS (require LLM judgment) ===
   - id: GH-15
