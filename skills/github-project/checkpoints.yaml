@@ -141,23 +141,38 @@ mechanical:
     type: regex
     target: ".github/workflows/*.{yml,yaml}"
     pattern: 'uses:[[:space:]]*github/codeql-action|uses:[[:space:]]*netresearch/[.]github/[.]github/workflows/codeql[.]yml'
+    follow_uses: true
     severity: warning
-    desc: "CodeQL must be wired up (dedicated workflow or reusable-workflow job calling github/codeql-action or netresearch/.github/...codeql.yml)"
+    desc: >-
+      CodeQL must be wired up. Satisfied by either a local workflow that uses
+      github/codeql-action directly, or a job that delegates to a reusable
+      workflow (e.g. netresearch/.github/.github/workflows/codeql.yml) whose
+      upstream body uses github/codeql-action. follow_uses: true expands the
+      search to fetch the reusable workflow contents one hop via gh api.
 
   - id: GH-20
     type: regex
     target: ".github/workflows/*.{yml,yaml}"
     pattern: 'uses:[[:space:]]*ossf/scorecard-action|uses:[[:space:]]*netresearch/[.]github/[.]github/workflows/scorecard[.]yml'
+    follow_uses: true
     severity: info
     desc: >-
-      OpenSSF Scorecard must be wired up (dedicated workflow or reusable-workflow
-      job calling ossf/scorecard-action or netresearch/.github/...scorecard.yml)
+      OpenSSF Scorecard must be wired up. Satisfied by a local workflow using
+      ossf/scorecard-action directly, or a job that delegates to a reusable
+      workflow (e.g. netresearch/.github/.github/workflows/scorecard.yml) whose
+      upstream body uses ossf/scorecard-action. follow_uses: true expands the
+      search to fetch the reusable workflow contents one hop via gh api.
 
   # === SLSA PROVENANCE ===
+  # regex_not with follow_uses: the legacy slsa-github-generator pattern must
+  # not appear in either the local workflow OR any one-hop reusable workflow
+  # body — otherwise a repo could "hide" the deprecated generator inside a
+  # delegated workflow and silently pass.
   - id: GH-21
     type: regex_not
     target: ".github/workflows/*.{yml,yaml}"
     pattern: 'slsa-framework/slsa-github-generator'
+    follow_uses: true
     severity: warning
     desc: "Should migrate from slsa-github-generator to actions/attest-build-provenance (cannot be SHA-pinned)"
 
