@@ -227,6 +227,82 @@ mechanical:
     severity: info
     desc: "Auto-merge should delegate to reusable workflow OR dynamically detect merge strategy from repo settings"
 
+  # === COMPOSITE-ACTION SHA PINNING INSIDE WORKFLOWS ===
+  # Reusable-workflow refs like `uses: org/repo/.github/workflows/foo.yml@main`
+  # are exempt (see references/reusable-workflow-security.md — internal `@main`
+  # is allowed for full reusable workflows). Composite-action refs like
+  # `uses: org/repo/.github/actions/foo@main` are NOT exempt: they are resolved
+  # at the *consumer's* runner under the consumer's allow-list policy. A
+  # consumer that enforces "all actions must be SHA-pinned" will reject a
+  # reusable workflow that internally references a composite action by branch
+  # or tag, even though the workflow file itself is unchanged. SHA-pin
+  # composite-action refs to avoid breaking SHA-pinned consumers.
+  # PCRE negative lookahead matches refs that are NOT a 40-char hex SHA.
+  # The lookahead requires the 40 hex chars to be followed by quote/comment/
+  # whitespace/EOL — without that terminator, refs like `@<40hex>-tag` would
+  # spuriously pass because `\b` matches between hex and `-`.
+  - id: GH-34
+    type: regex_not
+    target: ".github/workflows/*.{yml,yaml}"
+    pattern: 'uses:\s+["'']?[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/\.github/actions/[^@]+@(?![0-9a-f]{40}(?:["''#\s]|$))'
+    severity: error
+    desc: >-
+      Composite action references inside .github/workflows/*.yml must be
+      SHA-pinned (40-char hex). Branch/tag refs (@main, @v1) break consumers
+      that enforce SHA pinning when this workflow is called as a reusable
+      workflow. See references/reusable-workflow-pitfalls.md.
+
+  # === HARDEN-RUNNER FIRST-STEP CHECK ===
+  # Mechanical YAML-AST check via python yaml.safe_load (a regex-only check
+  # cannot reliably reason about "first step of each job" across multi-line
+  # YAML). Skipped if PyYAML is unavailable. Jobs that are pure
+  # reusable-workflow callers (job-level `uses:` instead of `steps:`) are
+  # exempt — they have no runner steps to harden.
+  - id: GH-35
+    type: command
+    target: |
+      command -v python3 >/dev/null 2>&1 || exit 0
+      python3 - <<'PY'
+      try:
+          import yaml
+      except ImportError:
+          import sys; sys.exit(0)
+      import glob, sys
+      bad = []
+      for f in sorted(glob.glob('.github/workflows/*.yml')
+                      + glob.glob('.github/workflows/*.yaml')):
+          try:
+              with open(f) as fh:
+                  wf = yaml.safe_load(fh)
+          except Exception:
+              continue
+          if not isinstance(wf, dict):
+              continue
+          for jname, job in (wf.get('jobs') or {}).items():
+              if not isinstance(job, dict):
+                  continue
+              # Skip reusable-workflow callers (no steps array).
+              if 'uses' in job and 'steps' not in job:
+                  continue
+              steps = job.get('steps')
+              if not isinstance(steps, list) or not steps:
+                  continue
+              first = steps[0] if isinstance(steps[0], dict) else {}
+              uses = first.get('uses', '') or ''
+              if not uses.startswith('step-security/harden-runner'):
+                  bad.append(f"{f}::{jname}")
+      if bad:
+          sys.stderr.write("Jobs missing harden-runner as first step: "
+                           + ", ".join(bad) + "\n")
+          sys.exit(1)
+      sys.exit(0)
+      PY
+    severity: warning
+    desc: >-
+      Every workflow job with `steps:` should start with
+      `step-security/harden-runner` (audit egress). Jobs that are pure
+      reusable-workflow callers (job-level `uses:`) are exempt.
+
   # === AUTO-APPROVE (pr-quality.yml) COPILOT RACE CONDITION ===
   - id: GH-33
     type: command
@@ -351,6 +427,44 @@ llm_reviews:
       enforce_admins gaps as info (advisory).
     severity: error
     desc: "Verify required_conversation_resolution is enabled (error); enforce_admins is advisory only (see GH-30)."
+
+  # === PR REVIEW COMPLETENESS PROCESS CHECK ===
+  - id: GH-36
+    domain: pr-process
+    prompt: |
+      When a PR's review feedback is being addressed, before declaring it
+      "ready to merge" or "all comments addressed":
+
+      1. Query unresolved review threads via GraphQL (first:100 is the
+         GraphQL maximum; for PRs at the cap, paginate with
+         pageInfo.hasNextPage / endCursor + after:):
+         gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+           repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+             reviewThreads(first:100){
+               pageInfo{hasNextPage endCursor}
+               nodes{id isResolved comments(first:1){nodes{body path line}}}
+             }
+           }}
+         }' -f owner=OWNER -f repo=REPO -F pr=NUMBER \
+            --jq '.data.repository.pullRequest.reviewThreads.nodes
+                  | map(select(.isResolved == false))'
+
+      2. The count of unresolved threads must be exactly zero. If
+         pageInfo.hasNextPage is true, paginate before concluding.
+      3. If non-zero, list each thread with the first comment's body
+         (truncated to ~100 chars) plus path/line so the user can see
+         exactly what's outstanding.
+
+      Common failure mode: addressing only the threads visible at the top
+      of the PR discussion, missing inline-code threads or threads from
+      earlier reviewers. The GraphQL query is the single source of truth —
+      do not rely on the PR conversation tab alone.
+
+      Report: "All threads resolved" OR "N unresolved thread(s): <list>".
+    severity: info
+    desc: >-
+      Before declaring PR review feedback addressed, verify zero unresolved
+      review threads via GraphQL (not just the conversation tab).
 
   # === SUBJECTIVE CHECKS (require LLM judgment) ===
   - id: GH-15
