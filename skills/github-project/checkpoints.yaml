@@ -27,14 +27,16 @@ mechanical:
   - id: GH-03
     type: file_exists
     target: "{SECURITY.md,.github/SECURITY.md,docs/SECURITY.md}"
+    org_provides: SECURITY.md
     severity: info
-    desc: "SECURITY.md should exist for vulnerability reporting (satisfied org-wide if the GitHub owner has a `.github` repo providing these files)"
+    desc: "SECURITY.md should exist for vulnerability reporting. Satisfied org-wide via {owner}/.github/SECURITY.md when present."
 
   - id: GH-04
     type: file_exists
     target: "{CONTRIBUTING.md,.github/CONTRIBUTING.md,docs/CONTRIBUTING.md}"
+    org_provides: CONTRIBUTING.md
     severity: info
-    desc: "CONTRIBUTING.md should exist (satisfied org-wide if the GitHub owner has a `.github` repo providing these files)"
+    desc: "CONTRIBUTING.md should exist. Satisfied org-wide via {owner}/.github/CONTRIBUTING.md when present."
 
   - id: GH-05
     type: file_exists
@@ -58,9 +60,10 @@ mechanical:
 
   - id: GH-07
     type: file_exists
-    target: .github/PULL_REQUEST_TEMPLATE.md
+    target: "{.github/PULL_REQUEST_TEMPLATE.md,.github/pull_request_template.md,PULL_REQUEST_TEMPLATE.md,pull_request_template.md}"
+    org_provides: pull_request_template.md
     severity: info
-    desc: "PR template should exist"
+    desc: "PR template should exist. Satisfied org-wide via {owner}/.github/pull_request_template.md when present."
 
   # Issue templates: prefer the modern `.yml` form templates (structured
   # fields, validation, required inputs) over legacy `.md` files. Accept
@@ -68,14 +71,16 @@ mechanical:
   - id: GH-08
     type: file_exists
     target: "{.github/ISSUE_TEMPLATE/bug_report.yml,.github/ISSUE_TEMPLATE/bug_report.md}"
+    org_provides: .github/ISSUE_TEMPLATE/bug_report.yml
     severity: info
-    desc: "Bug report template should exist (prefer .yml form template — structured fields + validation)"
+    desc: "Bug report template should exist (prefer .yml form template). Satisfied org-wide via {owner}/.github when present."
 
   - id: GH-09
     type: file_exists
     target: "{.github/ISSUE_TEMPLATE/feature_request.yml,.github/ISSUE_TEMPLATE/feature_request.md}"
+    org_provides: .github/ISSUE_TEMPLATE/feature_request.yml
     severity: info
-    desc: "Feature request template should exist (prefer .yml form template — structured fields + validation)"
+    desc: "Feature request template should exist (prefer .yml form template). Satisfied org-wide via {owner}/.github when present."
 
   # === CONTENT CHECKS ===
   - id: GH-10
