@@ -1,6 +1,6 @@
 ---
 name: github-project
-description: "Use when PRs won't merge or show BLOCKED status (including green-CI Copilot-review race conditions), auto-approve / auto-merge fails for Dependabot/Renovate, branch protection or rulesets need configuring, GitHub Actions workflows have issues or CI is failing, or setting up CODEOWNERS / PR templates."
+description: "Use when PRs won't merge or show BLOCKED (including Copilot-review race), auto-approve/auto-merge fails for Dependabot/Renovate, branch protection or rulesets need configuring, GitHub Actions/CI fails, authoring reusable workflows or composite actions, harden-runner setup, or setting up CODEOWNERS / PR templates."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
 compatibility: "Requires gh CLI, git."
 metadata:
@@ -107,6 +107,8 @@ scripts/verify-github-project.sh /path/to/repository
 | Bash pitfalls in workflow `run:` steps | `references/workflow-bash-patterns.md` |
 | PR shows too many commits (fork merge base) | `references/pr-commit-cleanup.md` |
 | Multi-repo batch ops | `references/multi-repo-operations.md` |
+| Reusable workflow supply-chain trust + SHA pinning | `references/reusable-workflow-security.md` |
+| Reusable workflow pitfalls (composite actions, ref caching, permissions) | `references/reusable-workflow-pitfalls.md` |
 
 ---
 
