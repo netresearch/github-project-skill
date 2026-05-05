@@ -212,10 +212,16 @@ When merging PRs across many repos:
 
 Repos with merge queues enabled reject the `-d` / `--delete-branch` flag — the queue manages the head-branch lifecycle itself. Symptom: `gh pr merge` exits non-zero with an error mentioning the merge queue, even though the PR was added to the queue successfully.
 
-**Fix — detect the queue first, then conditionally drop the flag:**
+**Fix — detect the queue first, then conditionally drop the flag.** Note: `gh api "repos/$REPO"` does NOT return a `merge_queue` field; query GraphQL `Repository.mergeQueue` instead, which returns `null` when no queue is configured:
 
 ```bash
-has_queue=$(gh api "repos/$REPO" --jq '.merge_queue // null')
+OWNER="${REPO%/*}"; NAME="${REPO#*/}"
+has_queue=$(gh api graphql -f query="{ repository(owner: \"$OWNER\", name: \"$NAME\") { mergeQueue { id } } }" \
+  --jq '.data.repository.mergeQueue // "null"')
+if [[ "$?" -ne 0 ]]; then
+  echo "Error: failed to query merge queue status for $REPO" >&2
+  exit 1
+fi
 if [[ "$has_queue" == "null" ]]; then
   gh pr merge "$PR" --repo "$REPO" --merge --delete-branch
 else
