@@ -222,14 +222,22 @@ if [[ "$?" -ne 0 ]]; then
   echo "Error: failed to query merge queue status for $REPO" >&2
   exit 1
 fi
+# Auto-detect allowed merge strategy too — repos may not allow `--merge`.
+# See auto-merge-guide.md → "Signed Commits and Merge Strategy Compatibility".
+STRATEGY=$(gh api "repos/$REPO" --jq '
+  if .allow_squash_merge then "--squash"
+  elif .allow_merge_commit then "--merge"
+  elif .allow_rebase_merge then "--rebase"
+  else "--squash" end')
+
 if [[ "$has_queue" == "null" ]]; then
-  gh pr merge "$PR" --repo "$REPO" --merge --delete-branch
+  gh pr merge "$PR" --repo "$REPO" "$STRATEGY" --delete-branch
 else
-  gh pr merge "$PR" --repo "$REPO" --merge   # queue handles branch deletion
+  gh pr merge "$PR" --repo "$REPO" "$STRATEGY"   # queue handles branch deletion
 fi
 ```
 
-In a batch loop across mixed repos, always run the detection per repo — assuming "no queue" silently leaves stale branches behind on the queue-enabled ones, and assuming "queue" causes `--delete-branch` failures on the unqueued ones.
+In a batch loop across mixed repos, always run **both** detections per repo — assuming "no queue" silently leaves stale branches behind on the queue-enabled ones, assuming "queue" causes `--delete-branch` failures on the unqueued ones, and hardcoding `--merge` causes "merge method not allowed" failures on repos that only permit squash or rebase.
 
 ### Contents API commits don't satisfy `required_signatures`
 
