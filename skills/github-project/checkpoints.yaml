@@ -238,10 +238,13 @@ mechanical:
   # or tag, even though the workflow file itself is unchanged. SHA-pin
   # composite-action refs to avoid breaking SHA-pinned consumers.
   # PCRE negative lookahead matches refs that are NOT a 40-char hex SHA.
+  # The lookahead requires the 40 hex chars to be followed by quote/comment/
+  # whitespace/EOL — without that terminator, refs like `@<40hex>-tag` would
+  # spuriously pass because `\b` matches between hex and `-`.
   - id: GH-34
     type: regex_not
     target: ".github/workflows/*.{yml,yaml}"
-    pattern: 'uses:\s+["'']?[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/\.github/actions/[^@]+@(?![0-9a-f]{40}\b)'
+    pattern: 'uses:\s+["'']?[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/\.github/actions/[^@]+@(?![0-9a-f]{40}(?:["''#\s]|$))'
     severity: error
     desc: >-
       Composite action references inside .github/workflows/*.yml must be
@@ -259,7 +262,7 @@ mechanical:
     type: command
     target: |
       command -v python3 >/dev/null 2>&1 || exit 0
-      python3 - <<'PY' 2>/dev/null || exit 0
+      python3 - <<'PY'
       try:
           import yaml
       except ImportError:
@@ -432,18 +435,22 @@ llm_reviews:
       When a PR's review feedback is being addressed, before declaring it
       "ready to merge" or "all comments addressed":
 
-      1. Query unresolved review threads via GraphQL:
+      1. Query unresolved review threads via GraphQL (first:100 is the
+         GraphQL maximum; for PRs at the cap, paginate with
+         pageInfo.hasNextPage / endCursor + after:):
          gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
            repository(owner:$owner,name:$repo){pullRequest(number:$pr){
-             reviewThreads(first:50){nodes{
-               id isResolved comments(first:1){nodes{body path line}}
-             }}
+             reviewThreads(first:100){
+               pageInfo{hasNextPage endCursor}
+               nodes{id isResolved comments(first:1){nodes{body path line}}}
+             }
            }}
          }' -f owner=OWNER -f repo=REPO -F pr=NUMBER \
             --jq '.data.repository.pullRequest.reviewThreads.nodes
                   | map(select(.isResolved == false))'
 
-      2. The count of unresolved threads must be exactly zero.
+      2. The count of unresolved threads must be exactly zero. If
+         pageInfo.hasNextPage is true, paginate before concluding.
       3. If non-zero, list each thread with the first comment's body
          (truncated to ~100 chars) plus path/line so the user can see
          exactly what's outstanding.

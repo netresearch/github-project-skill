@@ -1,6 +1,6 @@
 ---
 name: github-project
-description: "Use when PRs won't merge or show BLOCKED (including Copilot-review race), auto-approve/auto-merge fails for Dependabot/Renovate, branch protection or rulesets need configuring, GitHub Actions/CI fails, authoring reusable workflows or composite actions, harden-runner setup, or setting up CODEOWNERS / PR templates."
+description: "Use when PRs won't merge or show BLOCKED (including Copilot-review race), auto-approve/auto-merge fails for Dependabot/Renovate, branch protection/rulesets need configuring, CI fails, authoring reusable workflows or composite actions, harden-runner setup, or CODEOWNERS / PR templates."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
 compatibility: "Requires gh CLI, git."
 metadata:
@@ -35,18 +35,18 @@ GitHub repository configuration, troubleshooting, and collaboration workflow bes
 gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
   repository(owner:$owner,name:$repo){pullRequest(number:$pr){
     mergeStateStatus reviewDecision mergeable
-    reviewThreads(first:50){nodes{isResolved comments(first:1){nodes{body}}}}
+    reviewThreads(first:100){nodes{isResolved comments(first:1){nodes{body}}}}
   }}
 }' -f owner=OWNER -f repo=REPO -F pr=NUMBER --jq '.data.repository.pullRequest'
 ```
 
 ### Solo Maintainer: PRs Stuck on REVIEW_REQUIRED
 
-Use `assets/pr-quality.yml.template` for auto-approve with `required_approving_review_count >= 1`. See `references/auto-merge-guide.md`.
+Use `assets/pr-quality.yml.template` for auto-approve with `required_approving_review_count >= 1`.
 
 ### Auto-merge Setup
 
-Requirements: `allow_auto_merge` on repo, `pull_request_target` trigger (not `pull_request`), check `user.login` (not `github.actor`), `gh pr merge --auto` with dynamic strategy. See `references/auto-merge-guide.md`.
+Requirements: `allow_auto_merge` on repo, `pull_request_target` trigger (not `pull_request`), check `user.login` (not `github.actor`), `gh pr merge --auto` with dynamic strategy.
 
 ### Auto-merge Not Working
 
@@ -74,14 +74,14 @@ gh api repos/OWNER/REPO/branches/main/protection --jq '.enforce_admins.enabled'
 gh api repos/OWNER/REPO/code-scanning/default-setup --jq '.state'
 gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
   repository(owner:$owner,name:$repo){pullRequest(number:$pr){
-    reviewThreads(first:50){nodes{id isResolved}}
+    reviewThreads(first:100){nodes{id isResolved}}
   }}
 }' -f owner=OWNER -f repo=REPO -F pr=NUMBER
 ```
 
 ### Merge Strategy Issues
 
-See `references/auto-merge-guide.md` for: rebase-merge-with-signed-commits fixes, workflow-file PR manual merges, and the Copilot-review auto-approve race (PR `BLOCKED` despite green CI + empty `reviewDecision`).
+See `references/auto-merge-guide.md` for: rebase-merge-with-signed-commits fixes, workflow-file PR manual merges, and the Copilot-review auto-approve race.
 
 ## Running Scripts
 
