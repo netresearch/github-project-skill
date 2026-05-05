@@ -254,11 +254,13 @@ mechanical:
     type: gh_api
     endpoint: "repos/{owner}/{repo}/branches/{default_branch}/protection"
     json_path: ".enforce_admins.enabled"
-    severity: error
+    severity: info
     desc: >-
-      enforce_admins must be true on default branch — without it admins can
-      bypass required status checks and review requirements (audited by
-      GH-32 llm_review; runner skips because gh API access requires auth).
+      enforce_admins recommended on default branch so admins are also bound
+      by required status checks and review requirements. Severity is info
+      (not error) because netresearch's org default leaves this off — admins
+      retain bypass for emergency response. Tighten to true if your org
+      requires admin-bind policy.
 
   - id: GH-31
     type: gh_api
