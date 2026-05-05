@@ -204,11 +204,46 @@ Remove the exemption once the upstream fix is released.
 
 When merging PRs across many repos:
 
-- **Check allowed merge methods** — repos may only allow rebase, squash, or merge commits. Use `gh api repos/OWNER/REPO --jq '{allow_merge: .allow_merge_commit, allow_rebase: .allow_rebase_merge, allow_squash: .allow_squash_merge}'`
+- **Check allowed merge methods** — repos may only allow rebase, squash, or merge commits. Use `gh api repos/OWNER/REPO --jq '{allow_merge: .allow_merge_commit, allow_rebase: .allow_rebase_merge, allow_squash: .allow_squash_merge}'`. Detection snippet + the rebase-merge-cannot-be-signed caveat are in [`auto-merge-guide.md`](./auto-merge-guide.md) → "Signed Commits and Merge Strategy Compatibility". Real-world heterogeneity to expect: across one Netresearch fleet alone, some repos allow only rebase, some only merge commits, and some all three.
 - **`--admin` bypasses branch protection** — useful when `enforce_admins` is false and you're a repo admin
-- **`--delete-branch` fails with merge queues** — omit the flag for repos with merge queues enabled
-- **`dismiss_stale_reviews` clears approvals on force-push** — after rebasing, auto-approve workflows must re-run
-- **GitHub API content pushes aren't GPG-signed** — commits via the Contents API use GitHub's web-flow committer
+- **`dismiss_stale_reviews` clears approvals on force-push** — after rebasing, prior approvals are dismissed and any auto-approve workflow must re-run. This is expected behavior, not a bug. See [`auto-merge-guide.md`](./auto-merge-guide.md) → "Auto-Approve Race Condition with Copilot Reviewer" for the variant where auto-approve fires before Copilot finishes reviewing and the PR ends up `REVIEW_REQUIRED` blocked.
+
+### `gh pr merge --delete-branch` fails with merge queues
+
+Repos with merge queues enabled reject the `-d` / `--delete-branch` flag — the queue manages the head-branch lifecycle itself. Symptom: `gh pr merge` exits non-zero with an error mentioning the merge queue, even though the PR was added to the queue successfully.
+
+**Fix — detect the queue first, then conditionally drop the flag:**
+
+```bash
+has_queue=$(gh api "repos/$REPO" --jq '.merge_queue // null')
+if [[ "$has_queue" == "null" ]]; then
+  gh pr merge "$PR" --repo "$REPO" --merge --delete-branch
+else
+  gh pr merge "$PR" --repo "$REPO" --merge   # queue handles branch deletion
+fi
+```
+
+In a batch loop across mixed repos, always run the detection per repo — assuming "no queue" silently leaves stale branches behind on the queue-enabled ones, and assuming "queue" causes `--delete-branch` failures on the unqueued ones.
+
+### Contents API commits don't satisfy `required_signatures`
+
+`gh api -X PUT repos/.../contents/...` is the fastest way to land a one-line edit across many repos, but the resulting commits use GitHub's `web-flow` committer identity — they are **not signed with your GPG/SSH key**. On any repo with branch protection `required_signatures: true`, those commits are rejected by the merge gate.
+
+**Symptom:** the API push itself succeeds (HTTP 201), but a follow-up PR or the same-branch merge fails with:
+
+```
+Required signatures: At least one of the commits is not signed.
+```
+
+Or, on default-branch direct pushes, HTTP 409 from the contents API itself when branch protection blocks unsigned commits.
+
+**Workarounds (pick the one that matches your situation):**
+
+1. **`gh pr merge --admin`** — bypass branch protection on a per-merge basis. Requires `enforce_admins: false` AND admin role on the repo. Cleanest for solo-maintainer batch ops.
+2. **Push real local commits via SSH** instead of using the contents API. Slightly slower per repo, but the commits carry your signature and need no bypass. This is the safer default when the batch mixes signing-required and signing-optional repos — it works uniformly.
+3. **GitHub App with verified signing** — if the batch tool is something other people will run too, register a GitHub App with a verified signing identity and have it commit on your behalf. Heavier setup, but no per-repo admin bypass and no per-user keys.
+
+See also [`multi-repo-operations.md`](./multi-repo-operations.md) → "Contents API vs branch protection" for the related HTTP 409 angle (PR-required / merge-queue-required repos rejecting contents API pushes regardless of signing).
 
 ## Why Not Just Use `tailor set-version`?
 

@@ -40,6 +40,22 @@ permissions:
 
 > **Scorecard note:** The OpenSSF Scorecard Token-Permissions check flags workflow-level `write` permissions.
 
+### Anti-pattern: `permissions: read-all`
+
+`read-all` is the lazy "make Scorecard stop complaining about missing permissions" knob — but it scores **0** on the Token-Permissions check, not full marks. The check wants **explicit, per-permission scopes** so a reviewer can audit what each workflow actually needs.
+
+```yaml
+# WRONG — scores 0 on Token-Permissions
+permissions: read-all
+
+# RIGHT — explicit scopes, scores 10
+permissions:
+    contents: read
+    # add only what's needed (e.g. pull-requests: read for label/check workflows)
+```
+
+If a workflow only reads code, just `contents: read` is enough. Add other read scopes one-by-one as steps need them. Never use `read-all` as a placeholder you mean to tighten "later" — Scorecard treats it as wide-open.
+
 ### SLSA Provenance: Use actions/attest-build-provenance (not slsa-github-generator)
 
 `slsa-framework/slsa-github-generator` **cannot be SHA-pinned** — known unfixable limitation ([#4440](https://github.com/slsa-framework/slsa-github-generator/issues/4440), [slsa-verifier#12](https://github.com/slsa-framework/slsa-verifier/issues/12)). Its internal actions use tag refs that conflict with SHA-pinning rulesets.
@@ -207,6 +223,24 @@ gh api repos/OWNER/REPO/code-scanning/default-setup -X PATCH -f state=not-config
 ```bash
 gh api repos/OWNER/REPO/code-scanning/default-setup --jq 'if .state == "not-configured" then "OK: Default Setup disabled" else "FAIL: Default Setup still enabled - DISABLE IT" end'
 ```
+
+### Supported Languages — PHP Is NOT Supported
+
+CodeQL does **not** support PHP (as of 2026; tracked in [community discussion #158392](https://github.com/orgs/community/discussions/158392)). On a PHP/TYPO3 repo, the only languages worth scanning are:
+
+- `javascript-typescript` — covers JS, TS, and JSX/TSX in `Resources/Public/JavaScript/` and similar
+- `actions` — scans `.github/workflows/*.yml` for misconfigurations
+
+A PHP-only repo with neither JS nor non-trivial workflows has **nothing CodeQL can scan** — disabling Default Setup and skipping the custom workflow is correct.
+
+```yaml
+# .github/workflows/codeql.yml — PHP/TYPO3 repo
+strategy:
+  matrix:
+    language: [javascript-typescript, actions]   # NOT 'php'
+```
+
+If you list `php` in the matrix, the workflow fails at the `init` step with "Unrecognised language: php". If you list `javascript` (the old name), CodeQL Action v3+ rejects it — use `javascript-typescript`.
 
 ## Required Reviews from All Requested Reviewers (MANDATORY)
 
