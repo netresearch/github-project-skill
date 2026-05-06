@@ -16,16 +16,16 @@ GitHub repository configuration, troubleshooting, and collaboration workflow bes
 
 ## When to Use
 
-- PR won't merge, shows BLOCKED, or has unresolved review threads
-- Auto-merge not working for Dependabot/Renovate PRs
-- Solo maintainer needs auto-approve for their own PRs
-- Branch protection, rulesets, or `enforce_admins` audit
-- GitHub Actions workflow problems, CI failures, or permission issues
-- Signed commit merge failures (rebase cannot be auto-signed)
-- CodeQL default setup conflicts with custom workflows
-- OpenSSF Scorecard improvements (token permissions, pinned deps)
-- Setting up CODEOWNERS, issue templates, PR templates, or release labeling
-- Fork PR merge base issues (too many commits shown)
+- PR won't merge, BLOCKED, or unresolved threads
+- Auto-merge fails for Dependabot/Renovate
+- Solo maintainer needs auto-approve
+- Branch protection, rulesets, `enforce_admins`
+- GHA failures or permission issues
+- Signed commit merge (rebase can't auto-sign)
+- CodeQL default vs custom workflows
+- OpenSSF Scorecard (token perms, pinned deps)
+- CODEOWNERS, issue/PR templates, release labels
+- Fork PR merge base (too many commits)
 
 ## Quick Diagnostics
 
