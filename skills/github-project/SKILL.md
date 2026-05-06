@@ -109,6 +109,8 @@ scripts/verify-github-project.sh /path/to/repository
 | Multi-repo batch ops | `references/multi-repo-operations.md` |
 | Reusable workflow supply-chain trust + SHA pinning | `references/reusable-workflow-security.md` |
 | Reusable workflow pitfalls (composite actions, ref caching, permissions) | `references/reusable-workflow-pitfalls.md` |
+| Org-level security settings (SHA pinning) | `references/org-security-settings.md` |
+| Tag validation (defense-in-depth) | `references/tag-validation.md` |
 
 ---
 
