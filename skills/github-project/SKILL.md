@@ -1,6 +1,6 @@
 ---
 name: github-project
-description: "Use when PRs won't merge or show BLOCKED (including Copilot-review race), auto-approve/auto-merge fails for Dependabot/Renovate, branch protection/rulesets need configuring, CI fails, authoring reusable workflows or composite actions, harden-runner setup, or CODEOWNERS / PR templates."
+description: "Use when PRs won't merge or show BLOCKED (including Copilot-review race), auto-approve/auto-merge fails for Dependabot/Renovate, AI reviewer (Copilot/gemini/CodeRabbit) leaves wrong or stale advice, branch protection/rulesets need configuring, CI fails, authoring reusable workflows or composite actions, harden-runner setup, or CODEOWNERS / PR templates."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
 compatibility: "Requires gh CLI, git."
 metadata:
@@ -16,16 +16,16 @@ GitHub repository configuration, troubleshooting, and collaboration workflow bes
 
 ## When to Use
 
-- PR won't merge, BLOCKED, or unresolved threads
-- Auto-merge fails for Dependabot/Renovate
-- Solo maintainer needs auto-approve
-- Branch protection, rulesets, `enforce_admins`
-- GHA failures or permission issues
-- Signed commit merge (rebase can't auto-sign)
-- CodeQL default vs custom workflows
-- OpenSSF Scorecard (token perms, pinned deps)
-- CODEOWNERS, issue/PR templates, release labels
-- Fork PR merge base (too many commits)
+- PR won't merge, shows BLOCKED, or has unresolved review threads
+- Auto-merge not working for Dependabot/Renovate PRs
+- Solo maintainer needs auto-approve for their own PRs
+- Branch protection, rulesets, or `enforce_admins` audit
+- GitHub Actions workflow problems, CI failures, or permission issues
+- Signed commit merge failures (rebase cannot be auto-signed)
+- CodeQL default setup conflicts with custom workflows
+- OpenSSF Scorecard improvements (token permissions, pinned deps)
+- Setting up CODEOWNERS, issue templates, PR templates, or release labeling
+- Fork PR merge base issues (too many commits shown)
 
 ## Quick Diagnostics
 
@@ -109,8 +109,7 @@ scripts/verify-github-project.sh /path/to/repository
 | Multi-repo batch ops | `references/multi-repo-operations.md` |
 | Reusable workflow supply-chain trust + SHA pinning | `references/reusable-workflow-security.md` |
 | Reusable workflow pitfalls (composite actions, ref caching, permissions) | `references/reusable-workflow-pitfalls.md` |
-| Org-level security settings (SHA pinning) | `references/org-security-settings.md` |
-| Tag validation (defense-in-depth) | `references/tag-validation.md` |
+| AI reviewer pushback: hallucinated APIs, stale release info, evidence-based replies | `references/ai-reviewer-pushback.md` |
 
 ---
 
