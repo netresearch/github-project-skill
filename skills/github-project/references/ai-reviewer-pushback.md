@@ -36,17 +36,17 @@ The reviewer asserts that a config key, function, or type is named X. The name d
 
 The reviewer claims a current release "is not out yet," recommends an outdated minimum version, or asserts a feature "doesn't exist" when it has shipped. Training cutoffs are months to years behind, and bots rarely declare their knowledge boundary.
 
-**Real examples:**
+**Illustrative shapes** (specific versions cited here will go stale — treat as examples of the pattern, not authoritative current state):
 
-- "PHP 8.5 is not released yet" — when it is.
-- "Use Node 20 LTS as the maximum supported version" — when 22 LTS is current.
-- "TYPO3 v14 has not been released" — when v14.3 LTS is the current target.
+- "Language X version N is not released yet" — when it is. Verify against the language's release page.
+- "Use Node N as the maximum supported version" — when a newer LTS is current.
+- "Framework F version N has not been released" — when an N.x release is already in production.
 
 **Tell:** version assertions without a release-date check, or recommendations that pull constraints downward from what your CI matrix is already running.
 
 ### Pattern advice frozen at a past major
 
-The reviewer suggests a deprecated pattern that was current in their training data: jQuery for vanilla DOM tasks, Vue 2 Options API in a Vue 3 codebase, deprecated GitHub Actions inputs (`fail_on_error` instead of `fail_level`), CKEditor 4 plugin shapes in a CKE5 file.
+The reviewer suggests a deprecated pattern that was current in their training data: jQuery for vanilla DOM tasks, Vue 2 Options API in a Vue 3 codebase, deprecated GitHub Actions inputs (`fail_on_error` instead of `fail_level`), CKEditor 4 plugin shapes used in a CKEditor 5 codebase.
 
 **Tell:** the advice contradicts code patterns already in the same file or neighbouring files.
 
@@ -74,7 +74,7 @@ Open the official docs for the library/tool the reviewer is talking about. Look 
 - The version they reference. Is that the current major? Was the feature/deprecation they mention introduced/removed in a release that has already shipped?
 - The release-status claim. Cross-check against the project's release page or registry.
 
-If you have Context7 MCP available, query the latest docs there. If not, fetch the docs URL directly. Treat AI training-data as a stale snapshot.
+If you have a documentation lookup tool available (e.g. the [Context7](https://github.com/upstash/context7) MCP server, which fetches current library docs on demand), use it. Otherwise fetch the docs URL directly. Treat AI training-data as a stale snapshot.
 
 ### 2. Check empirical evidence already on the PR
 
@@ -119,8 +119,9 @@ gh api graphql -f query='query {
     }
   }
 }' --jq '.data.repository.pullRequest.reviewThreads.nodes[] |
-  {id, isResolved, author: .comments.nodes[0].author.login,
-   snippet: .comments.nodes[0].body[0:100]}'
+  {id, isResolved,
+   author: .comments.nodes[0]?.author?.login,
+   snippet: (.comments.nodes[0]?.body // "")[0:100]}'
 
 # Reply to a thread
 gh api graphql \
@@ -138,10 +139,13 @@ gh api graphql \
 After replying, resolve. Don't leave threads open as a passive-aggressive disagreement marker — it makes the PR look unsettled to future reviewers and can block merges on repos that require thread resolution.
 
 ```bash
-gh api graphql -f query='
-  mutation { resolveReviewThread(input: {threadId: "PRRT_xxx"}) {
-    thread { isResolved }
-  } }'
+gh api graphql \
+  -f query='mutation($tid: ID!) {
+    resolveReviewThread(input: {threadId: $tid}) {
+      thread { isResolved }
+    }
+  }' \
+  -f tid="PRRT_xxx"
 ```
 
 ## Reply template — pushback with evidence
