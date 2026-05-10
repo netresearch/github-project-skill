@@ -1,11 +1,11 @@
 ---
 name: github-project
-description: "Use when PRs won't merge or show BLOCKED (including Copilot-review race), auto-approve/auto-merge fails for Dependabot/Renovate, branch protection/rulesets need configuring, CI fails, authoring reusable workflows or composite actions, harden-runner setup, or CODEOWNERS / PR templates."
+description: "Use when PRs won't merge or show BLOCKED (Copilot-review race), AI reviewer pushback, auto-approve/auto-merge fails for Dependabot/Renovate, branch protection/rulesets need configuring, CI fails, authoring reusable workflows or composite actions, harden-runner setup, or CODEOWNERS / PR templates."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
 compatibility: "Requires gh CLI, git."
 metadata:
   author: Netresearch DTT GmbH
-  version: "2.13.1"
+  version: "2.14.0"
   repository: https://github.com/netresearch/github-project-skill
 allowed-tools: Bash(gh:*) Bash(git:*) Bash(grep:*) Read Write
 ---
@@ -111,6 +111,7 @@ scripts/verify-github-project.sh /path/to/repository
 | Reusable workflow pitfalls (composite actions, ref caching, permissions) | `references/reusable-workflow-pitfalls.md` |
 | Org-level security settings (SHA pinning) | `references/org-security-settings.md` |
 | Tag validation (defense-in-depth) | `references/tag-validation.md` |
+| AI reviewer pushback patterns | `references/ai-reviewer-pushback.md` |
 
 ---
 
