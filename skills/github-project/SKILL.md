@@ -112,6 +112,7 @@ scripts/verify-github-project.sh /path/to/repository
 | Org-level security settings (SHA pinning) | `references/org-security-settings.md` |
 | Tag validation (defense-in-depth) | `references/tag-validation.md` |
 | AI reviewer pushback patterns | `references/ai-reviewer-pushback.md` |
+| Agentic workflows | `references/agentic-workflows.md` |
 
 ---
 
