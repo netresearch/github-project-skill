@@ -56,7 +56,7 @@ Read the issue body and add one of the labels: bug, feature, question.
 Post a one-sentence comment explaining the choice.
 ```
 
-`gh aw compile` turns this into a fully-formed `.github/workflows/*.yml` with the hardening above baked in. Treat the compiled YAML as generated output — edit the Markdown, recompile, commit both.
+Saved as `.github/aw/triage-bot.md`, `gh aw compile` turns this into a fully-formed `.github/workflows/triage-bot.yml` with the hardening above baked in. Treat the compiled YAML as generated output — edit the Markdown, recompile, commit both.
 
 ### Relationship to the rest of the skill
 
@@ -112,7 +112,7 @@ Before merging a new agent workflow:
 - [ ] Untrusted input fields go through env-var passing, not direct prompt interpolation (gh-aw does this by default — verify in compiled YAML).
 - [ ] If the agent has any write scope and ingests fork-PR content: `awf` is enabled or the trigger excludes untrusted authors.
 - [ ] LLM credentials are stored as repository or environment secrets, never in workflow files; with `awf`, they live in the API-proxy sidecar and are not exposed to the agent step.
-- [ ] Agent workflow has `concurrency:` set to prevent multiple instances racing on the same issue/PR.
+- [ ] Agent workflow has `concurrency:` scoped to the triggering issue/PR (not a static repo-wide group) so concurrent issues/PRs don't serialise unnecessarily — e.g. `group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number || github.sha }}`.
 
 ## Related
 
