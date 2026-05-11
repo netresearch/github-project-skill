@@ -5,7 +5,7 @@ license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
 compatibility: "Requires gh CLI, git."
 metadata:
   author: Netresearch DTT GmbH
-  version: "2.14.0"
+  version: "2.15.0"
   repository: https://github.com/netresearch/github-project-skill
 allowed-tools: Bash(gh:*) Bash(git:*) Bash(grep:*) Read Write
 ---
@@ -112,6 +112,7 @@ scripts/verify-github-project.sh /path/to/repository
 | Org-level security settings (SHA pinning) | `references/org-security-settings.md` |
 | Tag validation (defense-in-depth) | `references/tag-validation.md` |
 | AI reviewer pushback patterns | `references/ai-reviewer-pushback.md` |
+| Agentic workflows | `references/agentic-workflows.md` |
 
 ---
 
