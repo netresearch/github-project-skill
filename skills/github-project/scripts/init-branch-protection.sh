@@ -2,22 +2,29 @@
 # init-branch-protection.sh
 # Apply Netresearch standard branch protection to a GitHub repository.
 #
-# This is the REQUIRED first step after `gh repo create`, before pushing the
-# first commit or opening the first PR. The structural enforcement applied
-# here (required_conversation_resolution + min-1-approver) is what makes the
-# unresolved-threads workflow rule actually safe — relying only on operator
-# discipline has demonstrably failed (see netresearch/snipe-it-docker-compose-stack#17).
+# REQUIRED step after `gh repo create` + initial push, BEFORE opening the
+# first PR. (The default branch ref must exist — push your initial commit
+# first; this script exits 4 on empty repos.) The structural enforcement
+# applied here (required_conversation_resolution + min-1-approver) is what
+# makes the unresolved-threads workflow rule actually safe — operator
+# discipline alone has demonstrably failed (see
+# netresearch/snipe-it-docker-compose-stack#17).
 #
 # Usage:
 #   bash init-branch-protection.sh <owner>/<repo>
 #       Apply baseline protection (no required status checks yet — for new
-#       repos with no CI history). Idempotent: a second run on an already-
-#       compliant repo reports drift (or "already compliant") and exits 0.
+#       repos with no CI history). Idempotent: a second run reports
+#       "already compliant" and exits 0 if no drift, or exits 1 with a
+#       per-field diff if drift is present on opinionated fields. The
+#       script never auto-corrects drift — it refuses to clobber explicit
+#       admin choices.
 #
 #   bash init-branch-protection.sh <owner>/<repo> --from-current-checks
-#       Follow-up after the first successful CI run. Reads the check-run names
-#       from the most recent completed workflow run on the default branch and
-#       PATCHes them in as required status contexts with strict=true.
+#       Follow-up after the first successful CI run. Reads check-run names
+#       from /commits/{default_branch}/check-runs and PATCHes them in via
+#       the .../protection/required_status_checks subresource (so other
+#       branch-protection fields — bypass_pull_request_allowances,
+#       dismissal_restrictions, etc. — are untouched).
 #
 # Baseline applied (see assets/branch-protection.json.template):
 #   required_conversation_resolution: true   <- the load-bearing field
@@ -26,21 +33,25 @@
 #   allow_deletions:                  false
 #   required_linear_history:          false  (must be false for merge-commit
 #                                             strategy needed by signed commits)
+#   enforce_admins:                   false  (explicit; see template comment)
 #
-# Deliberately NOT in the template (per Netresearch org policy 2026-05):
-#   enforce_admins:      shipped as false; tighten per-repo via:
+# Deliberately tighter-than-default knobs (template ships permissive; raise
+# per-repo once your team's signing infra and admin policy are settled):
+#
+#   Make admins bound by branch protection:
 #     gh api repos/OWNER/REPO/branches/<default>/protection/enforce_admins -X POST
-#   required_signatures: omitted entirely (not set to false) so this script
-#     never resets a repo that has already enabled signing. Tighten per-repo:
+#
+#   Require GPG/SSH-signed commits (not in template — script never resets it):
 #     gh api repos/OWNER/REPO/branches/<default>/protection/required_signatures -X POST
 #
 # Exit codes:
-#   0  - applied or already compliant
-#   1  - drift detected (reported, not auto-corrected on second run)
+#   0  - applied successfully, or already compliant
+#   1  - drift detected on opinionated fields (per-field diff printed),
+#        or a PUT/PATCH failed
 #   2  - invalid arguments / template missing
 #   3  - repo not found or no access
-#   4  - default branch does not yet exist (empty repo — push initial commit first)
-#   5  - --from-current-checks: no completed workflow run found on default branch
+#   4  - default branch ref does not yet exist (empty repo — push first)
+#   5  - --from-current-checks: no completed CI run on default branch
 #
 # SPDX-License-Identifier: MIT
 # Copyright (c) Netresearch DTT GmbH
@@ -132,6 +143,17 @@ PROTECTION_URL="repos/$OWNER/$REPO/branches/$DEFAULT_BRANCH/protection"
 
 # ---------- --from-current-checks mode ----------
 if [[ "$MODE" == "--from-current-checks" ]]; then
+    # Baseline protection MUST already exist — we PATCH the
+    # required_status_checks subresource only. This avoids clobbering
+    # fields the apply-mode template does not enumerate (e.g.
+    # bypass_pull_request_allowances, dismissal_restrictions, or any
+    # field GitHub adds later).
+    if ! gh api "$PROTECTION_URL" --silent 2>/dev/null; then
+        err "no existing branch protection on $SLUG"
+        err "run without --from-current-checks first to apply the baseline."
+        exit 1
+    fi
+
     info "discovering required status checks from latest commit on $DEFAULT_BRANCH ..."
 
     # GitHub's required_status_checks.contexts are matched against the
@@ -139,15 +161,27 @@ if [[ "$MODE" == "--from-current-checks" ]]; then
     # for matrix and called-workflow jobs, e.g. "container-lint / hadolint").
     # The /actions/runs/{id}/jobs endpoint returns the bare job name
     # ("hadolint") — wrong for context matching. We use /commits/{sha}/check-runs
-    # against the default branch's HEAD which returns the canonical
-    # check-run names that align with what shows up in the PR check UI and
-    # what GitHub compares against required_status_checks.contexts.
+    # against the default branch's HEAD, which returns the canonical
+    # check-run names that align with what GitHub compares against
+    # required_status_checks.contexts.
     HEAD_SHA="$(gh api "repos/$OWNER/$REPO/commits/$DEFAULT_BRANCH" --jq '.sha // empty' 2>/dev/null || true)"
     if [[ -z "$HEAD_SHA" ]]; then
         err "could not resolve HEAD sha of $DEFAULT_BRANCH"
         exit 5
     fi
-    info "using $DEFAULT_BRANCH @ ${HEAD_SHA:0:8}"
+
+    # Sanity-check the commit's overall combined status: if it's not 'success'
+    # we may be capturing an incomplete set of checks (e.g., a failing run
+    # where some jobs never executed). Warn rather than abort — operator
+    # may intentionally be onboarding partial coverage.
+    COMBINED="$(gh api "repos/$OWNER/$REPO/commits/$HEAD_SHA/status" --jq '.state // "unknown"' 2>/dev/null || echo unknown)"
+    info "using $DEFAULT_BRANCH @ ${HEAD_SHA:0:8} (combined status: $COMBINED)"
+    if [[ "$COMBINED" != "success" ]]; then
+        warn "combined status is '$COMBINED' (not 'success') — only check-runs that"
+        warn "actually completed successfully will be captured. Other contexts that"
+        warn "did not run on this commit will NOT be required. Re-run after a fully"
+        warn "green CI run on $DEFAULT_BRANCH for complete coverage."
+    fi
 
     # Collect successful check-run names for that commit, deduped.
     mapfile -t CHECK_NAMES < <(gh api --paginate \
@@ -165,57 +199,21 @@ if [[ "$MODE" == "--from-current-checks" ]]; then
     info "discovered ${#CHECK_NAMES[@]} required check(s):"
     for n in "${CHECK_NAMES[@]}"; do printf '  - %s\n' "$n" >&2; done
 
-    # Build a JSON body that updates only required_status_checks. We PATCH the
-    # protection endpoint by re-PUTting the merged document: GitHub's API for
-    # branch protection does not accept partial bodies, so we read existing
-    # protection, splice the new contexts in, and PUT back.
-    EXISTING="$(gh api "$PROTECTION_URL" 2>/dev/null || echo '{}')"
-
-    # If protection has not been initialized yet, fall back to the template.
-    if [[ "$EXISTING" == "{}" ]] || [[ -z "$(jq -r '.url // empty' <<<"$EXISTING")" ]]; then
-        warn "no existing protection — applying baseline first then adding checks"
-        EXISTING="$(cat "$TEMPLATE")"
-    fi
-
-    # Normalize the existing protection into a PUT-compatible body (the GET
-    # response includes embedded `url` fields and nested envelopes that the
-    # PUT endpoint rejects).
-    PUT_BODY="$(jq \
+    # PATCH only the required_status_checks subresource. This endpoint
+    # accepts a partial body and leaves all other branch-protection fields
+    # untouched — the safe way to add required checks without enumerating
+    # (and potentially dropping) other settings.
+    SUBRES="$PROTECTION_URL/required_status_checks"
+    PATCH_BODY="$(jq -n \
         --argjson checks "$(printf '%s\n' "${CHECK_NAMES[@]}" | jq -R . | jq -s .)" \
-        '{
-            required_status_checks: {
-                strict: true,
-                contexts: $checks
-            },
-            enforce_admins: (.enforce_admins.enabled // false),
-            required_pull_request_reviews: (
-                if .required_pull_request_reviews then {
-                    required_approving_review_count: (.required_pull_request_reviews.required_approving_review_count // 1),
-                    dismiss_stale_reviews: (.required_pull_request_reviews.dismiss_stale_reviews // false),
-                    require_code_owner_reviews: (.required_pull_request_reviews.require_code_owner_reviews // false),
-                    require_last_push_approval: (.required_pull_request_reviews.require_last_push_approval // false)
-                } else {
-                    required_approving_review_count: 1,
-                    dismiss_stale_reviews: false,
-                    require_code_owner_reviews: false,
-                    require_last_push_approval: false
-                } end
-            ),
-            restrictions: null,
-            required_linear_history: (.required_linear_history.enabled // false),
-            allow_force_pushes: (.allow_force_pushes.enabled // false),
-            allow_deletions: (.allow_deletions.enabled // false),
-            required_conversation_resolution: (.required_conversation_resolution.enabled // true),
-            lock_branch: (.lock_branch.enabled // false),
-            allow_fork_syncing: (.allow_fork_syncing.enabled // false)
-        }' <<<"$EXISTING")"
+        '{strict: true, contexts: $checks}')"
 
-    info "PUT $PROTECTION_URL (with required checks)"
-    if RESP="$(gh api -X PUT "$PROTECTION_URL" --input - <<<"$PUT_BODY" 2>&1)"; then
+    info "PATCH $SUBRES"
+    if RESP="$(gh api -X PATCH "$SUBRES" --input - <<<"$PATCH_BODY" 2>&1)"; then
         ok "required status checks applied (${#CHECK_NAMES[@]} contexts, strict=true)"
         exit 0
     else
-        err "PUT failed:"
+        err "PATCH failed:"
         printf '%s\n' "$RESP" >&2
         exit 1
     fi
@@ -268,7 +266,8 @@ if [[ -n "$EXISTING" ]] && [[ -n "$(jq -r '.url // empty' <<<"$EXISTING" 2>/dev/
 
     warn "drift detected vs template baseline:"
     printf '%s' "$DRIFT" >&2
-    warn "not auto-correcting — re-run without --from-current-checks intentionally,"
+    warn "not auto-correcting — apply the template manually with"
+    warn "  gh api -X PUT $PROTECTION_URL --input <skill>/assets/branch-protection.json.template"
     warn "or PATCH specific fields by hand. Aborting to avoid clobbering admin choices."
     exit 1
 fi
