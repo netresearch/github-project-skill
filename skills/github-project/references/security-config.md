@@ -95,20 +95,20 @@ printf "%s\n" "/home/linuxbrew/.linuxbrew/bin" "/home/linuxbrew/.linuxbrew/sbin"
 
 ## Branch Protection: Enforce for Admins
 
-`enforce_admins` **MUST be `true`** on the default branch. Without it, repository admins can bypass all branch protection rules including required status checks, required reviews, required conversation resolution, and signed commit requirements.
+`enforce_admins` **SHOULD be `true`** on mature multi-maintainer repos as a hardening target. The [init script](repo-bootstrap.md) ships `false` as the pragmatic baseline — solo-maintainer Netresearch repos benefit from admin-bypass in emergencies (stuck required checks, ruleset races, dependency outages). Once the team has documented its emergency-merge paths and on-call coverage, tighten:
 
 ```bash
 # Check current state
 gh api repos/OWNER/REPO/branches/main/protection --jq '.enforce_admins.enabled'
 
-# Enable enforce_admins
+# Enable enforce_admins (target hardening)
 gh api repos/OWNER/REPO/branches/main/protection/enforce_admins -X POST
 
 # Verify
-gh api repos/OWNER/REPO/branches/main/protection --jq 'if .enforce_admins.enabled then "OK: Admin enforcement enabled" else "FAIL: Admins can bypass branch protection" end'
+gh api repos/OWNER/REPO/branches/main/protection --jq 'if .enforce_admins.enabled then "OK: Admin enforcement enabled" else "INFO: Admins can bypass branch protection (acceptable on solo-maintainer repos)" end'
 ```
 
-> **Security note:** Even with `required_conversation_resolution: true`, admins can merge with unresolved review threads if `enforce_admins` is `false`. Both settings must be enabled together for effective protection.
+> **Security note:** Even with `required_conversation_resolution: true`, admins can merge with unresolved review threads if `enforce_admins` is `false`. For repos where the bypass is the safety valve (single maintainer, no on-call), accept the trade-off and discipline-enforce the unresolved-threads check at the operator level (see [the bootstrap reference](repo-bootstrap.md) for the pre-merge GraphQL query operators should run before every `gh pr merge`). For repos with multiple maintainers, both settings should be enabled together.
 
 ## Branch Protection: Required Reviews
 
@@ -163,7 +163,7 @@ For signed commits workflow (rebase locally + merge commit):
 
 | Branch Protection | Value | Why |
 |-------------------|-------|-----|
-| `required_signatures` | true | Enforces GPG/SSH signed commits |
+| `required_signatures` | target: `true`; [init](repo-bootstrap.md): unset | Enforces GPG/SSH signed commits. Init script omits this so Dependabot/Renovate bot PRs aren't blocked before each bot's signing flow is configured per-repo. Turn on once you've verified bot signing works: `gh api repos/OWNER/REPO/branches/main/protection/required_signatures -X POST`. Verify with `gh api repos/OWNER/REPO/branches/main/protection --jq '.required_signatures.enabled'`. |
 | `required_linear_history` | **false** | Must be false - conflicts with merge commits |
 | `required_conversation_resolution` | true | All review threads must be resolved before merge |
 
