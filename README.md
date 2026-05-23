@@ -7,6 +7,13 @@ description: "GitHub repository setup and platform-specific features. This skill
 
 GitHub platform configuration and repository management patterns. This skill focuses exclusively on **GitHub-specific features**.
 
+> **New repo? Run this BEFORE the first PR:**
+> `bash skills/github-project/scripts/init-branch-protection.sh OWNER/REPO`
+> Applies `required_conversation_resolution: true` + 1-approver baseline so the
+> "abort merge if unresolved threads" rule is structurally enforced, not just
+> documented. See `skills/github-project/SKILL.md` → *Required First Step
+> After `gh repo create`* for the two-step flow.
+
 ## 🔌 Compatibility
 
 This is an **Agent Skill** following the [open standard](https://agentskills.io) originally developed by Anthropic and released for cross-platform use.
