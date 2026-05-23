@@ -344,10 +344,16 @@ mechanical:
     json_path: ".required_conversation_resolution.enabled"
     severity: error
     desc: >-
-      required_conversation_resolution must be enabled — combined with
-      enforce_admins, ensures unresolved review threads block ALL merges
-      including admins (audited by GH-32 llm_review; runner skips because
-      gh API access requires auth).
+      required_conversation_resolution must be enabled. Without it, PR
+      merges may silently include unresolved bot-reviewer feedback —
+      including security issues like token leakage in build logs (see
+      netresearch/snipe-it-docker-compose-stack#17 where this gap let a
+      HIGH-severity Copilot/gemini-code-assist finding ship to main).
+      Apply via skills/github-project/scripts/init-branch-protection.sh
+      OWNER/REPO immediately after `gh repo create`. Combined with
+      enforce_admins, also ensures unresolved threads block ALL merges
+      including admins (audited by GH-32 llm_review; runner skips
+      because gh API access requires auth).
 
 llm_reviews:
   # === BRANCH PROTECTION + MERGE QUEUE COMPATIBILITY ===
