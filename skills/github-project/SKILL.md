@@ -16,6 +16,7 @@ GitHub repository configuration, troubleshooting, and collaboration workflow bes
 
 ## When to Use
 
+- **After `gh repo create`, before first commit/PR** — apply branch protection (REQUIRED, see below)
 - PR won't merge, BLOCKED, or unresolved threads
 - Auto-merge fails for Dependabot/Renovate
 - Solo maintainer needs auto-approve
@@ -26,6 +27,30 @@ GitHub repository configuration, troubleshooting, and collaboration workflow bes
 - OpenSSF Scorecard (token perms, pinned deps)
 - CODEOWNERS, issue/PR templates, release labels
 - Fork PR merge base (too many commits)
+
+## Required First Step After `gh repo create`
+
+After creating any new Netresearch repository, **before pushing the first commit or opening the first PR**, you MUST apply branch protection. Without this, the unresolved-threads workflow rule is unenforceable — operator discipline alone has demonstrably failed (see [snipe-it-docker-compose-stack#17](https://github.com/netresearch/snipe-it-docker-compose-stack/pull/17): 3 of 8 merged PRs shipped unresolved bot-reviewer threads, including a HIGH-severity token leak that both Copilot and gemini-code-assist had flagged).
+
+Two-step flow:
+
+```bash
+# 1. Immediately after `gh repo create` and the first push:
+bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/REPO
+#    Applies: required_conversation_resolution=true, 1 approver,
+#             no force-push, no deletions, no required checks yet.
+
+# 2. After the first CI run completes on the default branch:
+bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/REPO --from-current-checks
+#    Captures the now-known check-run names as required status contexts
+#    with strict=true.
+```
+
+The script is idempotent: re-running on an already-compliant repo reports `already compliant` and exits 0. Drift on opinionated fields exits 1 with a per-field diff (no silent clobber of admin choices).
+
+Baseline applied is intentionally minimal — `enforce_admins` and `required_signatures` are NOT in the template (per-repo decision; tighten via the one-liners in the script header). The load-bearing field is `required_conversation_resolution: true`, which is what makes the "abort merge if unresolved threads" memory rule structurally safe rather than discipline-dependent.
+
+You can also invoke `/assess github-project` against a repo to verify (read-only) that the baseline is in place — checkpoint `GH-31` fails with `severity: error` if `required_conversation_resolution` is not enabled.
 
 ## Quick Diagnostics
 
@@ -70,6 +95,11 @@ gh run rerun RUN_ID --repo OWNER/REPO
 ### Security & Compliance Quick Checks
 
 ```bash
+# REQUIRED baseline (one-liner): is required_conversation_resolution on?
+gh api repos/OWNER/REPO/branches/$(gh api repos/OWNER/REPO --jq .default_branch)/protection \
+  --jq '.required_conversation_resolution.enabled // false'
+# If false, run scripts/init-branch-protection.sh OWNER/REPO
+
 gh api repos/OWNER/REPO/branches/main/protection --jq '.enforce_admins.enabled'
 gh api repos/OWNER/REPO/code-scanning/default-setup --jq '.state'
 gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
@@ -86,6 +116,12 @@ See `references/auto-merge-guide.md` for: rebase-merge-with-signed-commits fixes
 ## Running Scripts
 
 ```bash
+# Apply baseline branch protection to a new repo (REQUIRED post-`gh repo create`)
+scripts/init-branch-protection.sh OWNER/REPO
+# After first CI run completes:
+scripts/init-branch-protection.sh OWNER/REPO --from-current-checks
+
+# Audit an existing local checkout against GitHub-platform best practices
 scripts/verify-github-project.sh /path/to/repository
 ```
 
