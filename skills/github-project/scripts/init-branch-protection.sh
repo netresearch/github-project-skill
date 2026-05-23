@@ -132,27 +132,33 @@ PROTECTION_URL="repos/$OWNER/$REPO/branches/$DEFAULT_BRANCH/protection"
 
 # ---------- --from-current-checks mode ----------
 if [[ "$MODE" == "--from-current-checks" ]]; then
-    info "discovering required status checks from latest workflow run on $DEFAULT_BRANCH ..."
+    info "discovering required status checks from latest commit on $DEFAULT_BRANCH ..."
 
-    # Find the most recent completed run on the default branch.
-    RUN_ID="$(gh api \
-        "repos/$OWNER/$REPO/actions/runs?branch=$DEFAULT_BRANCH&status=completed&per_page=1" \
-        --jq '.workflow_runs[0].id // empty' 2>/dev/null || true)"
-
-    if [[ -z "$RUN_ID" ]]; then
-        err "no completed workflow run found on $DEFAULT_BRANCH"
-        err "trigger and complete at least one CI run, then re-run with --from-current-checks."
+    # GitHub's required_status_checks.contexts are matched against the
+    # check-run *display name* (which includes the "workflow / job" prefix
+    # for matrix and called-workflow jobs, e.g. "container-lint / hadolint").
+    # The /actions/runs/{id}/jobs endpoint returns the bare job name
+    # ("hadolint") — wrong for context matching. We use /commits/{sha}/check-runs
+    # against the default branch's HEAD which returns the canonical
+    # check-run names that align with what shows up in the PR check UI and
+    # what GitHub compares against required_status_checks.contexts.
+    HEAD_SHA="$(gh api "repos/$OWNER/$REPO/commits/$DEFAULT_BRANCH" --jq '.sha // empty' 2>/dev/null || true)"
+    if [[ -z "$HEAD_SHA" ]]; then
+        err "could not resolve HEAD sha of $DEFAULT_BRANCH"
         exit 5
     fi
-    info "using run id: $RUN_ID"
+    info "using $DEFAULT_BRANCH @ ${HEAD_SHA:0:8}"
 
-    # Collect successful check-run names from that run.
+    # Collect successful check-run names for that commit, deduped.
     mapfile -t CHECK_NAMES < <(gh api --paginate \
-        "repos/$OWNER/$REPO/actions/runs/$RUN_ID/jobs" \
-        --jq '.jobs[] | select(.conclusion == "success") | .name')
+        "repos/$OWNER/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" \
+        --jq '.check_runs[] | select(.conclusion == "success") | .name' \
+        | sort -u)
 
     if [[ ${#CHECK_NAMES[@]} -eq 0 ]]; then
-        err "no successful jobs found in latest run; nothing to require."
+        err "no successful check-runs found on $DEFAULT_BRANCH @ ${HEAD_SHA:0:8}"
+        err "trigger and complete at least one CI run on the default branch,"
+        err "then re-run with --from-current-checks."
         exit 5
     fi
 
