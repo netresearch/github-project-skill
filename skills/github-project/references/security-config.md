@@ -108,7 +108,7 @@ gh api repos/OWNER/REPO/branches/main/protection/enforce_admins -X POST
 gh api repos/OWNER/REPO/branches/main/protection --jq 'if .enforce_admins.enabled then "OK: Admin enforcement enabled" else "INFO: Admins can bypass branch protection (acceptable on solo-maintainer repos)" end'
 ```
 
-> **Security note:** Even with `required_conversation_resolution: true`, admins can merge with unresolved review threads if `enforce_admins` is `false`. For repos where the bypass is the safety valve (single maintainer, no on-call), accept the trade-off and discipline-enforce the unresolved-threads check at the operator level (see [feedback memory: HARD RULE — NEVER merge with unresolved review threads](https://github.com/netresearch/github-project-skill/blob/main/skills/github-project/references/repo-bootstrap.md)). For repos with multiple maintainers, both settings should be enabled together.
+> **Security note:** Even with `required_conversation_resolution: true`, admins can merge with unresolved review threads if `enforce_admins` is `false`. For repos where the bypass is the safety valve (single maintainer, no on-call), accept the trade-off and discipline-enforce the unresolved-threads check at the operator level (see [the bootstrap reference](repo-bootstrap.md) for the pre-merge GraphQL query operators should run before every `gh pr merge`). For repos with multiple maintainers, both settings should be enabled together.
 
 ## Branch Protection: Required Reviews
 
@@ -163,7 +163,7 @@ For signed commits workflow (rebase locally + merge commit):
 
 | Branch Protection | Value | Why |
 |-------------------|-------|-----|
-| `required_signatures` | target: `true`; [init](repo-bootstrap.md): unset | Enforces GPG/SSH signed commits. Init script omits this so Dependabot/Renovate bot PRs aren't blocked before each bot's signing flow is configured per-repo. Turn on once you've verified bot signing works (Renovate `gitSignOff: true` + Dependabot secret-based signing or `gh api PATCH`). |
+| `required_signatures` | target: `true`; [init](repo-bootstrap.md): unset | Enforces GPG/SSH signed commits. Init script omits this so Dependabot/Renovate bot PRs aren't blocked before each bot's signing flow is configured per-repo. Turn on once you've verified bot signing works: `gh api repos/OWNER/REPO/branches/main/protection/required_signatures -X POST`. Verify with `gh api repos/OWNER/REPO/branches/main/protection --jq '.required_signatures.enabled'`. |
 | `required_linear_history` | **false** | Must be false - conflicts with merge commits |
 | `required_conversation_resolution` | true | All review threads must be resolved before merge |
 
