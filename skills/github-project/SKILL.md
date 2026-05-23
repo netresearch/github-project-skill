@@ -1,6 +1,6 @@
 ---
 name: github-project
-description: "Use when PRs won't merge or show BLOCKED (Copilot-review race), AI reviewer pushback, auto-approve/auto-merge fails for Dependabot/Renovate, branch protection/rulesets need configuring, CI fails, authoring reusable workflows or composite actions, harden-runner setup, or CODEOWNERS / PR templates."
+description: "Use when bootstrapping a repo (apply branch protection before first PR), PRs won't merge or BLOCKED, AI reviewer pushback, auto-merge fails for Dependabot/Renovate, branch protection or rulesets, CI fails, authoring reusable workflows, harden-runner, or CODEOWNERS/PR templates."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
 compatibility: "Requires gh CLI, git."
 metadata:
@@ -16,28 +16,27 @@ GitHub repository configuration, troubleshooting, and collaboration workflow bes
 
 ## When to Use
 
+- **Post `gh repo create` + initial push, before first PR** — apply branch protection (REQUIRED, see below)
 - PR won't merge, BLOCKED, or unresolved threads
 - Auto-merge fails for Dependabot/Renovate
-- Solo maintainer needs auto-approve
+- Solo maintainer auto-approve
 - Branch protection, rulesets, `enforce_admins`
 - GHA failures or permission issues
 - Signed commit merge (rebase can't auto-sign)
 - CodeQL default vs custom workflows
-- OpenSSF Scorecard (token perms, pinned deps)
-- CODEOWNERS, issue/PR templates, release labels
-- Fork PR merge base (too many commits)
+- Scorecard (token perms, pinned deps)
+- CODEOWNERS, templates, release labels
+- Fork PR merge base
+
+> **REQUIRED post `gh repo create`:** `scripts/init-branch-protection.sh OWNER/REPO` — see `references/repo-bootstrap.md` (closes [snipe-it#17](https://github.com/netresearch/snipe-it-docker-compose-stack/pull/17) class).
 
 ## Quick Diagnostics
 
 ### PR Won't Merge
 
 ```bash
-gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
-  repository(owner:$owner,name:$repo){pullRequest(number:$pr){
-    mergeStateStatus reviewDecision mergeable
-    reviewThreads(first:100){nodes{isResolved comments(first:1){nodes{body}}}}
-  }}
-}' -f owner=OWNER -f repo=REPO -F pr=NUMBER --jq '.data.repository.pullRequest'
+gh pr view PR --repo OWNER/REPO \
+  --json mergeStateStatus,reviewDecision,mergeable,reviewThreads
 ```
 
 ### Solo Maintainer: PRs Stuck on REVIEW_REQUIRED
@@ -46,15 +45,12 @@ Use `assets/pr-quality.yml.template` for auto-approve with `required_approving_r
 
 ### Auto-merge Setup
 
-Requirements: `allow_auto_merge` on repo, `pull_request_target` trigger (not `pull_request`), check `user.login` (not `github.actor`), `gh pr merge --auto` with dynamic strategy.
+Requires `allow_auto_merge`, `pull_request_target` trigger, `user.login` bot detection, `gh pr merge --auto` with dynamic strategy. See `references/auto-merge-guide.md`.
 
 ### Auto-merge Not Working
 
 ```bash
-gh api graphql -f query='query{repository(owner:"OWNER",name:"REPO"){
-  pullRequest(number:PR){autoMergeRequest{enabledBy{login}}}
-}}' --jq '.data.repository.pullRequest.autoMergeRequest'
-
+gh pr view PR --repo OWNER/REPO --json autoMergeRequest --jq .autoMergeRequest
 gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews \
   --jq '.bypass_pull_request_allowances.apps[].slug'
 ```
@@ -70,50 +66,50 @@ gh run rerun RUN_ID --repo OWNER/REPO
 ### Security & Compliance Quick Checks
 
 ```bash
-gh api repos/OWNER/REPO/branches/main/protection --jq '.enforce_admins.enabled'
+gh api repos/OWNER/REPO/branches/main/protection \
+  --jq '{rcr: .required_conversation_resolution.enabled, admins: .enforce_admins.enabled}'
 gh api repos/OWNER/REPO/code-scanning/default-setup --jq '.state'
-gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
-  repository(owner:$owner,name:$repo){pullRequest(number:$pr){
-    reviewThreads(first:100){nodes{id isResolved}}
-  }}
-}' -f owner=OWNER -f repo=REPO -F pr=NUMBER
+gh pr view PR --repo OWNER/REPO --json reviewThreads --jq '.reviewThreads'
 ```
 
 ### Merge Strategy Issues
 
-See `references/auto-merge-guide.md` for: rebase-merge-with-signed-commits fixes, workflow-file PR manual merges, and the Copilot-review auto-approve race.
+See `references/auto-merge-guide.md` (signed-commit rebase fixes, workflow-file PRs, Copilot auto-approve race).
 
 ## Running Scripts
 
 ```bash
-scripts/verify-github-project.sh /path/to/repository
+scripts/init-branch-protection.sh OWNER/REPO              # baseline (post gh repo create)
+scripts/init-branch-protection.sh OWNER/REPO --from-current-checks   # after first CI
+scripts/verify-github-project.sh /path/to/repository      # local-checkout audit
 ```
 
 ## References
 
 | Topic | Reference |
 |-------|-----------|
+| Repo bootstrap (post `gh repo create`) | `references/repo-bootstrap.md` |
 | Repository file layout | `references/repository-structure.md` |
-| Branch migration (master to main) | `references/branch-migration.md` |
-| Dependabot/Renovate configuration | `references/dependency-management.md` |
+| Branch migration | `references/branch-migration.md` |
+| Dependabot/Renovate | `references/dependency-management.md` |
 | Auto-approve + auto-merge | `references/auto-merge-guide.md` |
-| Merge strategy for signed commits | `references/merge-strategy.md` |
-| Sub-issues and issue hierarchy | `references/sub-issues.md` |
-| Release labeling automation | `references/release-labeling.md` |
+| Merge strategy (signed commits) | `references/merge-strategy.md` |
+| Sub-issues | `references/sub-issues.md` |
+| Release labeling | `references/release-labeling.md` |
 | gh CLI commands | `references/gh-cli-reference.md` |
-| Go, TYPO3, polyglot CI checklists | `references/repo-setup-guide.md` |
-| OpenSSF Scorecard, CodeQL, security | `references/security-config.md` |
-| Workflow linting (actionlint) | `references/actionlint-guide.md` |
-| Bash pitfalls in workflow `run:` steps | `references/workflow-bash-patterns.md` |
-| PR shows too many commits (fork merge base) | `references/pr-commit-cleanup.md` |
+| Polyglot CI checklists | `references/repo-setup-guide.md` |
+| Scorecard, CodeQL, security | `references/security-config.md` |
+| actionlint | `references/actionlint-guide.md` |
+| Workflow bash pitfalls | `references/workflow-bash-patterns.md` |
+| Fork merge base | `references/pr-commit-cleanup.md` |
 | Multi-repo batch ops | `references/multi-repo-operations.md` |
-| Reusable workflow supply-chain trust + SHA pinning | `references/reusable-workflow-security.md` |
-| Reusable workflow pitfalls (composite actions, ref caching, permissions) | `references/reusable-workflow-pitfalls.md` |
-| Org-level security settings (SHA pinning) | `references/org-security-settings.md` |
-| Tag validation (defense-in-depth) | `references/tag-validation.md` |
-| AI reviewer pushback patterns | `references/ai-reviewer-pushback.md` |
+| Reusable workflow security | `references/reusable-workflow-security.md` |
+| Reusable workflow pitfalls | `references/reusable-workflow-pitfalls.md` |
+| Org security settings | `references/org-security-settings.md` |
+| Tag validation | `references/tag-validation.md` |
+| AI reviewer pushback | `references/ai-reviewer-pushback.md` |
 | Agentic workflows | `references/agentic-workflows.md` |
 
 ---
 
-> **Contributing:** https://github.com/netresearch/github-project-skill
+> Contributing: https://github.com/netresearch/github-project-skill
