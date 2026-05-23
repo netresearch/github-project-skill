@@ -16,7 +16,7 @@ GitHub repository configuration, troubleshooting, and collaboration workflow bes
 
 ## When to Use
 
-- **Post `gh repo create`, before first commit/PR** — apply branch protection (REQUIRED, see below)
+- **Post `gh repo create` + initial push, before first PR** — apply branch protection (REQUIRED, see below)
 - PR won't merge, BLOCKED, or unresolved threads
 - Auto-merge fails for Dependabot/Renovate
 - Solo maintainer auto-approve

@@ -1,6 +1,6 @@
 # Repository Bootstrap — Required First Step After `gh repo create`
 
-After creating any new Netresearch repository, **before pushing the first commit or opening the first PR**, you MUST apply branch protection. Without this, the unresolved-threads workflow rule is unenforceable — operator discipline alone has demonstrably failed.
+After creating any new Netresearch repository — `gh repo create`, push your initial commit, **then before opening the first PR** — you MUST apply branch protection. (The default branch ref must exist; the script exits 4 on empty repos.) Without this, the unresolved-threads workflow rule is unenforceable — operator discipline alone has demonstrably failed.
 
 **Concrete incident:** [netresearch/snipe-it-docker-compose-stack#17](https://github.com/netresearch/snipe-it-docker-compose-stack/pull/17). The repo was created mid-session, branch protection was never applied, and three of the next eight merged PRs shipped with unresolved bot-reviewer threads — including a HIGH-severity token leak that both Copilot and gemini-code-assist had flagged. The structural enforcement (`required_conversation_resolution: true`) would have blocked those merges. The skill had the docs; nothing prompted the apply.
 
@@ -27,18 +27,18 @@ bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/
 
 The script is idempotent: re-running on an already-compliant repo reports `already compliant` and exits 0. Drift on opinionated fields exits 1 with a per-field diff (no silent clobber of admin choices).
 
-## What the baseline deliberately omits
+## Deliberately permissive knobs
 
-- **`enforce_admins`** — shipped as `false`. Solo-maintainer Netresearch repos (snipe-it-docker-compose-stack, ldap-selfservice-…, usercentrics-widgets, etc.) need admin bypass for emergency response. Tighten per-repo once the team validates the workflow:
+- **`enforce_admins`** — explicitly `false` in the template. Solo-maintainer Netresearch repos (snipe-it-docker-compose-stack, ldap-selfservice-…, usercentrics-widgets, etc.) need admin bypass for emergency response. Tighten per-repo once the team validates the workflow:
   ```bash
   gh api repos/OWNER/REPO/branches/DEFAULT/protection/enforce_admins -X POST
   ```
-- **`required_signatures`** — omitted entirely (not set to `false`). The template would otherwise reset repos that have already opted into signing. Tighten per-repo:
+- **`required_signatures`** — *omitted entirely* from the template (not set to `false`). PUTting the template would otherwise reset repos that have already opted into signing. The script never touches this field. Tighten per-repo:
   ```bash
   gh api repos/OWNER/REPO/branches/DEFAULT/protection/required_signatures -X POST
   ```
 
-Both knobs flip from absent/`false` → `true` only after the team has signing infrastructure for bot accounts (Dependabot, Renovate) so those PRs don't immediately get blocked.
+Both knobs flip to `true` only after the team has signing infrastructure for bot accounts (Dependabot, Renovate) so those PRs don't immediately get blocked.
 
 ## Verification
 
