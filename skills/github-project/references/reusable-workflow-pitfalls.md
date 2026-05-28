@@ -62,3 +62,26 @@ jobs:
 See [GitHub docs — access and permissions](https://docs.github.com/en/actions/sharing-automations/reusing-workflows#access-and-permissions) for the full intersection rules.
 
 > **See also:** [`reusable-workflow-security.md`](./reusable-workflow-security.md) for SHA-pinning and supply-chain trust of *external* actions.
+
+## 5. Inline `config_data` overrides the repo's own config file
+
+Linter actions that accept an inline `config_data:` (e.g. yamllint via a
+reusable workflow) **replace** the consumer repo's own config file entirely —
+they do not merge. A repo with a carefully tuned `.yamllint.yml` (ignore paths,
+relaxed rules) silently has all of it discarded the moment the reusable workflow
+passes its own inline defaults.
+
+Provide inline defaults only as a *fallback*, when the repo has no config of its own:
+
+```yaml
+- name: Provide default config if the repo has none
+  run: |
+    if [[ ! -f .yamllint.yml ]]; then
+      cat > .yamllint.yml <<'EOF'
+    extends: default
+    rules: { line-length: disable }
+    EOF
+    fi
+- name: Lint
+  uses: some/yamllint-action@<sha>   # picks up the repo's config, or the fallback
+```

@@ -107,3 +107,31 @@ jobs:
 ```
 
 > **See also:** [`org-security-settings.md`](./org-security-settings.md) for org-level SHA pinning and allow-list configuration.
+
+## Never Use `secrets: inherit`
+
+`secrets: inherit` forwards **every** secret available to the calling workflow
+into the reusable workflow — and transitively into any action it calls. One
+compromised action in the chain (cf. the chain-compromise risk above) then has
+access to the full secret set: Docker credentials, publish tokens, signing keys.
+
+Pass only what each workflow needs, explicitly by name:
+
+```yaml
+# Bad — hands the whole keyring to the reusable workflow and its dependencies
+jobs:
+    release:
+        uses: org/ci-workflows/.github/workflows/release.yml@<sha>
+        secrets: inherit
+
+# Good — least privilege; blast radius limited to the named secrets
+jobs:
+    release:
+        uses: org/ci-workflows/.github/workflows/release.yml@<sha>
+        secrets:
+            CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+```
+
+Org secrets do **not** auto-propagate into reusable workflows either — each
+caller must forward them explicitly, which is what makes `inherit` look
+convenient. Resist it; the explicit form is also the audit trail.
