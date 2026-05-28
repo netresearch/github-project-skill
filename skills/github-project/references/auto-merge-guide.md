@@ -406,6 +406,27 @@ gh pr merge NUMBER --repo OWNER/REPO --auto --merge
 - Some repos need the "Allow auto-merge" setting enabled in repository settings first
 - Repos where you lack admin/maintainer access will fail with permission errors
 
+## Archived Repos — Handle Dependabot/Renovate PRs with Care
+
+Archived repositories still receive Dependabot/Renovate PRs, but you cannot
+merge them or enable auto-merge — writes are blocked, and auto-merge fails with a
+permission error. Don't fight it:
+
+1. **Unarchive** the repo.
+2. **Close** the PR (or merge it, if the update is genuinely wanted).
+3. **Re-archive** the repo.
+
+Before any batch auto-merge sweep across an org, filter archived repos out first
+so they don't generate noise:
+
+```bash
+# gh filters archived repos out server-side:
+gh repo list ORG --no-archived --json name --jq '.[].name'
+```
+
+Never enable auto-merge on an archived repo — it errors and leaves the PR in a
+confusing half-state.
+
 ## Recommended Renovate Config for Auto-merge
 
 ```json
