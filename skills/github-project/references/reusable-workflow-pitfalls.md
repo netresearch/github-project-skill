@@ -85,3 +85,13 @@ Provide inline defaults only as a *fallback*, when the repo has no config of its
 - name: Lint
   uses: some/yamllint-action@<sha>   # picks up the repo's config, or the fallback
 ```
+
+## 6. Fix the gap in the shared workflow, not per-project
+
+When CI or quality logic lives in a shared reusable workflow (e.g. `netresearch/typo3-ci-*`), a gap or bug that surfaces in one consumer is almost always a gap in the **shared** workflow. Fix it upstream so every consumer inherits the fix — do not patch the single project's `.github/workflows/`.
+
+Per-project patches defeat the point of the reusable workflow: they reintroduce the duplication the shared workflow exists to remove, drift out of sync as the shared workflow evolves, and force the same fix to be rediscovered in the next repo.
+
+Before adding a guard, check, or fix to a project's own workflow files, ask whether the shared reusable-workflow repo already owns that concern — or should. If it does, land the change there and let the consumer pick it up via its `@main` / `@vX.Y.Z` reference (per [`reusable-workflow-security.md`](./reusable-workflow-security.md), internal reusable workflows are referenced by tag/branch, not SHA). Keep logic in a consumer only when it is genuinely project-specific.
+
+This is distinct from pitfalls #1–#5 above (which cover *how* to author and reference reusable workflows) — this is about *where* a fix belongs.
