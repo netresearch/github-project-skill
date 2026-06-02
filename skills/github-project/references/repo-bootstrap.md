@@ -65,3 +65,74 @@ GitHub branch protection cannot block on *requested-but-pending* reviews (Copilo
 | 3    | Repo not found or no API access |
 | 4    | Default branch ref does not yet exist (empty repo — push first) |
 | 5    | `--from-current-checks`: no completed CI run on default branch |
+
+## Actions & Security Hardening (apply alongside branch protection)
+
+`init-branch-protection.sh` covers branch protection only. A repo's **Actions permissions** and **security toggles** are a separate API surface that GitHub ships at insecure defaults: `GITHUB_TOKEN` read/write, workflows may approve PRs, no SHA-pinning, all actions allowed. Apply these in the same bootstrap step.
+
+> **Org members:** if the org already sets these at `orgs/ORG/actions/permissions` (see [`org-security-settings.md`](org-security-settings.md)) the repo inherits them — the per-repo commands below are for standalone repos, or repos under a permissive org default. (Endpoint shapes verified against [AriESQ/gh-safe-repo](https://github.com/AriESQ/gh-safe-repo).)
+
+### Workflow token: read-only, no self-approval
+
+```bash
+gh api repos/OWNER/REPO/actions/permissions/workflow -X PUT \
+  -f default_workflow_permissions=read \
+  -F can_approve_pull_request_reviews=false
+```
+
+- `default_workflow_permissions=read` — `GITHUB_TOKEN` defaults to read-only; jobs needing write opt in at job level (see [`security-config.md`](security-config.md) § Least-Privilege Workflow Permissions). GitHub's default is `write`.
+- `can_approve_pull_request_reviews=false` — stops a workflow from approving its own PRs (which would otherwise satisfy `required_approving_review_count` without a real reviewer).
+
+### Restrict which actions can run + require SHA pinning
+
+```bash
+# Allow only GitHub-owned + verified-creator actions, and require SHA pins.
+# enabled=true is REQUIRED in this body or the PUT returns 422.
+gh api repos/OWNER/REPO/actions/permissions -X PUT \
+  -F enabled=true \
+  -f allowed_actions=selected \
+  -F sha_pinning_required=true
+
+# Allow-list — only valid AFTER allowed_actions=selected (apply order matters):
+gh api repos/OWNER/REPO/actions/permissions/selected-actions -X PUT --input - <<'EOF'
+{ "github_owned_allowed": true, "verified_allowed": true, "patterns_allowed": ["OWNER/*"] }
+EOF
+```
+
+- `sha_pinning_required=true` is the repo-level twin of the org setting — workflows must pin actions to a full commit SHA. Reusable-workflow `@main`/`@vX` refs are exempt; see [`reusable-workflow-security.md`](reusable-workflow-security.md).
+
+### Fork-PR approval (public repos only)
+
+Holds fork PRs — and the Actions minutes they would burn — until a maintainer approves. The endpoint exists only for public repos (returns null/404 on private):
+
+```bash
+gh api repos/OWNER/REPO/actions/permissions/fork-pr-contributor-approval -X PUT \
+  -f approval_policy=all_external_contributors
+```
+
+| `approval_policy` | Who needs approval before fork-PR workflows run |
+|---|---|
+| `first_time_contributors_new_to_github` | Brand-new GitHub accounts only (GitHub default) |
+| `first_time_contributors` | First-time contributors to this repo |
+| `all_external_contributors` | Every external contributor (safest) |
+
+### Security toggles
+
+```bash
+# Dependabot alerts + automatic security-update PRs (bodyless PUTs)
+gh api repos/OWNER/REPO/vulnerability-alerts -X PUT
+gh api repos/OWNER/REPO/automated-security-fixes -X PUT
+
+# Private vulnerability reporting — a STANDALONE PUT, not a security_and_analysis field
+gh api repos/OWNER/REPO/private-vulnerability-reporting -X PUT
+
+# Secret-scanning push protection (paid/private; auto-on for public).
+# secret_scanning MUST be sent alongside push protection or the PATCH is silently ignored.
+gh api repos/OWNER/REPO -X PATCH --input - <<'EOF'
+{ "security_and_analysis": {
+    "secret_scanning": { "status": "enabled" },
+    "secret_scanning_push_protection": { "status": "enabled" } } }
+EOF
+```
+
+> **Plan gate:** rulesets, Dependabot, and secret scanning are unavailable on **free-plan private** repos — the API returns 403 (you can't even `GET .../rulesets`). Public repos and paid plans (the Netresearch org) get all of it. If a toggle 403s, check the repo's plan/visibility before debugging the call. More scripting quirks: [`security-config.md`](security-config.md) § GitHub Security API.
