@@ -333,6 +333,36 @@ When landing multiple dependent PRs, expect the dependent PRs to need rebasing a
 | `REVIEW_REQUIRED` after rebase | Stale review dismissal cleared approval | Re-run auto-approve workflow |
 | Unresolved threads block merge | Old threads survive rebase | Resolve via GraphQL `resolveReviewThread` |
 
+### Verifying a PR Actually Merged (enqueue ≠ merged)
+
+On a merge-queue repo, `gh pr merge … --merge` (or `--auto`) only **enqueues** the PR —
+the command returns success immediately and the PR is **still open**. Don't report
+"merged" off the exit code; the queue runs its own CI first and merges later (minutes,
+if the queue runs the full matrix). It can also silently stall.
+
+The queue runs CI on a synthetic branch named `gh-readonly-queue/<base>/pr-<N>-<sha>`.
+To find that CI and confirm the PR lands:
+
+```bash
+# Is it queued, and at what position?
+gh api graphql -f query='{ repository(owner:"OWNER",name:"REPO"){
+  mergeQueue { entries(first:10){ nodes{ position state pullRequest{ number } } } } } }' \
+  --jq '.data.repository.mergeQueue.entries.nodes[]?'
+
+# Watch the queue's own CI (note the merge_group event, not pull_request)
+gh run list --repo OWNER/REPO --event merge_group --limit 5 \
+  --json status,conclusion,headBranch,name \
+  --jq '.[] | select(.headBranch|test("pr-<N>-")) | "\(.status)/\(.conclusion // "-") \(.name)"'
+
+# Confirm it actually merged (state MERGED + branch gone)
+gh pr view <N> --repo OWNER/REPO --json state,mergedAt,mergeCommit \
+  --jq '{state, mergedAt, mergeCommit: (.mergeCommit.oid // "none")}'
+```
+
+Poll `state == "MERGED"` (or a `merge_group` run concluding `failure`) before declaring
+done — green checks on the PR head are necessary but not sufficient once a queue is in
+play.
+
 ## Signed Commits and Merge Strategy Compatibility
 
 GitHub can only auto-sign **merge commits** and **squash merges**. It **cannot** auto-sign rebased commits. If branch protection requires signed commits and the workflow uses `--rebase`, merges fail with:
