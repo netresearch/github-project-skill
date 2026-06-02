@@ -341,3 +341,13 @@ If your Scorecard score is low, check these common issues:
 | Pinned-Dependencies | All actions pinned to full SHA | Pin with `uses: action@SHA # vX.Y.Z` comment. Use `pin-github-action` tool for batch pinning (see [`org-security-settings.md`](./org-security-settings.md)). Note: composite action sub-actions must also be pinned/allowed (see [Composite Action Sub-Action Allow-List Gotcha](#composite-action-sub-action-allow-list-gotcha)). For transitive dependency risks, see [`reusable-workflow-security.md`](./reusable-workflow-security.md). |
 | Code-Review | PRs reviewed before merge | Auto-approve + `required_approving_review_count >= 1` satisfies this |
 | SAST | Static analysis enabled | CodeQL workflow (see above) |
+
+## GitHub Security API: Scripting Gotchas
+
+Endpoint quirks when scripting repo security settings, verified against the GitHub REST spec (source: [AriESQ/gh-safe-repo](https://github.com/AriESQ/gh-safe-repo)). For the bootstrap commands these annotate, see [`repo-bootstrap.md`](repo-bootstrap.md) § Actions & Security Hardening.
+
+- **`PATCH /repos/{o}/{r}` can 404 immediately after `POST /user/repos`.** Repo creation is eventually consistent — the object exists but isn't routable for settings updates for a brief window. Retry the PATCH with backoff (e.g. 1s/2s/4s) when it directly follows a create; standalone PATCHes don't need it.
+- **"Enabled?" probe status is not uniformly 204.** `GET .../vulnerability-alerts` returns **204** when enabled, but `GET .../private-vulnerability-reporting` and `GET .../automated-security-fixes` return **200**. Test the **2xx range** (`200 <= status < 300`), not `== 204`, or the probe is wrong for half the endpoints.
+- **`secret_scanning_push_protection` is silently ignored unless `secret_scanning` is in the same PATCH.** Send both keys in the `security_and_analysis` body together.
+- **Grouped security updates, automatic dependency submission, and dependency graph have no per-repo REST API.** They exist only as org-level code-security configuration fields (`/orgs/{org}/code-security/configurations`) and in the UI. A `PATCH /repos security_and_analysis` with `dependency_graph_autosubmit_action` returns 200 but is silently ignored. For per-repo grouped security updates use `dependabot.yml` groups (see [`dependency-management.md`](dependency-management.md)).
+- **Free-plan private repos 403 on all ruleset / Dependabot / secret-scanning APIs** — you can't even `GET .../rulesets`. Public repos and paid plans (the Netresearch org) are unaffected.
