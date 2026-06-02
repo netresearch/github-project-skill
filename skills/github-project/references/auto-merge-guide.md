@@ -345,9 +345,11 @@ To find that CI and confirm the PR lands:
 
 ```bash
 # Is it queued, and at what position?
-gh api graphql -f query='{ repository(owner:"OWNER",name:"REPO"){
-  mergeQueue { entries(first:10){ nodes{ position state pullRequest{ number } } } } } }' \
-  --jq '.data.repository.mergeQueue.entries.nodes[]?'
+gh api graphql -f query='query($owner:String!,$repo:String!){
+  repository(owner:$owner,name:$repo){
+    mergeQueue { entries(first:10){ nodes{ position state pullRequest{ number } } } } } }' \
+  -f owner=OWNER -f repo=REPO \
+  --jq '.data.repository.mergeQueue?.entries?.nodes[]? // empty'
 
 # Watch the queue's own CI (note the merge_group event, not pull_request)
 gh run list --repo OWNER/REPO --event merge_group --limit 5 \
@@ -356,7 +358,7 @@ gh run list --repo OWNER/REPO --event merge_group --limit 5 \
 
 # Confirm it actually merged (state MERGED + branch gone)
 gh pr view <N> --repo OWNER/REPO --json state,mergedAt,mergeCommit \
-  --jq '{state, mergedAt, mergeCommit: (.mergeCommit.oid // "none")}'
+  --jq '{state, mergedAt, mergeCommit: (.mergeCommit?.oid // "none")}'
 ```
 
 Poll `state == "MERGED"` (or a `merge_group` run concluding `failure`) before declaring
