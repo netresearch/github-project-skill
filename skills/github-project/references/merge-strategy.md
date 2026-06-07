@@ -185,6 +185,50 @@ if [[ "$pending" -gt 0 ]]; then
 fi
 ```
 
+### Renaming a CI job orphans its required status check → PR stuck "Expected"
+
+Required status checks are matched by **exact context name**. Renaming a job — including changing a **matrix value** that appears in the job name (e.g. `PHPStan (8.2, ^14.0)` → `PHPStan (8.2, ^14.3)`) — produces a *new* context name. The old required context no longer reports, so it sits "Expected — Waiting for status to be reported" forever and the PR is `BLOCKED`, even though every job is green.
+
+This is a silent trap: the CI change looks self-contained, but the required-checks list in branch protection / the ruleset still names the old job. Treat the required-checks list as a declared value that must be swept whenever a job name changes.
+
+```bash
+# After renaming any matrixed/required job, update the ruleset's contexts.
+# Rulesets (PUT the full ruleset; required_status_checks is nested under rules):
+gh api "repos/$REPO/rulesets/$ID" > /tmp/rs.json    # back up first
+# edit the .rules[] required_status_checks[].context entries, then:
+gh api -X PUT "repos/$REPO/rulesets/$ID" --input /tmp/rs.json
+
+# Classic branch protection: this endpoint REPLACES the entire contexts list,
+# so you must send ALL required contexts (renamed + unchanged), or you silently
+# drop the others. Read the current list, swap the renamed entries, send it back.
+gh api "repos/$REPO/branches/main/protection/required_status_checks" \
+  --jq '{strict: .strict, contexts: .contexts}' \
+  | jq '.contexts |= map(sub("\\^14\\.0"; "^14.3"))' > /tmp/rsc.json
+gh api -X PATCH "repos/$REPO/branches/main/protection/required_status_checks" --input /tmp/rsc.json
+```
+
+Verify the contexts match the jobs the workflow now emits. The context string is the **check-run name** from `repos/$REPO/commits/$SHA/check-runs[].name`, which for reusable-/multi-job workflows includes the `workflow / job (matrix)` prefix (e.g. `ci / PHPStan (8.2, ^14.3)`) — not the bare job name. (This is the same source `init-branch-protection.sh` uses; the `/actions/runs/{id}/jobs` endpoint returns the bare job name and is wrong for context matching.)
+
+### Merge queue silently fails to enqueue a green PR
+
+On a repo with a `merge_queue` ruleset rule, an all-green PR with auto-merge armed (`mergeStateStatus: CLEAN`) sometimes never enters the queue — no queue entry, no `merge_group` build, it just sits OPEN. Confirm it is genuinely stuck before acting:
+
+```bash
+gh api graphql -f query='query($owner:String!,$repo:String!,$branch:String!){
+  repository(owner:$owner,name:$repo){
+    mergeQueue(branch:$branch){entries(first:10){nodes{pullRequest{number} state position}}}
+  }
+}' -f owner=OWNER -f repo=REPO -f branch=main \
+  --jq '.data.repository.mergeQueue?.entries?.nodes[]? // empty'
+gh run list --repo OWNER/REPO --event merge_group -L 5   # any build for this PR?
+```
+
+If there is no entry and no `merge_group` run after the required checks have passed, admin-merge with the queue's configured method (preserves signatures with `--merge`):
+
+```bash
+gh pr merge <PR> --repo OWNER/REPO --merge --admin
+```
+
 ## References
 
 - [GitHub Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)
