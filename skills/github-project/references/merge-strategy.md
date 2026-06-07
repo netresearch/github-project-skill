@@ -185,6 +185,42 @@ if [[ "$pending" -gt 0 ]]; then
 fi
 ```
 
+### Renaming a CI job orphans its required status check → PR stuck "Expected"
+
+Required status checks are matched by **exact context name**. Renaming a job — including changing a **matrix value** that appears in the job name (e.g. `PHPStan (8.2, ^14.0)` → `PHPStan (8.2, ^14.3)`) — produces a *new* context name. The old required context no longer reports, so it sits "Expected — Waiting for status to be reported" forever and the PR is `BLOCKED`, even though every job is green.
+
+This is a silent trap: the CI change looks self-contained, but the required-checks list in branch protection / the ruleset still names the old job. Treat the required-checks list as a declared value that must be swept whenever a job name changes.
+
+```bash
+# After renaming any matrixed/required job, update the ruleset's contexts.
+# Rulesets (PUT the full ruleset; required_status_checks is nested under rules):
+gh api "repos/$REPO/rulesets/$ID" > /tmp/rs.json    # back up first
+# edit the .rules[] required_status_checks[].context entries, then:
+gh api -X PUT "repos/$REPO/rulesets/$ID" --input /tmp/rs.json
+
+# Classic branch protection:
+gh api -X PATCH "repos/$REPO/branches/main/protection/required_status_checks" \
+  -f 'contexts[]=ci / PHPStan (8.2, ^14.3)'
+```
+
+Verify the contexts match the jobs the workflow now emits — pull live job names from `repos/$REPO/commits/$SHA/check-runs` (the bare job name there is the context used for matching), not from the run summary.
+
+### Merge queue silently fails to enqueue a green PR
+
+On a repo with a `merge_queue` ruleset rule, an all-green PR with auto-merge armed (`mergeStateStatus: CLEAN`) sometimes never enters the queue — no queue entry, no `merge_group` build, it just sits OPEN. Confirm it is genuinely stuck before acting:
+
+```bash
+gh api graphql -f query='{ repository(owner:"OWNER", name:"REPO") {
+  mergeQueue(branch:"main") { entries(first:10){ nodes { pullRequest { number } state position } } } } }'
+gh run list --repo OWNER/REPO --event merge_group -L 5   # any build for this PR?
+```
+
+If there is no entry and no `merge_group` run after the required checks have passed, admin-merge with the queue's configured method (preserves signatures with `--merge`):
+
+```bash
+gh pr merge <PR> --repo OWNER/REPO --merge --admin
+```
+
 ## References
 
 - [GitHub Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)
