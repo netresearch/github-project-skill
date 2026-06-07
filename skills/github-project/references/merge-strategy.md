@@ -198,20 +198,28 @@ gh api "repos/$REPO/rulesets/$ID" > /tmp/rs.json    # back up first
 # edit the .rules[] required_status_checks[].context entries, then:
 gh api -X PUT "repos/$REPO/rulesets/$ID" --input /tmp/rs.json
 
-# Classic branch protection:
-gh api -X PATCH "repos/$REPO/branches/main/protection/required_status_checks" \
-  -f 'contexts[]=ci / PHPStan (8.2, ^14.3)'
+# Classic branch protection: this endpoint REPLACES the entire contexts list,
+# so you must send ALL required contexts (renamed + unchanged), or you silently
+# drop the others. Read the current list, swap the renamed entries, send it back.
+gh api "repos/$REPO/branches/main/protection/required_status_checks" \
+  --jq '{strict: .strict, contexts: .contexts}' \
+  | jq '.contexts |= map(sub("\\^14\\.0"; "^14.3"))' > /tmp/rsc.json
+gh api -X PATCH "repos/$REPO/branches/main/protection/required_status_checks" --input /tmp/rsc.json
 ```
 
-Verify the contexts match the jobs the workflow now emits — pull live job names from `repos/$REPO/commits/$SHA/check-runs` (the bare job name there is the context used for matching), not from the run summary.
+Verify the contexts match the jobs the workflow now emits. The context string is the **check-run name** from `repos/$REPO/commits/$SHA/check-runs[].name`, which for reusable-/multi-job workflows includes the `workflow / job (matrix)` prefix (e.g. `ci / PHPStan (8.2, ^14.3)`) — not the bare job name. (This is the same source `init-branch-protection.sh` uses; the `/actions/runs/{id}/jobs` endpoint returns the bare job name and is wrong for context matching.)
 
 ### Merge queue silently fails to enqueue a green PR
 
 On a repo with a `merge_queue` ruleset rule, an all-green PR with auto-merge armed (`mergeStateStatus: CLEAN`) sometimes never enters the queue — no queue entry, no `merge_group` build, it just sits OPEN. Confirm it is genuinely stuck before acting:
 
 ```bash
-gh api graphql -f query='{ repository(owner:"OWNER", name:"REPO") {
-  mergeQueue(branch:"main") { entries(first:10){ nodes { pullRequest { number } state position } } } } }'
+gh api graphql -f query='query($owner:String!,$repo:String!,$branch:String!){
+  repository(owner:$owner,name:$repo){
+    mergeQueue(branch:$branch){entries(first:10){nodes{pullRequest{number} state position}}}
+  }
+}' -f owner=OWNER -f repo=REPO -f branch=main \
+  --jq '.data.repository.mergeQueue?.entries?.nodes[]? // empty'
 gh run list --repo OWNER/REPO --event merge_group -L 5   # any build for this PR?
 ```
 
