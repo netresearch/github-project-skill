@@ -155,3 +155,29 @@ gh api repos/OWNER/REPO/topics --jq 'if (.names | contains(["typo3"]) and contai
 # Check has_projects
 gh api repos/OWNER/REPO --jq 'if .has_projects then "OK: Projects enabled" else "MISSING: Projects disabled" end'
 ```
+
+## SonarCloud Quality Gate Gotcha
+
+A **wholesale structural change** to a file (e.g. converting a classic-script IIFE to an
+ES module, or moving most of a class) makes SonarCloud attribute the **entire file** as
+"new code". Every latent smell in it then counts against the new-code gate, so
+`new_maintainability_rating` can flip to D from a change that "only refactored" — and the
+gate blocks the merge.
+
+Anticipate it: when you modernise a file's module structure, **fix all its latent smells
+in the same change** rather than reverting — typically `var`→`const` (rule S3504), reduce
+cognitive complexity by extracting helpers (S3776), and replace `innerHTML` with DOM
+construction / `DOMParser` (also clears the XSS hotspot). The gate sees a brand-new file,
+not a diff.
+
+To see which new-code smells are blocking, query SonarCloud's `api/issues/search`
+endpoint (authenticated with your SonarCloud token via HTTP basic auth — token as the
+username, empty password) filtered to `types=CODE_SMELL&resolved=false` for the PR, e.g.:
+
+```
+GET https://sonarcloud.io/api/issues/search
+      ?componentKeys=<projectKey>&pullRequest=<PR>&types=CODE_SMELL&resolved=false
+      &s=SEVERITY&asc=false
+```
+
+Each issue's `rule` + `message` + `component:line` tells you exactly what to fix.
