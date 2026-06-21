@@ -351,3 +351,27 @@ Endpoint quirks when scripting repo security settings, verified against the GitH
 - **`secret_scanning_push_protection` is silently ignored unless `secret_scanning` is in the same PATCH.** Send both keys in the `security_and_analysis` body together.
 - **Grouped security updates, automatic dependency submission, and dependency graph have no per-repo REST API.** They exist only as org-level code-security configuration fields (`/orgs/{org}/code-security/configurations`) and in the UI. A `PATCH /repos security_and_analysis` with `dependency_graph_autosubmit_action` returns 200 but is silently ignored. For per-repo grouped security updates use `dependabot.yml` groups (see [`dependency-management.md`](dependency-management.md)).
 - **Free-plan private repos 403 on all ruleset / Dependabot / secret-scanning APIs** — you can't even `GET .../rulesets`. Public repos and paid plans (the Netresearch org) are unaffected.
+
+## SonarCloud Quality Gate: PR (new code) vs Branch (overall)
+
+A PR can pass SonarCloud's **new-code** quality gate (0 new issues) yet turn the
+**default-branch** gate **red after merge** — the two gates evaluate different
+conditions. The branch gate adds conditions the PR analysis doesn't, most often
+`new_security_hotspots_reviewed` (must be **100%**) and overall coverage.
+
+- **Security Hotspots need _reviewing_, not fixing.** They are security-sensitive
+  code flagged for a human to mark **Safe** / **Fixed** in the SonarCloud UI (or
+  via `POST api/hotspots/change_status`). An unreviewed hotspot fails the gate even
+  though it is not a bug.
+- **The offenders are frequently pre-existing**, in files the PR never touched
+  (e.g. `curl | bash`, shell `[ ]`, a regex). Don't assume the merged PR caused it
+  — confirm against the hotspot list first.
+
+```bash
+# which branch-gate condition failed
+curl -fsSL "https://sonarcloud.io/api/qualitygates/project_status?projectKey=KEY&branch=main" \
+  | jq '.projectStatus.conditions[]? | select(.status != "OK")'
+# the to-review hotspots (verify before blaming the merge)
+curl -fsSL "https://sonarcloud.io/api/hotspots/search?projectKey=KEY&branch=main&status=TO_REVIEW&ps=30" \
+  | jq -r '.hotspots[]? | "\(.component | sub(".*:"; "")):\(.line // "?") \(.securityCategory // "")"'
+```
