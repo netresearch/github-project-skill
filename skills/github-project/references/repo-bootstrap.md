@@ -83,6 +83,23 @@ gh api repos/OWNER/REPO/actions/permissions/workflow -X PUT \
 - `default_workflow_permissions=read` — `GITHUB_TOKEN` defaults to read-only; jobs needing write opt in at job level (see [`security-config.md`](security-config.md) § Least-Privilege Workflow Permissions). GitHub's default is `write`.
 - `can_approve_pull_request_reviews=false` — stops a workflow from approving its own PRs (which would otherwise satisfy `required_approving_review_count` without a real reviewer).
 
+> **Interaction 1 — read-only token + reusable-workflow callers.** Once the default
+> is `read`, a caller **job** that calls a reusable workflow and omits its own
+> `permissions:` block inherits read-only and **fails at startup** (`startup_failure`,
+> before any step) if the reusable declares a permission it wasn't granted. Symptom:
+> a whole workflow shows `startup_failure` with no logs. Fix: give each caller job an
+> explicit `permissions:` matching the reusable's documented caller requirements
+> (e.g. `contents: read` + `security-events: write` for the security reusables). This
+> bit the netresearch security.yml callers after hardening.
+>
+> **Interaction 2 — `can_approve_pull_request_reviews=false` disables auto-approve.** If the repo uses a
+> `pr-quality`-style **auto-approve** workflow (solo-maintainer flow) or **dependabot
+> auto-merge** with `required_approving_review_count >= 1`, those rely on a workflow
+> approving the PR. Setting `can_approve_pull_request_reviews=false` silently breaks
+> them — PRs then stick on `REVIEW_REQUIRED` and dependabot PRs never auto-merge.
+> **Keep `can_approve_pull_request_reviews=true`** when you use auto-approve/auto-merge; the
+> least-privilege win is already carried by `default_workflow_permissions=read`.
+
 ### Restrict which actions can run + require SHA pinning
 
 ```bash
