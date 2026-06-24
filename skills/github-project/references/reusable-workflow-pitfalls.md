@@ -34,13 +34,20 @@ When you self-reference a composite action inside the same repo that hosts the r
 
 When a workflow run is created, GitHub records the resolved SHAs of every `uses: org/repo/...@ref` at that moment. **Re-running the same run replays those exact SHAs** — it does not re-evaluate the refs. This means: if you fix a bug in an upstream reusable workflow and merge the fix, then re-run a failed workflow that consumed `@main`, you will get the **old, broken** body.
 
-To pick up upstream changes after merging the fix:
+To pick up upstream changes after merging the fix, you must create a **new** run — the ref is not re-resolved per-job or on rerun:
 
-- Push a new commit to the PR (`git commit --allow-empty -m "trigger ci"` works), or
-- Close + reopen the PR, or
-- Trigger a fresh `workflow_dispatch` run.
+- **PR:** push a new commit (`git commit --allow-empty -m "trigger ci"`), or close + reopen the PR (`gh pr close N && gh pr reopen N`), or trigger a fresh `workflow_dispatch` run.
+- **Scheduled / non-PR repo with no `workflow_dispatch`:** create a throwaway branch at the default-branch SHA to fire a fresh `push` run, then delete it:
 
-`gh run rerun` is fine for genuinely transient failures (network blips, rate limits) — not for "I fixed the upstream reusable workflow."
+  ```bash
+  gh api -X POST repos/O/R/git/refs -f ref=refs/heads/ci/verify -f sha=<sha>
+  gh api -X DELETE repos/O/R/git/refs/heads/ci/verify
+  ```
+- A scheduled-only repo whose default branch has no new commit keeps *displaying* the stale red run until its next push/schedule — the fix is in, the badge just hasn't refreshed.
+
+`gh run rerun` is fine for genuinely transient failures (network blips, rate limits) — not for "I fixed the upstream reusable workflow." (Distinct from the consumer's own base-SHA staleness; see `gh-cli-reference.md` → "`gh run rerun` re-runs the OLD state".)
+
+> **Re-triggering a tag workflow** after fixing the workflow file requires **moving the tag** (delete the remote tag, re-tag the fixed default-branch tip, push) — tag events fire against the workflow file *at the tag's commit*. DANGER: only safe when the package is on **no** registry — Packagist/npm webhooks publish within seconds and stable versions are immutable. "The release workflow failed" does not mean nothing was published; check the registry first and prefer fix-forward with a patch version.
 
 ## 4. Permissions ceiling — caller cannot grant what it lacks
 
@@ -95,3 +102,14 @@ Per-project patches defeat the point of the reusable workflow: they reintroduce 
 Before adding a guard, check, or fix to a project's own workflow files, ask whether the shared reusable-workflow repo already owns that concern — or should. If it does, land the change there and let the consumer pick it up via its `@main` / `@vX.Y.Z` reference (per [`reusable-workflow-security.md`](./reusable-workflow-security.md), internal reusable workflows are referenced by tag/branch, not SHA). Keep logic in a consumer only when it is genuinely project-specific.
 
 This is distinct from pitfalls #1–#5 above (which cover *how* to author and reference reusable workflows) — this is about *where* a fix belongs.
+
+## 7. Run with zero jobs whose name is the file path = workflow-validation failure
+
+A run with `conclusion: startup_failure` (or `failure`), **zero jobs**, and a displayed name that falls back to the workflow **file path** failed at workflow *validation*, before any job started. The exact reason is **only in the Actions UI banner** — it is not exposed via the REST API (`gh run view --log[-failed]` returns "log not found"; run/annotations/check-suite endpoints are empty). If you can't see the UI, ask for the banner text. Two causes seen in practice:
+
+1. **Dead reusable-workflow reference** — a `uses:` pointing at a reusable workflow file that no longer exists (e.g. a deleted shared workflow); callers fail silently, sometimes for months. Inspect the `uses:` lines and `gh api`/`curl` the referenced files for 404.
+2. **Permission mismatch** — the caller's job omits an explicit `permissions:` block, the repo's `default_workflow_permissions` is `read`, but a nested reusable job requests e.g. `security-events: write`. UI error: "The nested job 'X' is requesting 'security-events: write', but is only allowed 'security-events: none'." Deceptive because a **byte-identical** workflow file passes in sibling repos whose repo-default permissions are permissive — it is repo-environmental, not a file diff. Fix at the caller per pitfall #4: grant the calling job exactly the scopes the reusable declares.
+
+```bash
+gh api repos/O/R/actions/permissions --jq '.default_workflow_permissions? // ""'   # reveals a restrictive 'read' default
+```

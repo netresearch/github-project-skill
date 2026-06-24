@@ -42,6 +42,9 @@ gh pr merge NUMBER --repo OWNER/REPO --auto --merge
 # Merge PR directly
 gh pr merge NUMBER --repo OWNER/REPO --merge  # or --squash, --rebase
 
+# Wait for PR CI to finish — use the native watcher, NOT a hand-rolled poll loop
+gh pr checks NUMBER --repo OWNER/REPO --watch --fail-fast
+
 # Comment on PR
 gh pr comment NUMBER --repo OWNER/REPO --body "message"
 
@@ -103,8 +106,11 @@ gh run view RUN_ID --repo OWNER/REPO
 # View failed logs
 gh run view RUN_ID --repo OWNER/REPO --log-failed
 
-# Re-run failed jobs
+# Re-run failed jobs (genuine flakes only — see caveat below)
 gh run rerun RUN_ID --repo OWNER/REPO --failed
+
+# Wait for a workflow run to finish (native watcher, prefer over hand-rolled loops)
+gh run watch RUN_ID --repo OWNER/REPO
 
 # Manually trigger workflow
 gh workflow run WORKFLOW.yml --repo OWNER/REPO --ref main
@@ -179,6 +185,41 @@ gh repo edit OWNER/REPO --description "New description"
 ```
 
 ## Common Troubleshooting Patterns
+
+### Wait for CI with the native watcher, not a hand-rolled loop
+
+To wait for PR checks, run `gh pr checks NUMBER --repo OWNER/REPO --watch [--fail-fast]` (or `gh run watch RUN_ID` for a specific run) as a background command — do **not** hand-write a `jq` poll loop. The native watcher already handles pending-state representation, new-check appearance, and refresh; hand-rolled loops re-derive those semantics from undocumented field shapes (`conclusion` may be `""`, `null`, or absent while a check is running) and reliably get them wrong.
+
+Three recurring bugs in ad-hoc watchers:
+
+- An empty-string `conclusion` not matched by the "pending" filter → false "all checks done".
+- A bare `pending -eq 0 && break` snapshot, which is true both **before** runs register and **after** they finish. Run immediately after a push (or a close/reopen), it reads "0 pending" before the freshly-triggered run has appeared → false "all green" → premature merge.
+- A wrong `createdAt` cutoff that skips the actual run → false timeout.
+
+`gh pr checks` exits non-zero when checks fail — gate on the exit code. If you must hand-roll (watching something `gh` has no watcher for), gate on a **named required check reaching a terminal pass/fail state**, never on a 0-pending count. After pushing, capture the new SHA and confirm `headRefOid` matches before trusting any watch.
+
+### `gh run rerun` re-runs the OLD state — only for genuine flakes
+
+`gh run rerun [--failed]` reuses the original `GITHUB_SHA`/`GITHUB_REF` recorded at run-creation time. Two consequences:
+
+- For `pull_request` workflows that SHA is the **merge commit** computed when the run was first created, so a rerun still tests the PR against the **old base**. After fixing a base-branch breakage, a rerun reproduces the old failure. To pick up new base state, create a new event: rebase the PR branch onto the fixed base and push (an empty commit works). (Reusable-workflow `@ref` resolution is also pinned at run-creation — see `reusable-workflow-pitfalls.md`.)
+- Reruns are correct only for genuinely transient infra failures where the same code state should pass: runner/network blips, partial codecov uploads, registry pull flakes (e.g. `Get "https://registry-1.docker.io/v2/": context deadline exceeded`), Sigstore/Rekor 409s. Don't debug the workflow for those — just `gh run rerun --failed`.
+
+### Rapid `gh api` calls intermittently return HTTP 401
+
+Rapid sequences of `gh api` calls (REST + GraphQL) sometimes return `401 "Requires authentication"` even with valid auth — transient, clears with ~5-10s spacing and a retry. **Trap:** piping a `gh` listing straight into `while read` consumes the 401 error text as data when a call fails (e.g. JSON error braces get fed into a GraphQL mutation as "thread IDs"). Always capture output into a variable first, check the exit status, then iterate; add a `sleep 5-10` between bulk review-thread replies/resolves.
+
+### Add an image to an issue or PR (no browser needed)
+
+GitHub's native attachment uploader (`user-attachments/assets/…`) needs a browser session + CSRF and cannot be driven by `gh`/the API — but that does **not** mean images are impossible. Commit the PNGs to a dedicated branch (in a fork if you lack push to the target), then embed the raw URL in the body/comment:
+
+```bash
+git push fork HEAD:issue-NNNN-screenshots
+# In the issue/PR body:
+# ![before](https://raw.githubusercontent.com/USER/REPO/BRANCH/before.png)
+```
+
+`raw.githubusercontent.com` serves `image/png` and GitHub renders it inline via camo. Generate the image first; for a JS-populated widget, point the page at a local copy of the real data and screenshot the rendered result.
 
 ### Debug Auto-merge Pipeline
 

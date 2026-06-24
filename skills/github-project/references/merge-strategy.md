@@ -134,6 +134,65 @@ Both are marked as "Verified" in the GitHub UI:
 
 ## Troubleshooting
 
+### Diagnose `mergeStateStatus: BLOCKED` before naming a cause
+
+When a PR is `BLOCKED`, **do not assert a cause** (and never reflexively say "blocked on review" / "waiting for a reviewer") until you have fetched the effective ruleset and named the exact gating rule. `mergeStateStatus` alone does not tell you why; a human-approval gate is almost never the reason. The PR page states the reason in plain text ("All comments must be resolved", "Required statuses must pass") — read it, and the same facts are queryable.
+
+The single most common cause is **unresolved review threads** (including from bots) — check that first:
+
+```bash
+# reviewThreads is ONLY available via GraphQL — it is NOT a valid `gh pr view --json` field
+gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+    reviewThreads(first:50){nodes{id isResolved}}}}}' -f owner=O -f repo=R -F pr=N \
+  --jq '[.data.repository.pullRequest?.reviewThreads?.nodes[]?|select(.isResolved==false)]|length'
+```
+
+Passing `reviewThreads` to `gh pr view --json` errors "Unknown JSON field" — a merge-gate script that does this silently fails open and allows every merge. If the unresolved count is >0, address each comment, reply citing the fix commit, resolve. Only if it is 0 do you inspect the ruleset:
+
+```bash
+gh api repos/{owner}/{repo}/rules/branches/{BASE} --jq 'group_by(.type)[]|{type:.[0].type,n:length}'
+gh pr view N --json reviewDecision,mergeStateStatus,statusCheckRollup
+```
+
+Then name the specific rule (`copilot_code_review`, `required_status_checks`, `non_fast_forward`, merge queue, …). A `pull_request` rule with `reviewDecision: ""` means there is **no human-approval requirement at all**.
+
+### Never merge while a review is announced or in flight
+
+Once a reviewer is requested or has *started* (by you, a ruleset, or automation), its pendency blocks the merge until it resolves — regardless of `mergeStateStatus`. `CLEAN` is necessary but never sufficient: a `copilot_code_review` ruleset with `review_on_push: false` reports `CLEAN` off an *earlier* commit's review while a new one is still running, and a reviewer that has *started* drops off the request list without submitting — so `reviewRequests: []` is **not** "all clear". Check the timeline / pending-review state, not just `reviewRequests`. Do not request or re-request a reviewer as a pre-merge step (announcing one commits you to waiting). The absence of a review is not itself a blocker — you cannot require a review to *exist* (bots fail, decline, or are unconfigured) — but an *announced* one must be allowed to finish.
+
+### `gh pr merge` falsely reports "base branch policy prohibits the merge"
+
+`gh pr merge` (GraphQL path) can fail with "the base branch policy prohibits the merge" even when every requirement is verifiably satisfied (rollup SUCCESS, signature valid, 0 required approvals, 0 unresolved threads, branch up to date, no blocking rulesets), and `--auto` never fires either. The REST endpoint succeeds immediately on the same head SHA:
+
+```bash
+gh api -X PUT repos/{owner}/{repo}/pulls/{n}/merge -f merge_method=merge
+```
+
+Use this **only after the merge gate is genuinely verified** — the REST path bypasses whatever GraphQL mis-evaluated, so it must not be used to force past a *real* policy block.
+
+### All merge methods rejected — merge-method ruleset deadlock
+
+When every `gh pr merge --merge/--rebase/--squash` (and REST `PUT .../merge`) returns `"<method> merges are not allowed on this repository"` (HTTP 405) even though `gh api repos/<r> --jq '{allow_merge_commit,allow_squash_merge,allow_rebase_merge}'` shows a method enabled, the cause is a deadlock: an **org-level ruleset** sets `pull_request.allowed_merge_methods`, and the effective allowed set is the **intersection** of that with the repo's `allow_*_merge` flags. If the org allows only `squash` but the repo has `allow_squash_merge: false`, the intersection is empty and nothing merges.
+
+Diagnosis gotcha: `repos/<r>/rules/branches/main` may show a *permissive* list because `orgs/<org>/rulesets` is not listable without org-admin, so the stricter org ruleset is invisible and the contradiction looks like a GitHub bug — it isn't. `--admin` does **not** bypass `allowed_merge_methods` (it only bypasses status checks / required reviews). The only fixes are repo/org-admin actions (enable the org-required method at the repo level, exempt the repo, or adjust the org ruleset). Do not toggle repo merge settings autonomously on an inference — flag it for the owner.
+
+### Copilot-review ruleset blocked by Copilot's own quota
+
+Some repos gate merges on a `copilot_code_review` **ruleset** (visible via `gh api repos/$R/rules/branches/main`, not classic branch protection) that requires a fresh Copilot review on the head commit. When Copilot is quota-limited org-wide it posts a `COMMENTED` review saying it "was unable to review … reached their quota limit" — which does **not** satisfy the ruleset, so `gh pr merge` returns "add `--auto` or `--admin`" and `mergeStateStatus` stays `BLOCKED`. Re-requesting just reproduces the quota message.
+
+When all real checks pass (CodeQL, actionlint, SonarCloud, DCO, …) and only the quota-stuck Copilot gate blocks, admin-merge:
+
+```bash
+gh pr merge $PR --repo $R --merge --admin
+```
+
+Only for the unfulfillable-Copilot case — never admin-merge to skip a *failing* real check.
+
+### SonarCloud PR gate re-attributes pre-existing issues to a refactor
+
+SonarCloud measures "new code" as lines touched by the PR, so mechanical refactors (e.g. method extraction, literal→const swaps) re-attribute pre-existing duplication and uncovered lines to the PR, failing `new_duplicated_lines_density` or `codecov/patch`. Don't resort to test-theater or risky out-of-scope de-duplication inside a behavior-preserving PR. First fix what is genuinely cheap and meaningful (a small unit test for an extracted helper often flips `codecov/project` green). For the structural residue, confirm the gate is **non-required** (`mergeStateStatus: UNSTABLE`, not `BLOCKED`), write a "Quality gate note" section into the PR body naming the metric, the cause, and why it is out of scope, then merge. Style-rule whack-a-mole (each push surfacing the next batch) is best handled by modernizing the whole file in one pass — but verify bulk codemods with the language's own parser (a naive `var`→`const` regex turns `var x;` into invalid `const x;`).
+
 ### "Merge commits are not allowed on this repository"
 
 **Cause:** `allow_merge_commit` is false in repository settings.
