@@ -142,9 +142,10 @@ The single most common cause is **unresolved review threads** (including from bo
 
 ```bash
 # reviewThreads is ONLY available via GraphQL — it is NOT a valid `gh pr view --json` field
-gh api graphql -f query='{repository(owner:"O",name:"R"){pullRequest(number:N){
-  reviewThreads(first:50){nodes{id isResolved}}}}}' \
-  --jq '[.data.repository.pullRequest.reviewThreads.nodes[]|select(.isResolved==false)]|length'
+gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+    reviewThreads(first:50){nodes{id isResolved}}}}}' -f owner=O -f repo=R -F pr=N \
+  --jq '[.data.repository.pullRequest?.reviewThreads?.nodes[]?|select(.isResolved==false)]|length'
 ```
 
 Passing `reviewThreads` to `gh pr view --json` errors "Unknown JSON field" — a merge-gate script that does this silently fails open and allows every merge. If the unresolved count is >0, address each comment, reply citing the fix commit, resolve. Only if it is 0 do you inspect the ruleset:

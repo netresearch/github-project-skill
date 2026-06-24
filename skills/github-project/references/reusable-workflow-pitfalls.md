@@ -111,5 +111,5 @@ A run with `conclusion: startup_failure` (or `failure`), **zero jobs**, and a di
 2. **Permission mismatch** — the caller's job omits an explicit `permissions:` block, the repo's `default_workflow_permissions` is `read`, but a nested reusable job requests e.g. `security-events: write`. UI error: "The nested job 'X' is requesting 'security-events: write', but is only allowed 'security-events: none'." Deceptive because a **byte-identical** workflow file passes in sibling repos whose repo-default permissions are permissive — it is repo-environmental, not a file diff. Fix at the caller per pitfall #4: grant the calling job exactly the scopes the reusable declares.
 
 ```bash
-gh api repos/O/R/actions/permissions --jq .default_workflow_permissions   # reveals a restrictive 'read' default
+gh api repos/O/R/actions/permissions --jq '.default_workflow_permissions? // ""'   # reveals a restrictive 'read' default
 ```
