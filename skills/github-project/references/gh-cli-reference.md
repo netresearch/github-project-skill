@@ -143,13 +143,13 @@ gh api "orgs/ORG/packages/container/PACKAGE"
 # Delete a package — needs BOTH read:packages AND delete:packages.
 # admin:org alone is NOT enough; delete:packages alone still 403s.
 gh auth refresh -h github.com -s read:packages,delete:packages
-gh api --method DELETE "orgs/ORG/packages/container/PACKAGE"   # 204; GET then 404
+gh api -X DELETE "orgs/ORG/packages/container/PACKAGE"   # 204; GET then 404
 ```
 
 Verify the token's effective scopes from GitHub's response header, not `gh auth status` (which can lag):
 
 ```bash
-gh api "orgs/ORG/packages/container/PACKAGE" --include 2>&1 | grep -i '^X-Oauth-Scopes:'
+gh api "" --include 2>&1 | grep -i '^X-Oauth-Scopes:'
 ```
 
 ## Files and Content
