@@ -677,6 +677,33 @@ Or add a `.gitleaks.toml` allowlist for known false positives.
 
 PRs modifying workflow files require manual merge by a repository admin.
 
+### Nameless `package.json` Pollutes the Lockfile With the Worktree Dir Name
+
+**Problem:** Working on a Dependabot/Renovate npm PR in a git worktree (e.g. `fix-dependabot-npm-uuid/`) and running `npm install` produces a spurious `package-lock.json` change — the root package `"name"` flips to the worktree directory name — that a reviewer or CI flags as an unrelated diff.
+
+**Cause:** When `package.json` has **no `name` field**, npm falls back to stamping the **checkout directory name** into `package-lock.json` as the root package name. In the git worktree convention, the checkout dir is *branch-named* (e.g. `fix-dependabot-npm-uuid`) rather than the repo name, so every `npm install` rewrites the lockfile's `name` to whatever branch folder you happen to be in.
+
+```jsonc
+// package-lock.json after `npm install` in a worktree named fix-dependabot-npm-uuid/
+{
+  "name": "fix-dependabot-npm-uuid",   // ← polluted: was absent / repo name before
+  "lockfileVersion": 3,
+  ...
+}
+```
+
+**Solution:** Add an explicit `name` field to `package.json` so npm stops deriving it from the directory:
+```jsonc
+// package.json
+{
+  "name": "my-repo",
+  "version": "1.0.0",
+  ...
+}
+```
+
+The lockfile `name` then stays stable regardless of which worktree folder you run `npm install` in. This bites specifically in git worktree workflows; a plain clone (dir == repo name) masks it.
+
 ## Comparison: Dependabot vs Renovate
 
 | Feature | Dependabot | Renovate |
