@@ -26,7 +26,7 @@ GitHub repository configuration, troubleshooting, and collaboration workflow bes
 - CodeQL
 - Scorecard
 - CODEOWNERS, templates, labels
-- Fork PR base
+- Fork PR merge base
 
 > **REQUIRED post `gh repo create`:** `scripts/init-branch-protection.sh OWNER/REPO` — see `references/repo-bootstrap.md`.
 
