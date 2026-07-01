@@ -17,18 +17,18 @@ GitHub repository configuration, troubleshooting, and collaboration workflow bes
 ## When to Use
 
 - **Post `gh repo create` + initial push, before first PR** — apply branch protection (REQUIRED, see below)
-- PR won't merge, BLOCKED, or unresolved threads
-- Auto-merge fails for Dependabot/Renovate
-- Solo maintainer auto-approve
-- Branch protection, rulesets, `enforce_admins`
-- GHA failures or permission issues
-- Signed commit merge (rebase can't auto-sign)
-- CodeQL default vs custom workflows
-- Scorecard (token perms, pinned deps)
-- CODEOWNERS, templates, release labels
-- Fork PR merge base
+- PR won't merge / threads
+- Auto-merge fails (Dependabot/Renovate)
+- Solo auto-approve
+- Branch protection, rulesets
+- GHA failures
+- Signed-commit merge
+- CodeQL
+- Scorecard
+- CODEOWNERS, templates, labels
+- Fork PR base
 
-> **REQUIRED post `gh repo create`:** `scripts/init-branch-protection.sh OWNER/REPO` — see `references/repo-bootstrap.md` (closes [snipe-it#17](https://github.com/netresearch/snipe-it-docker-compose-stack/pull/17) class).
+> **REQUIRED post `gh repo create`:** `scripts/init-branch-protection.sh OWNER/REPO` — see `references/repo-bootstrap.md`.
 
 ## Quick Diagnostics
 
@@ -45,7 +45,7 @@ Use `assets/pr-quality.yml.template` for auto-approve with `required_approving_r
 
 ### Auto-merge Setup
 
-Requires `allow_auto_merge`, `pull_request_target` trigger, `user.login` bot detection, `gh pr merge --auto` with dynamic strategy. See `references/auto-merge-guide.md`.
+Requires `allow_auto_merge`, `pull_request_target`, bot detection, `gh pr merge --auto`. See `references/auto-merge-guide.md`.
 
 ### Auto-merge Not Working
 
@@ -84,6 +84,10 @@ scripts/init-branch-protection.sh OWNER/REPO --from-current-checks   # after fir
 scripts/verify-github-project.sh /path/to/repository      # local-checkout audit
 ```
 
+## No editorializing
+
+State what a change does, not how good it is; no self-praise or narrating the expected. See `references/no-editorializing.md`.
+
 ## References
 
 | Topic | Reference |
@@ -101,6 +105,7 @@ scripts/verify-github-project.sh /path/to/repository      # local-checkout audit
 | Scorecard, CodeQL, security | `references/security-config.md` |
 | actionlint | `references/actionlint-guide.md` |
 | Workflow bash pitfalls | `references/workflow-bash-patterns.md` |
+| No editorializing | `references/no-editorializing.md` |
 | Fork merge base | `references/pr-commit-cleanup.md` |
 | Multi-repo batch ops | `references/multi-repo-operations.md` |
 | Reusable workflow security | `references/reusable-workflow-security.md` |
