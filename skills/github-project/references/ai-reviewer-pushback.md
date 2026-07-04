@@ -62,6 +62,16 @@ The reviewer recommends weakening a control "to fix the failing build." The buil
 
 **Tell:** the suggested change makes the symptom go away by removing the check that produced the symptom.
 
+### Runtime / language-semantics claims
+
+The reviewer asserts how the language runtime behaves — an exception it "will" throw, a coercion, an evaluation order — and the assertion is simply wrong.
+
+**Real example:**
+
+- Copilot claimed a method that declares **fewer** parameters than a caller passes "will throw `ArgumentCountError`." In PHP that only fires for too-few *required* arguments; **extra positional arguments are silently ignored**, so the code was correct. The passing functional tests were the proof.
+
+**Tell:** the claim is about runtime behavior that a green test already exercises. Don't restructure code to satisfy a semantics claim your test suite already disproves — the test run is the authority (see step 2). Reproduce it in a one-off snippet if you're unsure, rather than trusting the assertion.
+
 ## The pushback workflow
 
 When you suspect a reviewer comment is wrong, follow this sequence **before** changing any code:
