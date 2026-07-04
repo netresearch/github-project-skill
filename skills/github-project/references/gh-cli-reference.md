@@ -209,6 +209,10 @@ Three recurring bugs in ad-hoc watchers:
 
 Rapid sequences of `gh api` calls (REST + GraphQL) sometimes return `401 "Requires authentication"` even with valid auth — transient, clears with ~5-10s spacing and a retry. **Trap:** piping a `gh` listing straight into `while read` consumes the 401 error text as data when a call fails (e.g. JSON error braces get fed into a GraphQL mutation as "thread IDs"). Always capture output into a variable first, check the exit status, then iterate; add a `sleep 5-10` between bulk review-thread replies/resolves.
 
+### PR/issue body prose: one line per paragraph
+
+In PR/issue **bodies and comments**, GitHub's renderer turns a single newline into a hard line break (`<br>`) — it enables hard line breaks for issue/PR/comment text, unlike the CommonMark default (where a single newline is a soft break and an intentional break needs two trailing spaces, a trailing `\`, or an explicit `<br>`). So a prose paragraph hard-wrapped at ~80 columns renders as jagged, mid-sentence lines. Write each prose paragraph as one continuous line and separate paragraphs with a blank line; keep line breaks only where the break is the content (inside fenced code blocks, one item per line in a list). Source files behave the other way — reStructuredText and CommonMark `.md` render a single newline as a *soft* break, and a commit-message body is plain text, so all three are conventionally wrapped at ~72–80 columns and the wrap never shows. The rule follows how the destination treats a single newline, not whether the text is Markdown. When generating a body with `gh pr create --body-file` / `gh issue create --body-file`, do not pipe it through a hard-wrapper.
+
 ### Add an image to an issue or PR (no browser needed)
 
 GitHub's native attachment uploader (`user-attachments/assets/…`) needs a browser session + CSRF and cannot be driven by `gh`/the API — but that does **not** mean images are impossible. Commit the PNGs to a dedicated branch (in a fork if you lack push to the target), then embed the raw URL in the body/comment:
@@ -219,7 +223,9 @@ git push fork HEAD:issue-NNNN-screenshots
 # ![before](https://raw.githubusercontent.com/USER/REPO/BRANCH/before.png)
 ```
 
-`raw.githubusercontent.com` serves `image/png` and GitHub renders it inline via camo. Generate the image first; for a JS-populated widget, point the page at a local copy of the real data and screenshot the rendered result.
+`raw.githubusercontent.com` serves `image/png` and GitHub renders it inline. Generate the image first; for a JS-populated widget, point the page at a local copy of the real data and screenshot the rendered result.
+
+To **replace** an already-embedded image, do not overwrite the file under the same path — publish under a new filename and point the body at it. Images on `raw.githubusercontent.com` are served directly from GitHub's own domain (not through the camo proxy, which only fronts external images), behind a CDN with a short cache lifetime — so after you replace the file, a branch-based raw URL can keep returning the old bytes until the cache expires, and a `?v=` query is not a reliable bust. A new filename is a fresh path the CDN has not cached, so it loads immediately. Confirm the new raw URL serves the new file (`curl -fsSL RAW_URL | sha256sum`, compare to the local file — `-f` fails on HTTP errors so you don't hash a 404 page) before editing the body.
 
 ### Debug Auto-merge Pipeline
 
