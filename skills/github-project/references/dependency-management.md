@@ -66,6 +66,43 @@ gh run view <RUN_ID> --repo OWNER/REPO --log-failed |
 
 If the failure comes from a template-derived ecosystem that doesn't apply: fix the template (so new consumers inherit the fix) *and* open a consumer-side PR to drop the ecosystem (so the existing repo stops failing). Running only one half leaves the drift check failing on the PR or the schedule failing on main. See [multi-repo-operations.md](./multi-repo-operations.md) for the template-consumer coordination pattern.
 
+### Maintained Release Branches — `target-branch`
+
+Dependabot scans **only the default branch** by default. A repo that keeps long-lived release branches (e.g. `13.4`, `12.4` alongside `main`) receives action/dependency bumps on the default branch only; the release branches silently fall behind and their pinned actions go stale — a divergence nobody notices until, say, a backport PR renders with an old pinned action while `main` already moved on.
+
+Add one update block **per maintained branch** with `target-branch`:
+
+```yaml
+version: 2
+updates:
+  # Default branch
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  # Maintained release branches — Dependabot only scans the default branch
+  # otherwise, so these bump the branch in place (no backport needed).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "13.4"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "12.4"
+    schedule:
+      interval: weekly
+```
+
+Notes:
+
+- `target-branch` PRs open **against that branch**, not the default — no backport labels or cherry-picks involved.
+- List only branches that actually exist and are maintained; a `target-branch` pointing at a missing branch makes that update run **fail** (visible in the repo's Dependabot update logs — see "Diagnosing a weekly Dependabot failure" above), it does not silently no-op.
+- The alternative — labeling default-branch bump PRs for backport — works but reintroduces per-PR conflict resolution once branch workflows have drifted; `target-branch` bumps in place instead.
+- `groups`, `cooldown`, `commit-message`, and `open-pull-requests-limit` apply per block.
+
 ### Grouping Dependencies
 ```yaml
 updates:

@@ -12,7 +12,7 @@ allowed-tools: Bash(gh:*) Bash(git:*) Bash(grep:*) Read Write
 
 # GitHub Project Skill
 
-GitHub repository configuration, troubleshooting, and collaboration workflow best practices.
+GitHub repository configuration, troubleshooting, and collaboration.
 
 ## When to Use
 
@@ -108,6 +108,7 @@ State what a change does, not how good it is; no self-praise or narrating the ex
 | No editorializing | `references/no-editorializing.md` |
 | Fork merge base | `references/pr-commit-cleanup.md` |
 | Multi-repo batch ops | `references/multi-repo-operations.md` |
+| Cross-repo references | `references/cross-repo-references.md` |
 | Reusable workflow security | `references/reusable-workflow-security.md` |
 | Reusable workflow pitfalls | `references/reusable-workflow-pitfalls.md` |
 | Org security settings | `references/org-security-settings.md` |
