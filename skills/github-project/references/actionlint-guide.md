@@ -476,3 +476,24 @@ Verify after writing:
 # Bytes at end of file — should be `0a` (one newline), not `0a0a`.
 tail -c 2 file.yml | xxd -p
 ```
+
+### `docker://IMAGE@sha256:DIGEST` fails workflow startup
+
+Also unrelated to actionlint's own checks (it does not flag this), but a sharp adjacent gotcha when SHA-pinning tools in a gate: a `uses:` step referencing a Docker image by **digest** fails the entire run at startup with `startup_failure` — no job even begins:
+
+```yaml
+# ✗ startup_failure — digest form is NOT accepted for docker:// refs
+- uses: docker://rhysd/actionlint@sha256:b1934e...
+
+# ✓ tag form is accepted
+- uses: docker://rhysd/actionlint:1.7.12
+```
+
+`docker://` action refs take `image:tag` only. To get digest-level reproducibility, don't use `docker://` — download the release binary and verify its checksum in a `run:` step (fails closed on mismatch):
+
+```bash
+curl -sSfL -o actionlint.tar.gz \
+  "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+echo "<sha256>  actionlint.tar.gz" | sha256sum -c -
+tar xzf actionlint.tar.gz actionlint
+```
