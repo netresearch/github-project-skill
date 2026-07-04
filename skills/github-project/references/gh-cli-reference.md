@@ -223,7 +223,9 @@ git push fork HEAD:issue-NNNN-screenshots
 # ![before](https://raw.githubusercontent.com/USER/REPO/BRANCH/before.png)
 ```
 
-`raw.githubusercontent.com` serves `image/png` and GitHub renders it inline via camo. Generate the image first; for a JS-populated widget, point the page at a local copy of the real data and screenshot the rendered result.
+`raw.githubusercontent.com` serves `image/png` and GitHub renders it inline. Generate the image first; for a JS-populated widget, point the page at a local copy of the real data and screenshot the rendered result.
+
+To **replace** an already-embedded image, do not overwrite the file under the same path — publish under a new filename and point the body at it. Images on `raw.githubusercontent.com` are served directly from GitHub's own domain (not through the camo proxy, which only fronts external images), behind a CDN with a short cache lifetime — so after you replace the file, a branch-based raw URL can keep returning the old bytes until the cache expires, and a `?v=` query is not a reliable bust. A new filename is a fresh path the CDN has not cached, so it loads immediately. Confirm the new raw URL serves the new file (`curl -fsSL RAW_URL | sha256sum`, compare to the local file — `-f` fails on HTTP errors so you don't hash a 404 page) before editing the body.
 
 ### Debug Auto-merge Pipeline
 
