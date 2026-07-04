@@ -68,7 +68,7 @@ The reviewer asserts how the language runtime behaves — an exception it "will"
 
 **Real example:**
 
-- Copilot claimed a method that declares **fewer** parameters than a caller passes "will throw `ArgumentCountError`." In PHP that only fires for too-few *required* arguments; **extra positional arguments are silently ignored**, so the code was correct. The passing functional tests were the proof.
+- Copilot claimed a **user-defined** method that declares **fewer** parameters than a caller passes "will throw `ArgumentCountError`." For user-defined functions/methods PHP only throws on too-few *required* arguments — **extra positional arguments are silently ignored** (verified: `function f($a){} f(1,2,3)` returns normally, no error). The one exception is *internal* functions: since PHP 8.0 those do throw `ArgumentCountError` on extra arguments (`strlen("a","b")`). The method here was user-defined, so the code was correct — and the passing functional tests proved it. (A second reviewer on this very PR then asserted the opposite — that user-defined methods *do* throw on extra args — which a one-line `php -r` disproves; a nice illustration that two bots can confidently contradict each other, and the runtime is the arbiter.)
 
 **Tell:** the claim is about runtime behavior that a green test already exercises. Don't restructure code to satisfy a semantics claim your test suite already disproves — the test run is the authority (see step 2). Reproduce it in a one-off snippet if you're unsure, rather than trusting the assertion.
 
