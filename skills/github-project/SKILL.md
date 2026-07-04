@@ -12,7 +12,7 @@ allowed-tools: Bash(gh:*) Bash(git:*) Bash(grep:*) Read Write
 
 # GitHub Project Skill
 
-GitHub repository configuration, troubleshooting, and collaboration.
+Repository configuration, troubleshooting, and collaboration.
 
 ## When to Use
 
@@ -86,18 +86,18 @@ scripts/verify-github-project.sh /path/to/repository      # local-checkout audit
 
 ## No editorializing
 
-State what a change does, not how good it is; no self-praise or narrating the expected. See `references/no-editorializing.md`.
+State what a change does, not how good it is; no self-praise. See `references/no-editorializing.md`.
 
 ## References
 
 | Topic | Reference |
 |-------|-----------|
-| Repo bootstrap (post `gh repo create`) | `references/repo-bootstrap.md` |
+| Repo bootstrap | `references/repo-bootstrap.md` |
 | Repository file layout | `references/repository-structure.md` |
 | Branch migration | `references/branch-migration.md` |
 | Dependabot/Renovate | `references/dependency-management.md` |
 | Auto-approve + auto-merge | `references/auto-merge-guide.md` |
-| Merge strategy (signed commits) | `references/merge-strategy.md` |
+| Merge strategy | `references/merge-strategy.md` |
 | Sub-issues | `references/sub-issues.md` |
 | Release labeling | `references/release-labeling.md` |
 | gh CLI commands | `references/gh-cli-reference.md` |
@@ -115,6 +115,7 @@ State what a change does, not how good it is; no self-praise or narrating the ex
 | Tag validation | `references/tag-validation.md` |
 | AI reviewer pushback | `references/ai-reviewer-pushback.md` |
 | Agentic workflows | `references/agentic-workflows.md` |
+| Pages + data collectors | `references/pages-and-collector-workflows.md` |
 
 ---
 
