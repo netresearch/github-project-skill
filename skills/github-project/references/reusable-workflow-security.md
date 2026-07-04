@@ -135,3 +135,94 @@ jobs:
 Org secrets do **not** auto-propagate into reusable workflows either — each
 caller must forward them explicitly, which is what makes `inherit` look
 convenient. Resist it; the explicit form is also the audit trail.
+
+## Gating Your Own Shared-Workflow Repo
+
+The sections above are about auditing **external** actions before you adopt
+them. This one is about the shared-workflow repo you **own**: because consumers
+reference it at `@main`, every merge ships to all of them instantly — a broken
+or insecure merge propagates org-wide before anyone reviews it. Gate `main` and
+every PR with more than a linter:
+
+| Dimension | Tool | Catches |
+|-----------|------|---------|
+| Lint | [actionlint](https://github.com/rhysd/actionlint) | Syntax, expression/input types, shellcheck on `run:` blocks |
+| Style | [yamllint](https://github.com/adrienverge/yamllint) `--strict` | YAML conformance |
+| Security | [zizmor](https://docs.zizmor.sh/) | Template injection, credential persistence, token misuse, missing cooldown |
+| Conformance | small repo script | README ↔ workflow-file sync, `workflow_call`-only triggers, documented inputs |
+
+### zizmor findings you *will* hit, and the correct fix
+
+- **`artipacked` (credential persistence):** every `actions/checkout` on a
+  read-only job needs `persist-credentials: false`, or the `GITHUB_TOKEN` is
+  written to `.git/config` where any later `run:` step — or a compromised
+  npm/composer postinstall — can read it.
+
+  ```yaml
+  - uses: actions/checkout@<sha>
+    with:
+      persist-credentials: false
+  ```
+
+- **`template-injection` on `run: ${{ inputs.x }}`:** for a *flag-list* input
+  (`render-flags`, `composer-args`), route it through an `env:` var so it is
+  never expanded into the script text:
+
+  ```yaml
+  - env:
+      RENDER_FLAGS: ${{ inputs.render-flags }}
+    run: |
+      # shellcheck disable=SC2086  # intended word-splitting of a flag list
+      tool $RENDER_FLAGS
+  ```
+
+  For a *whole-command* input that must be shell-interpreted (`command`,
+  `test-unit-command`), env indirection is impossible — the input **is** code.
+  Accept it as "code by contract" (set in the caller's committed workflow, the
+  same trust level as the code) with a justified inline ignore, and document the
+  contract:
+
+  ```yaml
+  # Command inputs are code by contract: set in the caller's committed workflow.
+  - run: ${{ inputs.command }}  # zizmor: ignore[template-injection]
+  ```
+
+  In the input `description:` and the README, state: *command inputs must be
+  static literals — never pass `github.event.*` data.* That closes the one real
+  injection path the ignore leaves open (a careless consumer piping a PR title
+  into the input).
+
+- **`github-app` (unscoped token):** `actions/create-github-app-token` without
+  `permission-*` inputs mints a token carrying **all** of the App's granted
+  permissions. Scope it to what the job needs: `permission-contents: write`,
+  `permission-pull-requests: write`, etc.
+
+### Pin the gate's own tooling
+
+The gate is only as trustworthy as the tools it installs.
+
+- **pip tools** — hash-lock them; don't `pip install foo==1.2.3` bare:
+
+  ```bash
+  # requirements.txt generated with: uv pip compile --generate-hashes
+  pip install --require-hashes --only-binary ':all:' -r .github/requirements.txt
+  ```
+
+  Add a `pip` Dependabot ecosystem (`directory: /.github`) so the pins stay
+  fresh.
+
+- **CLI binaries** — download by pinned version and verify the checksum, failing
+  closed on mismatch:
+
+  ```bash
+  curl -sSfL -o actionlint.tar.gz \
+    "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+  echo "<sha256>  actionlint.tar.gz" | sha256sum -c -
+  tar xzf actionlint.tar.gz actionlint
+  ```
+
+  A curl-installed binary is **not** covered by Dependabot — bump its version +
+  checksum by hand, and note that in a comment so it is not mistaken for
+  auto-maintained. (Do **not** try to pin it via `uses: docker://IMAGE@sha256:…`
+  — digest-form `docker://` refs fail workflow startup; see
+  [`actionlint-guide.md`](./actionlint-guide.md).)
