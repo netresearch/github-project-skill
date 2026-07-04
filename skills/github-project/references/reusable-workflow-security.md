@@ -226,3 +226,51 @@ The gate is only as trustworthy as the tools it installs.
   auto-maintained. (Do **not** try to pin it via `uses: docker://IMAGE@sha256:…`
   — digest-form `docker://` refs fail workflow startup; see
   [`actionlint-guide.md`](./actionlint-guide.md).)
+
+## Gate a SAST Check on PR-Introduced Findings, Not Ruleset Drift
+
+A SAST step that runs with an auto-updating ruleset (Opengrep/Semgrep
+`--config auto`, and similar) and is wired as a **required** merge check has a
+trap: the ruleset it fetches drifts over time. Your `main` was green when it was
+last scanned; the community then adds a rule; the *next* PR — even a docs-only
+one — scans with the newer ruleset, finds pre-existing violations on files it
+never touched, and is **blocked from merging** by them. So a contributor's PR is
+held hostage by drift on code they didn't write, and it recurs on every repo
+sharing the workflow, on any PR.
+
+Two tempting "fixes" are both wrong:
+
+- **Pin the ruleset** (drop `--config auto` for a fixed set) — stops the drift,
+  but also stops auto-adoption of new rules. A security scanner that no longer
+  learns new issue classes is the wrong trade.
+- **Report-only** (upload findings, never fail the check) — stops the blocking,
+  but now a PR that genuinely *introduces* a vulnerability sails through. Also
+  unacceptable.
+
+The shape that satisfies all three requirements — block real new issues, don't
+block on drift, keep adopting new rules — is **diff/baseline-aware gating**: keep
+the check blocking, but fail only on findings the PR **introduces relative to the
+merge-base**, not on the repo's accumulated state.
+
+- A real new vuln → present at the PR head, absent at baseline → **fails.**
+- A pre-existing finding / drift on untouched files → present at *both* → **passes.**
+- `--config auto` still pulls the latest rules, so a newly-added rule still
+  catches a newly-introduced violation.
+
+Two mechanisms:
+
+- **Scanner baseline:** Semgrep supports `--baseline-commit <merge-base>` (fail
+  only on findings introduced since that commit). **Verify the exact flag against
+  the scanner you actually run** — a fork (e.g. Opengrep) may name or support it
+  differently; do not assume it is identical.
+- **GitHub-native:** upload the SARIF to code scanning and let the **Code
+  Scanning PR check** gate — GitHub can be set to fail the check only on alerts
+  **introduced by the PR**, which is diff-aware without a CLI flag.
+
+Symptom that you have this problem: a required SAST check flips a *docs* or
+otherwise-unrelated PR from green to red, and the findings are all on files the
+PR never touched. To read them, list the analyses via
+`repos/OWNER/REPO/code-scanning/analyses?ref=refs/pull/<PR>/merge`, take the
+newest analysis `id`, then fetch that analysis's SARIF —
+`gh api repos/OWNER/REPO/code-scanning/analyses/<id> -H 'Accept: application/sarif+json'`
+— and inspect the result locations. Fix the reusable workflow, not the innocent PR.
