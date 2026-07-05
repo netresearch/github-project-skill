@@ -290,6 +290,38 @@ If there is no entry and no `merge_group` run after the required checks have pas
 gh pr merge <PR> --repo OWNER/REPO --merge --admin
 ```
 
+### Arming a merge-queue PR: `--auto` with no strategy flag
+
+On a `merge_queue` repo the **queue owns the merge method**, so passing an
+explicit strategy to `gh pr merge` can be rejected:
+
+```bash
+gh pr merge <PR> --repo OWNER/REPO --merge --auto
+# ! The merge strategy for main is set by the merge queue
+```
+
+Arm it with a bare `--auto` (no `--merge`/`--squash`/`--rebase`); the queue
+applies its configured method when the PR reaches the front:
+
+```bash
+gh pr merge <PR> --repo OWNER/REPO --auto     # enqueues when the gate passes
+```
+
+(The explicit-strategy form is still correct for `--admin` bypass merges, which
+run outside the queue — as in the enqueue-failure fallback above.)
+
+### Batch review-fix commits before pushing — each push re-runs the full queue CI
+
+Merge-queue repos typically re-run the **entire** required matrix (functional
+across every PHP × TYPO3 combo, e2e, etc.) on every push to the PR head, which
+can be ~8+ minutes. Fixing reviewer nitpicks one-commit-one-push then turns into
+many full-matrix cycles for trivial edits.
+
+Collect **all** outstanding review fixes across every open thread, apply them
+locally, run the relevant suites once, and push a **single** commit. Only then
+reply-and-resolve the threads. This costs one CI cycle instead of N, and avoids
+racing a half-fixed head into the queue.
+
 ## References
 
 - [GitHub Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)
