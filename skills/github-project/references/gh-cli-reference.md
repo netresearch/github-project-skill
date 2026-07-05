@@ -311,15 +311,19 @@ EOF
 
 ## Rate Limits — GITHUB_TOKEN in Actions
 
-The `GITHUB_TOKEN` (installation token) that Actions inject is **not** billed
+The `GITHUB_TOKEN` (installation token) that Actions injects is **not** billed
 against your user quota. It has its own, much tighter cap:
 
-- **1,000 REST requests per hour, _per repository_** (separate from the 5,000/hr
-  user limit and from the GraphQL point budget).
+- **1,000 REST requests per hour**, charged to the token issued for the
+  **repository whose workflow is running** — and shared across *every* call that
+  token makes, **including calls to other repositories**. Calling 100 repos from
+  one workflow does not give you 100 separate budgets; it draws down the one
+  workflow-repo budget. (Separate from the 5,000/hr user limit and the GraphQL
+  point budget.)
 
 A workflow that probes many paths across many repos exhausts this fast — e.g. a
 collector doing ~15 per-file `contents` calls across ~100 repos ≈ 1,500 calls in
-one run.
+one run, all against the single workflow-repo budget.
 
 **Symptom that misleads:** the `build` job succeeds while the `deploy` /
 `deploy-pages` job fails with a 403 — the same exhausted token 403s the Pages
@@ -327,13 +331,14 @@ deployment API call, so it reads like a Pages/deploy bug rather than a
 rate-limit one.
 
 **Fix — one recursive git-tree call instead of N per-file probes.** To test which
-files exist in a repo, fetch the whole tree once and check paths in memory:
+files exist in a repo, fetch the whole tree once and check paths in memory. The
+trees endpoint resolves a ref (branch name or SHA) directly, so this is genuinely
+one call per repo:
 
 ```bash
 # One call lists every path at a ref (recursive), vs one call per file
-SHA=$(gh api repos/OWNER/REPO/commits/HEAD --jq '.sha')
-gh api "repos/OWNER/REPO/git/trees/$SHA?recursive=1" \
-  --jq '.tree[] | select(.type=="blob") | .path'
+gh api "repos/OWNER/REPO/git/trees/main?recursive=1" \
+  --jq '.tree[]? | select(.type == "blob") | .path'
 # then: does "SECURITY.md" appear? -> no extra request
 ```
 
@@ -344,5 +349,5 @@ per repo) and keeps a nightly Pages build well under the cap.
 NOT count against the quota):
 
 ```bash
-gh api rate_limit --jq '.resources.core | {remaining, reset}'
+gh api rate_limit --jq '(.resources.core? // empty) | {remaining, reset}'
 ```
