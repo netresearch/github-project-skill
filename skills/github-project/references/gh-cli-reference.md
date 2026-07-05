@@ -308,3 +308,41 @@ gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews -
 {"bypass_pull_request_allowances": {"apps": ["dependabot", "renovate"]}}
 EOF
 ```
+
+## Rate Limits — GITHUB_TOKEN in Actions
+
+The `GITHUB_TOKEN` (installation token) that Actions inject is **not** billed
+against your user quota. It has its own, much tighter cap:
+
+- **1,000 REST requests per hour, _per repository_** (separate from the 5,000/hr
+  user limit and from the GraphQL point budget).
+
+A workflow that probes many paths across many repos exhausts this fast — e.g. a
+collector doing ~15 per-file `contents` calls across ~100 repos ≈ 1,500 calls in
+one run.
+
+**Symptom that misleads:** the `build` job succeeds while the `deploy` /
+`deploy-pages` job fails with a 403 — the same exhausted token 403s the Pages
+deployment API call, so it reads like a Pages/deploy bug rather than a
+rate-limit one.
+
+**Fix — one recursive git-tree call instead of N per-file probes.** To test which
+files exist in a repo, fetch the whole tree once and check paths in memory:
+
+```bash
+# One call lists every path at a ref (recursive), vs one call per file
+SHA=$(gh api repos/OWNER/REPO/commits/HEAD --jq '.sha')
+gh api "repos/OWNER/REPO/git/trees/$SHA?recursive=1" \
+  --jq '.tree[] | select(.type=="blob") | .path'
+# then: does "SECURITY.md" appear? -> no extra request
+```
+
+This drops a ~100-repo sweep from ~1,500 calls to a few hundred (one tree call
+per repo) and keeps a nightly Pages build well under the cap.
+
+**Before a long collector loop,** check headroom (the `rate_limit` endpoint does
+NOT count against the quota):
+
+```bash
+gh api rate_limit --jq '.resources.core | {remaining, reset}'
+```
