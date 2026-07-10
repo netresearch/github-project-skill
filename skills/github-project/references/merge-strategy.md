@@ -132,6 +132,32 @@ Both are marked as "Verified" in the GitHub UI:
 - Developer commits show the developer's GPG key
 - Merge commits show "Verified" with GitHub as the signer
 
+### "Update branch" and signing (who has to act on "branch out of date")
+
+- **"Update branch" (merge variant)**: the update-merge commit is created and signed by GitHub's web-flow key — satisfies "require signed commits" with zero author involvement. In a squash-merge repo the update commit is squashed away at landing anyway.
+- **"Update with rebase" button / rebase merges**: GitHub **cannot re-sign rewritten commits** — fails on signed-commit-protected repos.
+- **Local rebase**: signature verification is against the **committer**, not the author. Anyone with head-branch push access (author, or maintainers when "Allow edits from maintainers" is on) can `git rebase -S && git push --force-with-lease`, re-signing with *their own* verified key — authorship and `Signed-off-by` trailers survive. The original author does not have to be the one who rebases.
+
+## Stale-green merge refs: two green PRs can still break main
+
+A PR's `pull_request` checks run against a **snapshot merge ref** (`refs/pull/N/merge` = PR + base *at the moment the run starts*). GitHub never re-runs a PR's checks when the base branch moves afterward — the green badge silently goes stale (observed: an 8-day-old green used to merge). Two PRs that are **textually disjoint** (no git conflict, `MERGEABLE`) can be **semantically conflicting** — e.g. one adds a test fixture rendered from a template the other PR changes. Whichever merges second turns main red, and every open PR then inherits the failure through its merge ref.
+
+Mitigations, in increasing strength:
+
+1. **Required checks + strict up-to-date.** `strict: true` ("Require branches to be up to date") applies **only to the checks listed in `required_status_checks`** (`checks` is the canonical field; `contexts` is its deprecated mirror) — with an empty list it is a **complete no-op**, and red CI does not block merging at all. Audit the flag and both list fields together:
+
+   ```bash
+   gh api repos/OWNER/REPO/branches/main/protection \
+     --jq '{strict: (.required_status_checks?.strict // false),
+            contexts: (.required_status_checks?.contexts // []),
+            checks: (.required_status_checks?.checks // [])}'
+   # strict=true + empty contexts AND checks → the flag does nothing; populate the checks list
+   ```
+
+2. **Merge queue.** Tests `latest main + queued PRs + this PR` (`merge_group` event) before landing; a semantically conflicting PR is ejected instead of breaking main. Prerequisites: workflows must add a `merge_group:` trigger (or checks never report and the queue stalls), and the queue only gates **required** checks — an empty contexts list makes it vacuous too.
+
+Neither catches a semantic conflict no test covers. Post-merge push CI on the default branch stays the last line of defence — keep it.
+
 ## Troubleshooting
 
 ### Diagnose `mergeStateStatus: BLOCKED` before naming a cause
@@ -289,6 +315,8 @@ If there is no entry and no `merge_group` run after the required checks have pas
 ```bash
 gh pr merge <PR> --repo OWNER/REPO --merge --admin
 ```
+
+> **Scope of this escape hatch:** only in repos whose governance is ours, only for this stuck-queue failure mode, and only with the operator's explicit go for that PR. `--admin` bypasses required reviews and status checks wholesale — on upstream/community repos (or to merge your own unreviewed PR anywhere) it is never appropriate, no matter how trivial the fix or how red the main branch. Holding admin permission is a trust grant, not a merge mandate.
 
 ### Arming a merge queue PR: `--auto` with no strategy flag
 
