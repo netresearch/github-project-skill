@@ -144,12 +144,14 @@ A PR's `pull_request` checks run against a **snapshot merge ref** (`refs/pull/N/
 
 Mitigations, in increasing strength:
 
-1. **Required checks + strict up-to-date.** `strict: true` ("Require branches to be up to date") applies **only to the contexts listed in `required_status_checks`** — with an empty contexts list it is a **complete no-op**, and red CI does not block merging at all. Audit both together:
+1. **Required checks + strict up-to-date.** `strict: true` ("Require branches to be up to date") applies **only to the checks listed in `required_status_checks`** (`checks` is the canonical field; `contexts` is its deprecated mirror) — with an empty list it is a **complete no-op**, and red CI does not block merging at all. Audit the flag and both list fields together:
 
    ```bash
    gh api repos/OWNER/REPO/branches/main/protection \
-     --jq '{strict: .required_status_checks.strict, contexts: .required_status_checks.contexts}'
-   # strict=true + contexts=[] → the flag does nothing; populate contexts
+     --jq '{strict: (.required_status_checks?.strict // false),
+            contexts: (.required_status_checks?.contexts // []),
+            checks: (.required_status_checks?.checks // [])}'
+   # strict=true + empty contexts AND checks → the flag does nothing; populate the checks list
    ```
 
 2. **Merge queue.** Tests `latest main + queued PRs + this PR` (`merge_group` event) before landing; a semantically conflicting PR is ejected instead of breaking main. Prerequisites: workflows must add a `merge_group:` trigger (or checks never report and the queue stalls), and the queue only gates **required** checks — an empty contexts list makes it vacuous too.
