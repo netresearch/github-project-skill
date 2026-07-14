@@ -288,5 +288,49 @@
         "pattern": "(manual.*merge|workflows.*permission|cannot.*auto-merge)"
       }
     ]
+  },
+  {
+    "name": "collector_403_stargazers_restriction",
+    "prompt": "Our scheduled workflow that collects stargazers for every org repo suddenly gets 403 on every repo, but it still exits green and reports 0 new stars. Fix it.",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(admin|collaborator).*(stargazer|subscriber)|stargazer.*(admin|collaborator)"
+      },
+      {
+        "type": "content",
+        "pattern": "(fine-grained|PAT|personal access token)"
+      },
+      {
+        "type": "content",
+        "pattern": "(Metadata).*(read)"
+      },
+      {
+        "type": "content",
+        "pattern": "(forks|sibling|other endpoint).*(work|succeed|not fail)|rule(s)? out.*rate limit"
+      }
+    ]
+  },
+  {
+    "name": "classify_403_before_retrying",
+    "prompt": "Our GitHub API client retries every 403 three times with backoff. Is that right?",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(x-ratelimit-remaining|X-RateLimit-Remaining)"
+      },
+      {
+        "type": "content",
+        "pattern": "(retry-after|Retry-After)"
+      },
+      {
+        "type": "content",
+        "pattern": "(secondary rate limit)"
+      },
+      {
+        "type": "content",
+        "pattern": "(permission|not transient|Resource not accessible)"
+      }
+    ]
   }
 ]
