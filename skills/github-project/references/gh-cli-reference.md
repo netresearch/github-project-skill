@@ -52,11 +52,13 @@ Rapid sequences of `gh api` calls (REST + GraphQL) sometimes return `401 "Requir
 
 `gh run view --job=<id> --log` prefixes every line with the step name. Two traps when you count errors in it:
 
-- **A bare status code matches things that are not errors.** `grep -c 403` over a job log also hits commit SHAs, ref names and git plumbing output in the `Checkout` step. A real case: a fixed run still showed 8 hits for `403` — all from `Checkout`, none an API error — which reads as "still broken". Match the error *text* (`Client Error: Forbidden`), and scope the count to the step that makes the calls:
+- **A bare status code matches things that are not errors.** `grep -c 403` over a job log also hits commit SHAs, ref names and git plumbing output in the `Checkout` step. A real case: a fixed run still showed 8 hits for `403` — all from `Checkout`, none an API error — which reads as "still broken". Match the error *text* (`Client Error: Forbidden`), and scope the count to the step that makes the calls.
+
+  Each line is `<job>\t<step>\t<timestamp> <text>`, so anchor the step to the start of the line — an unanchored step name also matches log *prose* that mentions it:
   ```bash
   gh run view --job="$JOB" --log > job.log
-  grep -c 'Client Error: Forbidden' job.log          # not: grep -c 403
-  grep '<step name>' job.log | grep -c '403'         # or scope to the step
+  grep -c 'Client Error: Forbidden' job.log                  # not: grep -c 403
+  grep -cP '^check-stars\tCheck for new stars\t.*403' job.log  # scoped to the step
   ```
 - **Count what failed, not what succeeded.** A step can print `Found: 0 items` because there is nothing new *or* because every fetch failed. Those are the same line. Assert on the failure count (`grep -c 'Failed to get'`) before reading a zero as good news.
 
