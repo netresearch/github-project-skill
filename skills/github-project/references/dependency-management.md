@@ -91,6 +91,27 @@ updates:
         dependency-type: "development"
 ```
 
+### SHA-Pinned Actions — Comment Maintenance and Deprecation Warnings
+
+**Dependabot maintains the version comment, not just the SHA.** With the `github-actions` ecosystem enabled, a bump rewrites both the pinned SHA **and** the trailing `# vX.Y.Z` comment in one diff:
+
+```diff
+- uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
++ uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+```
+
+So annotating bare SHA pins once (with **API-verified** tags — resolve each SHA via `gh api repos/OWNER/ACTION/tags`) puts them in the exact format Dependabot then keeps current. Without the `github-actions` ecosystem declared, action pins are only ever updated by hand and silently drift.
+
+**A runtime-deprecation warning is not cleared by a version bump unless the newer release changed the runtime.** Before claiming "bumping action X fixes the Node NN deprecation", check the target version's `action.yml`:
+
+```bash
+gh api -H "Accept: application/vnd.github.raw" \
+  repos/OWNER/ACTION/contents/action.yml?ref=<tag> | grep -A1 '^runs:'
+# runs.using: 'node20'  → still deprecated; the bump does NOT clear the warning
+```
+
+An action already pinned at its latest release can still emit the warning if upstream ships no newer-runtime build — the fix is then an upstream change or a replacement action, not a bump. Don't assert the warning is fixed off the version number alone.
+
 ## Renovate
 
 ### Auto-merge Configuration (Recommended)

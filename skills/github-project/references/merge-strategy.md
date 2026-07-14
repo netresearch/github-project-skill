@@ -158,6 +158,57 @@ Mitigations, in increasing strength:
 
 Neither catches a semantic conflict no test covers. Post-merge push CI on the default branch stays the last line of defence — keep it.
 
+## Enabling a merge queue
+
+The classic branch-protection REST API does **not** expose a merge-queue toggle, so a repository **ruleset** is the only scriptable path. The `merge_queue` rule is **repository-level only** — an org-level ruleset rejects it, so a queue is always a per-repo decision.
+
+```bash
+gh api -X POST repos/OWNER/REPO/rulesets --input - <<'JSON'
+{
+  "name": "merge-queue-main",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [
+    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }
+  ],
+  "conditions": { "ref_name": { "include": ["refs/heads/main"], "exclude": [] } },
+  "rules": [
+    {
+      "type": "merge_queue",
+      "parameters": {
+        "merge_method": "SQUASH",
+        "grouping_strategy": "ALLGREEN",
+        "check_response_timeout_minutes": 30,
+        "max_entries_to_build": 5,
+        "max_entries_to_merge": 5,
+        "min_entries_to_merge": 1,
+        "min_entries_to_merge_wait_minutes": 5
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": [
+          { "context": "Tests (8.2)", "integration_id": 15368 }
+        ]
+      }
+    }
+  ]
+}
+JSON
+```
+
+Parameters and gotchas:
+
+- `merge_method`: `SQUASH` | `MERGE` | `REBASE`. The queue owns the merge method for every entry, so per-PR choice disappears. `SQUASH`/`MERGE` stay GitHub-signed; `REBASE` re-creates commits **unsigned** — on a signed-commits branch, prefer `SQUASH`/`MERGE`.
+- `grouping_strategy`: `ALLGREEN` (every queued entry must pass) or `HEADGREEN` (only the group's head commit — all changes combined — must pass). `ALLGREEN` is the safe default; `HEADGREEN` only saves CI under contention.
+- `check_response_timeout_minutes`: a required check that has not reported by then is treated as **failed** and the entry is ejected. Size it above one CI cycle.
+- `min_entries_to_merge` + `min_entries_to_merge_wait_minutes`: the wait only holds a smaller-than-minimum group. With `min_entries_to_merge: 1` **the wait value is inert** — a single entry already meets the minimum, so it never batches. Only raise the minimum (and the wait) if you actually want to batch, e.g. a Dependabot burst.
+- `required_status_checks[].integration_id: 15368` pins each required context to the **GitHub Actions app**, so another app cannot satisfy (spoof) the context. Every required-check workflow must also carry an `on: merge_group:` trigger, or its checks never report on the queue and every group times out.
+- Enable the queue in **one surface only**. If a classic branch-protection rule already gates the branch, leave reviews/conversation-resolution there and put the queue + required checks in the ruleset — then set the classic `strict` ("require branches up to date") flag to **false**: the queue makes it redundant and it otherwise forces author-side update-branch churn.
+- `enforcement: "evaluate"` dry-runs the ruleset (logs what it *would* block) without enforcing — a soft launch before `active`. Rollback is one call: delete the ruleset (or set `enforcement: "disabled"`) and restore the classic `strict` flag.
+
 ## Troubleshooting
 
 ### Diagnose `mergeStateStatus: BLOCKED` before naming a cause
