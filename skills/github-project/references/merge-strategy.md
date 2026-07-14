@@ -296,6 +296,28 @@ gh api -X PATCH "repos/$REPO/branches/main/protection/required_status_checks" --
 
 Verify the contexts match the jobs the workflow now emits. The context string is the **check-run name** from `repos/$REPO/commits/$SHA/check-runs[].name`, which for reusable-/multi-job workflows includes the `workflow / job (matrix)` prefix (e.g. `ci / PHPStan (8.2, ^14.3)`) — not the bare job name. (This is the same source `init-branch-protection.sh` uses; the `/actions/runs/{id}/jobs` endpoint returns the bare job name and is wrong for context matching.)
 
+### Required "SonarCloud Code Analysis" status absent — AutoScan never analyzed the PR
+
+The same "BLOCKED with every visible check green" symptom also occurs with a *correct* required-checks list when the context comes from an external app that never ran. SonarCloud AutoScan sometimes never analyzes a PR: its `sonarqubecloud` check-suite sits `queued` with zero check runs, so the required `SonarCloud Code Analysis` context never reports (and, as above, a missing context does not appear in `gh pr checks`). Diagnose:
+
+```bash
+# The sonarqubecloud check-suite is queued with no runs
+gh api "repos/$REPO/commits/$SHA/check-suites" \
+  --jq '.check_suites[] | {app: .app.slug, status, runs: .latest_check_runs_count}'
+# → {"app":"sonarqubecloud","status":"queued","runs":0}
+
+# The project's last analysis on sonarcloud.io predates the PR
+curl -s "https://sonarcloud.io/api/components/show?component=$SONAR_PROJECT_KEY" \
+  | jq -r '.component.analysisDate'
+```
+
+**Fix:** push a new head to the PR branch — an empty commit suffices; the push re-fires the webhook and analysis completes:
+
+```bash
+git commit -S --signoff --allow-empty -m "chore: retrigger CI"
+git push
+```
+
 ### Merge queue silently fails to enqueue a green PR
 
 On a repo with a `merge_queue` ruleset rule, an all-green PR with auto-merge armed (`mergeStateStatus: CLEAN`) sometimes never enters the queue — no queue entry, no `merge_group` build, it just sits OPEN. Confirm it is genuinely stuck before acting:
