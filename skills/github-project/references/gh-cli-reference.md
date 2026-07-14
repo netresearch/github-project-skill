@@ -48,6 +48,24 @@ Three recurring bugs in ad-hoc watchers:
 
 Rapid sequences of `gh api` calls (REST + GraphQL) sometimes return `401 "Requires authentication"` even with valid auth — transient, clears with ~5-10s spacing and a retry. **Trap:** piping a `gh` listing straight into `while read` consumes the 401 error text as data when a call fails (e.g. JSON error braces get fed into a GraphQL mutation as "thread IDs"). Always capture output into a variable first, check the exit status, then iterate; add a `sleep 5-10` between bulk review-thread replies/resolves.
 
+### Reading a run's log: grep the error text, not the status code
+
+`gh run view --job=<id> --log` prefixes every line with the step name. Two traps when you count errors in it:
+
+- **A bare status code matches things that are not errors.** `grep -c 403` over a job log also hits commit SHAs, ref names and git plumbing output in the `Checkout` step. A real case: a fixed run still showed 8 hits for `403` — all from `Checkout`, none an API error — which reads as "still broken". Match the error *text* (`Client Error: Forbidden`), and scope the count to the step that makes the calls:
+  ```bash
+  gh run view --job="$JOB" --log > job.log
+  grep -c 'Client Error: Forbidden' job.log          # not: grep -c 403
+  grep '<step name>' job.log | grep -c '403'         # or scope to the step
+  ```
+- **Count what failed, not what succeeded.** A step can print `Found: 0 items` because there is nothing new *or* because every fetch failed. Those are the same line. Assert on the failure count (`grep -c 'Failed to get'`) before reading a zero as good news.
+
+### Python steps: timestamps are flush times, not print times
+
+The log's per-line timestamps come from when the runner *received* the line. Python block-buffers stdout when it is not a TTY, so a whole run's output arrives in one flush and every line carries the same timestamp — 1670 lines sharing one second is normal, not a hang. Any timing analysis ("it broke 19 minutes in") read off those timestamps is invalid.
+
+Set `PYTHONUNBUFFERED: 1` in the step's `env:` (or run `python -u`) when you need per-line timing. Node, Go and shell are line-buffered to a pipe and do not need this.
+
 ### PR/issue body prose: one line per paragraph
 
 In PR/issue **bodies and comments**, GitHub's renderer turns a single newline into a hard line break (`<br>`) — it enables hard line breaks for issue/PR/comment text, unlike the CommonMark default (where a single newline is a soft break and an intentional break needs two trailing spaces, a trailing `\`, or an explicit `<br>`). So a prose paragraph hard-wrapped at ~80 columns renders as jagged, mid-sentence lines. Write each prose paragraph as one continuous line and separate paragraphs with a blank line; keep line breaks only where the break is the content (inside fenced code blocks, one item per line in a list). Source files behave the other way — reStructuredText and CommonMark `.md` render a single newline as a *soft* break, and a commit-message body is plain text, so all three are conventionally wrapped at ~72–80 columns and the wrap never shows. The rule follows how the destination treats a single newline, not whether the text is Markdown. When generating a body with `gh pr create --body-file` / `gh issue create --body-file`, do not pipe it through a hard-wrapper.
