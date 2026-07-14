@@ -299,11 +299,11 @@
       },
       {
         "type": "content",
-        "pattern": "(fine-grained|PAT|personal access token)"
+        "pattern": "([Ff]ine-grained|PAT|[Pp]ersonal [Aa]ccess [Tt]oken)"
       },
       {
         "type": "content",
-        "pattern": "(Metadata).*(read)"
+        "pattern": "[Mm]etadata.{0,20}[Rr]ead"
       },
       {
         "type": "content",

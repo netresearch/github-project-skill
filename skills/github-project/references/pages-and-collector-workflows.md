@@ -45,6 +45,7 @@ def is_rate_limited(response):
 
 - **The Actions `GITHUB_TOKEN` is neither an admin nor a collaborator**, so it 403s on *every* repo — including the one the workflow runs in, with `Metadata: read` granted. `/forks` is unaffected.
 - **Fix: a fine-grained PAT** whose owner is a collaborator. Both endpoints need only [Metadata: read](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens), which every fine-grained PAT carries by default — no extra permission to tick, and nothing under "Organization permissions".
+- **Scope the PAT to *All repositories*, not a hand-picked list** (org policy permitting). A collector walks the org from `GET /orgs/{org}/repos`, so a select-repository PAT keeps discovering repos it may not read: every repo created after the PAT was minted degrades to a permission 403 and, in a collector that swallows per-item errors, disappears from the output with no signal. The failure grows silently as the org does.
 - **The status code differs by token type:** an Actions token gets `403`; a user PAT gets **`404`** on repos where it is not a collaborator (GitHub hides existence rather than admitting the block). Don't read that 404 as "repo gone".
 - A PAT expires. Make the run fail loudly and name the secret, or the collector silently reverts to reporting no news.
 
