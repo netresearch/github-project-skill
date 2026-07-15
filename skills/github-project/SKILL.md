@@ -105,6 +105,7 @@ State what a change does, not how good it is; no self-praise. See `references/no
 | Scorecard, CodeQL, security | `references/security-config.md` |
 | actionlint | `references/actionlint-guide.md` |
 | Workflow bash pitfalls | `references/workflow-bash-patterns.md` |
+| Slow CI: runner capacity | `references/ci-runner-capacity.md` |
 | No editorializing | `references/no-editorializing.md` |
 | Fork merge base | `references/pr-commit-cleanup.md` |
 | Multi-repo batch ops | `references/multi-repo-operations.md` |
