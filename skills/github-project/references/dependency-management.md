@@ -112,6 +112,87 @@ gh api -H "Accept: application/vnd.github.raw" \
 
 An action already pinned at its latest release can still emit the warning if upstream ships no newer-runtime build — the fix is then an upstream change or a replacement action, not a bump. Don't assert the warning is fixed off the version number alone.
 
+### Bulk SHA resolution — verify the SHA maps *back* to the tag
+
+Resolving tag → SHA for a set of actions is a loop, and a loop that prints
+`action@<40-hex> # vX.Y.Z` looks authoritative whether or not it is right. Two
+failure modes survive a confident-looking run, and neither is caught by
+`actionlint` or by CI — a wrong-but-valid SHA pins silently:
+
+**1. A SHA that belongs to no tag.** Verify the reverse direction — SHA → tag —
+against the API, not against your own resolution step:
+
+```bash
+# For each pin, ask the tags API which tag(s) point at this SHA. Empty = fabricated or stale.
+gh api "repos/$REPO/tags?per_page=100" --jq ".[] | select(.commit.sha==\"$SHA\") | .name"
+```
+
+In one run this caught a pin for `juliangruber/read-file-action` whose SHA mapped
+to **no tag at all** — six of seven resolved correctly, which is exactly why the
+seventh was easy to miss.
+
+**2. A regex that mis-ranks tags.** Picking "latest" by pattern-matching tag names
+breaks on any project not using three-part semver. A `^v?[0-9]+\.[0-9]+\.[0-9]+$`
+filter silently skips two-part tags, so `github/issue-labeler` — whose releases are
+`v3.4`, `v3.3`, `v3.2` — resolved to "latest `v2.4.1`", i.e. a **downgrade
+disguised as an upgrade**.
+
+Ask GitHub for latest instead of deriving it:
+
+```bash
+gh api "repos/$REPO/releases/latest" --jq .tag_name   # authoritative
+```
+
+Note the endpoint 404s for repos that tag without publishing releases — fall back
+to the tags list *and reason about the versioning scheme*, rather than assuming a
+shape.
+
+**A downgrade is the tell.** If a "latest" lookup ever resolves *below* what the
+repo already pins, the lookup is wrong until proven otherwise — that direction is
+almost never a real upgrade.
+
+### Dependency PRs must trigger the test job
+
+A `paths:` filter listing source globs only does **not** match the manifest, so
+every dependency PR — including Dependabot's and Renovate's — **skips the test job
+and merges untested**. The PR looks green because the tests never ran.
+
+```yaml
+# Before: a go.mod-only change matches nothing here, so no tests run
+on:
+  pull_request:
+    paths:
+      - '**.go'
+```
+
+Include the manifest, its lockfile, any toolchain pin, and the workflow itself:
+
+```yaml
+on:
+  pull_request:
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.go-version'
+      - '.github/workflows/unit_tests.yaml'
+```
+
+Same shape in every ecosystem: `package.json`/`package-lock.json`, `composer.json`/`composer.lock`, `pyproject.toml`/`uv.lock`.
+
+**Verify by observation, not by reading the YAML** — check that the test job
+actually appears on a manifest-only PR:
+
+```bash
+gh pr view "$PR" --repo "$R" --json statusCheckRollup \
+  --jq '[.statusCheckRollup[].name] | index("unit_tests") // "TEST JOB DID NOT RUN"'
+```
+
+**Real case:** a Go provider whose `unit_tests` filter was `'**.go'`. Its
+dependency upgrade PR ran only `triage` and `DCO`; adding the manifest paths made
+`unit_tests` appear on the same PR and pass. Every prior dependency bump in that
+repo had merged without a single test running.
+
 ## Renovate
 
 ### Auto-merge Configuration (Recommended)
