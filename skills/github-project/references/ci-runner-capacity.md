@@ -77,3 +77,33 @@ Even when it buys no wall clock, halving job-minutes lowers org-wide queue
 pressure for *every* repo sharing the pool — so making jobs faster is the right
 first move; just don't promise a wall-clock win it can't deliver under the
 acquisition-bound regime.
+
+## Persist tool caches written inside `docker compose run --rm`
+
+A linter/analyzer run inside `docker compose run --rm` writes to the container's
+ephemeral filesystem — anything under the container's `/tmp` is discarded every
+run and is uncacheable. Point the tool's cache at a **host-mounted** repo path
+(PHPStan `tmpDir: var/cache/phpstan`, Rector `->withCache('var/cache/rector')`),
+then `actions/cache` it:
+
+- **Key** on `${{ github.run_id }}` (unique → never hits → always saves a fresh
+  cache post-job) with a prefix `restore-keys:` (restores the most recent prior
+  cache) — save-fresh + restore-latest = incremental warmth.
+- **Safe stale restore:** the tools self-invalidate (PHPStan salts on
+  config+composer+PHP; Rector on the config-file hash), so a restored-but-stale
+  cache only recomputes changed files, never a wrong result — so *don't* bake a
+  content hash into the key; it just fragments the cache lineage.
+- **uid:** the container writes as root (umask 022 → 0644 files), so the post-job
+  save (runner user) reads them without a chmod.
+
+Measured: a PHPStan-heavy Lint job dropped ~145s cold → ~72s warm.
+
+## Verify every trigger path after a conditional change
+
+When a workflow behaves differently by `github.event_name` / a flag / a matrix
+cell, a green run of ONE path is not "done" — each path is separate code. Gating
+coverage steps on `schedule` leaves the `pull_request` run green while the
+coverage-on (`schedule`) path still hides a bug (e.g. a job that now exceeds its
+`timeout-minutes`). Exercise the non-PR path on demand with `workflow_dispatch`
+— but it only fires for the workflow version on the **default branch**, so that
+path can often only be verified *after* merge. Check it then; don't assume.
