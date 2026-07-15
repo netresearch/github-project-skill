@@ -38,7 +38,7 @@ was never near the cap. Measure first.
 ## Measure it (one run)
 
 ```bash
-R=OWNER/REPO; RUN=<run-id>
+R=OWNER/REPO; RUN=RUN_ID
 # Per-job queue (started-created) vs run (completed-started), in minutes:
 gh api "repos/$R/actions/runs/$RUN/jobs?per_page=100" --jq '
   .jobs[] | select(.conclusion!=null) |
