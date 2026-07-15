@@ -48,9 +48,9 @@ The reviewer claims a current release "is not out yet," recommends an outdated m
 **Refuting it takes three commands** — the registry's own answer, the artifact's reachability, and the tool reporting its own version:
 
 ```bash
-gh api repos/OWNER/TOOL/releases/latest --jq .tag_name          # what is actually latest
+gh api repos/OWNER/TOOL/releases/latest --jq .tag_name           # what is actually latest
 curl -sIL -o /dev/null -w '%{http_code}\n' "$URL_THE_BOT_SAYS_404s"   # the predicted 404
-<tool> --version                                                 # the binary's own answer
+tool --version                                                   # the binary's own answer
 ```
 
 Quote all three in the reply. A version claim refuted by the tool printing its own version number is not arguable, and it converts the thread from opinion-vs-opinion into a closed question.
@@ -212,7 +212,7 @@ Behavior is bot-specific and changes; treat as starting hints, verify against cu
 
 | Bot | Note |
 |-----|------|
-| `gemini-code-assist[bot]` | Often confidently invents config field names; **frequently behind on tool/package versions and releases** — treat every version assertion as unverified (see "Stale knowledge of release status"), especially when it asks you to pin *downward*; severity badges (`high`/`medium`) are not always correlated with actual severity |
+| `gemini-code-assist[bot]` | Often confidently invents config field names; **frequently behind on tool/package versions and releases** — treat every version assertion as unverified (see [Stale knowledge of release status](#stale-knowledge-of-release-status)), especially when it asks you to pin *downward*; severity badges (`high`/`medium`) are not always correlated with actual severity |
 | `copilot-pull-request-reviewer[bot]` | Tends toward verbose summaries; reviews almost never come back as `APPROVED` (state is `COMMENTED`); see `auto-merge-guide.md` for the auto-merge race condition |
 | `coderabbitai[bot]` | Higher signal but verbose; prone to repeating the same nit across many threads — resolving in batches is reasonable |
 | `sourcery-ai[bot]` | Stylistic / refactor focus; advice quality drops on non-mainstream language constructs |
