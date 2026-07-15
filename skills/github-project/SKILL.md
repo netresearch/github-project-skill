@@ -12,8 +12,6 @@ allowed-tools: Bash(gh:*) Bash(git:*) Bash(grep:*) Read Write
 
 # GitHub Project Skill
 
-Repository configuration, troubleshooting, and collaboration.
-
 ## When to Use
 
 - **Post `gh repo create` + initial push, before first PR** — apply branch protection (REQUIRED, see below)
@@ -105,6 +103,7 @@ State what a change does, not how good it is; no self-praise. See `references/no
 | Scorecard, CodeQL, security | `references/security-config.md` |
 | actionlint | `references/actionlint-guide.md` |
 | Workflow bash pitfalls | `references/workflow-bash-patterns.md` |
+| Runner capacity | `references/ci-runner-capacity.md` |
 | No editorializing | `references/no-editorializing.md` |
 | Fork merge base | `references/pr-commit-cleanup.md` |
 | Multi-repo batch ops | `references/multi-repo-operations.md` |
