@@ -185,7 +185,7 @@ actually appears on a manifest-only PR:
 
 ```bash
 gh pr view "$PR" --repo "$R" --json statusCheckRollup \
-  --jq '[.statusCheckRollup[].name] | index("unit_tests") // "TEST JOB DID NOT RUN"'
+  --jq '[.statusCheckRollup[]?.name] | index("unit_tests") // "TEST JOB DID NOT RUN"'
 ```
 
 **Real case:** a Go provider whose `unit_tests` filter was `'**.go'`. Its
