@@ -41,8 +41,19 @@ The reviewer claims a current release "is not out yet," recommends an outdated m
 - "Language X version N is not released yet" — when it is. Verify against the language's release page.
 - "Use Node N as the maximum supported version" — when a newer LTS is current.
 - "Framework F version N has not been released" — when an N.x release is already in production.
+- "Tool T version vN does not exist; T is on major vN-1" — when major vN shipped after the bot's cutoff. The reply often predicts a concrete consequence ("the download will 404 and the install will silently fail") and hands you a downgrade to paste. The prediction is testable: fetch the URL and run the tool.
 
-**Tell:** version assertions without a release-date check, or recommendations that pull constraints downward from what your CI matrix is already running.
+**Tell:** version assertions without a release-date check, or recommendations that pull constraints downward from what your CI matrix is already running. A dependency- or tooling-upgrade PR is where this lands hardest — the bot's stale snapshot is, by definition, the state the PR is moving away from, so it reads every upgrade as an error.
+
+**Refuting it takes three commands** — the registry's own answer, the artifact's reachability, and the tool reporting its own version:
+
+```bash
+gh api repos/OWNER/TOOL/releases/latest --jq .tag_name          # what is actually latest
+curl -sIL -o /dev/null -w '%{http_code}\n' "$URL_THE_BOT_SAYS_404s"   # the predicted 404
+<tool> --version                                                 # the binary's own answer
+```
+
+Quote all three in the reply. A version claim refuted by the tool printing its own version number is not arguable, and it converts the thread from opinion-vs-opinion into a closed question.
 
 ### Pattern advice frozen at a past major
 
@@ -201,7 +212,7 @@ Behavior is bot-specific and changes; treat as starting hints, verify against cu
 
 | Bot | Note |
 |-----|------|
-| `gemini-code-assist[bot]` | Often confidently invents config field names; severity badges (`high`/`medium`) are not always correlated with actual severity |
+| `gemini-code-assist[bot]` | Often confidently invents config field names; **frequently behind on tool/package versions and releases** — treat every version assertion as unverified (see "Stale knowledge of release status"), especially when it asks you to pin *downward*; severity badges (`high`/`medium`) are not always correlated with actual severity |
 | `copilot-pull-request-reviewer[bot]` | Tends toward verbose summaries; reviews almost never come back as `APPROVED` (state is `COMMENTED`); see `auto-merge-guide.md` for the auto-merge race condition |
 | `coderabbitai[bot]` | Higher signal but verbose; prone to repeating the same nit across many threads — resolving in batches is reasonable |
 | `sourcery-ai[bot]` | Stylistic / refactor focus; advice quality drops on non-mainstream language constructs |
