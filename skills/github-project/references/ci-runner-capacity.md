@@ -87,8 +87,8 @@ run and is uncacheable. Point the tool's cache at a **host-mounted** repo path
 then `actions/cache` it:
 
 - **Key** on `${{ github.run_id }}` (unique → never hits → always saves a fresh
-  cache post-job) with a prefix `restore-keys:` (restores the most recent prior
-  cache) — save-fresh + restore-latest = incremental warmth.
+  cache post-job) with `restore-keys` set to the key's prefix (restores the most
+  recent prior cache) — save-fresh + restore-latest = incremental warmth.
 - **Safe stale restore:** the tools self-invalidate (PHPStan salts on
   config+composer+PHP; Rector on the config-file hash), so a restored-but-stale
   cache only recomputes changed files, never a wrong result — so *don't* bake a
@@ -105,5 +105,7 @@ cell, a green run of ONE path is not "done" — each path is separate code. Gati
 coverage steps on `schedule` leaves the `pull_request` run green while the
 coverage-on (`schedule`) path still hides a bug (e.g. a job that now exceeds its
 `timeout-minutes`). Exercise the non-PR path on demand with `workflow_dispatch`
-— but it only fires for the workflow version on the **default branch**, so that
-path can often only be verified *after* merge. Check it then; don't assume.
+— but the trigger must already exist on the **default branch** to be
+dispatchable. If it's *new in the PR*, that path is only verifiable after merge;
+if it already exists on the default branch, you can dispatch the PR branch's
+version directly. Either way, check it; don't assume.
