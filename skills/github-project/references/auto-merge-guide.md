@@ -269,6 +269,23 @@ gh api "repos/OWNER/REPO/actions/runs?per_page=5" --jq \
 gh api repos/OWNER/REPO/actions/runs/RUN_ID/rerun -X POST
 ```
 
+## `mergeStateStatus: BLOCKED` — Check Required vs Non-Required Checks First
+
+`BLOCKED` does **not** mean a check failed — most often it means required checks are still **pending**. Before diagnosing a PR as blocked by a specific tool, compare the failing check against the branch's *required* set. A red **non-required** check never blocks merge.
+
+Real case (2026-07-18): two bump PRs showed `mergeStateStatus: BLOCKED` with `copilot-pull-request-reviewer` at `conclusion: failure` — the failure body was *"Copilot was unable to review this pull request because the user who requested the review has reached their quota limit."* That check was **not** in `required_status_checks`, so both PRs auto-merged the moment the required set (Skill Validation, composer-audit, gitleaks, DCO, …) went green. Reporting them as "Copilot-blocked" was wrong.
+
+```bash
+# The required set (the ONLY checks that can BLOCK):
+gh api repos/OWNER/REPO/branches/main/protection \
+  --jq '.required_status_checks.contexts'
+
+# A failing check NOT in that list is advisory — it does not gate merge.
+# BLOCKED + all required checks green/pending → wait, don't intervene.
+```
+
+Corollary: a quota-exhausted Copilot review returns `conclusion: failure`, not `neutral` — treat "failure" on an advisory reviewer check as noise, not a code problem. Never reach for `--admin` to "unblock" it.
+
 ## Merge Queue Behavior and Pitfalls
 
 ### Sequential Processing
