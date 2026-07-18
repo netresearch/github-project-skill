@@ -332,6 +332,7 @@ When landing multiple dependent PRs, expect the dependent PRs to need rebasing a
 | PR stuck after preceding PR merged | PR is now behind `main` | Rebase, force push, re-queue |
 | `REVIEW_REQUIRED` after rebase | Stale review dismissal cleared approval | Re-run auto-approve workflow |
 | Unresolved threads block merge | Old threads survive rebase | Resolve via GraphQL `resolveReviewThread` |
+| Armed (`autoMergeRequest` set) but never enters the queue | First `--auto` armed auto-merge without enqueuing — checks are green, no threads, yet `mergeQueue.entries` is empty and the PR just sits | Re-issue `gh pr merge NUMBER --auto`; it reports "already queued to merge" and the entry then shows `AWAITING_CHECKS`. Confirm with the `mergeQueue.entries` GraphQL query — do not assume arming enqueued it |
 
 ### Verifying a PR Actually Merged (enqueue ≠ merged)
 
