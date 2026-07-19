@@ -220,6 +220,35 @@ repo had merged without a single test running.
 | `platformAutomerge` | `true` | Use GitHub's auto-merge (Renovate enables it) |
 | `automerge` | `true` | Enable auto-merge for matching packages |
 
+### GitHub Actions digest pinning — exempt org-owned resources (last-match-wins)
+
+Renovate applies the **last matching `packageRule`**, so rule order decides pinning. If a repo opts into `helpers:pinGitHubActionDigests` (which SHA-pins *all* actions), an exemption for org-owned resources placed only in a *shared* preset is overridden by the later opt-in preset — and Renovate SHA-pins your own reusable workflows (`org/.github/...@main` → `@<sha>`), which are meant to track a branch so fixes reach every consumer without a per-repo digest bump.
+
+Put the exemption where it wins:
+
+- **Repo-level** — in the repo's own `packageRules` (evaluated after all `extends`):
+
+  ```json
+  {
+    "matchManagers": ["github-actions"],
+    "matchPackageNames": ["myorg/**"],
+    "pinDigests": false
+  }
+  ```
+
+- **Better, org-wide** — a bundled sub-preset that extends the pin preset and applies the exemption *after* it, so consumers just `extends: ["github>myorg/renovate-config:pinning"]` and cannot omit or mis-order it:
+
+  ```json
+  {
+    "extends": ["github>myorg/renovate-config", "helpers:pinGitHubActionDigests"],
+    "packageRules": [
+      { "matchManagers": ["github-actions"], "matchPackageNames": ["myorg/**"], "pinDigests": false }
+    ]
+  }
+  ```
+
+A shared-preset exemption alone gives false confidence: it is silently overridden the moment a repo extends the pin preset after it. This surfaced when Renovate auto-merged a PR that SHA-pinned an `org/.github` reusable workflow against the org's stated policy.
+
 ## Auto-merge Workflow
 
 ### Auto-merge Decision Matrix
