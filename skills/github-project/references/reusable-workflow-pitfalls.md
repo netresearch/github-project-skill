@@ -103,6 +103,42 @@ Before adding a guard, check, or fix to a project's own workflow files, ask whet
 
 This is distinct from pitfalls #1–#5 above (which cover *how* to author and reference reusable workflows) — this is about *where* a fix belongs.
 
+### The consumer-side tell
+
+The rule is easiest to apply as a property of the consumer's workflow file: **every job in a
+consumer repo is a `uses:` of a shared workflow.** A job with its own `steps:` — checkout,
+setup, install, run — is the smell, and third-party actions (`actions/checkout`,
+`shivammathur/setup-php`, …) appearing anywhere outside the shared-workflow repo is the same
+smell stated in terms of `uses:`. Verify with:
+
+```bash
+grep -rn "uses:" .github/workflows/ | grep -vi "YOUR_ORG/"
+```
+
+Anything that returns is either a genuinely project-specific exception or work that belongs
+upstream. Pinning such an action to a SHA does not make it compliant — the pin is a separate
+requirement (`reusable-workflow-security.md`), not a substitute for this one.
+
+### Extending the shared workflow instead
+
+When the shared workflow has no input for what the consumer needs, add one — this is the
+supported path, not a workaround:
+
+- Add the input **defaulting to off** (`type: boolean`, `default: false`) and gate the new
+  job on it, so every existing consumer is unaffected. Verify the diff is purely additive
+  (`git diff origin/main... -U0 | grep -E '^-[^-]'` returns nothing) — an existing consumer must not change
+  behaviour because another repo needed a feature.
+- Copy the action pins verbatim from a neighbouring job in the same file rather than picking
+  versions independently; a shared workflow with two different `actions/checkout` SHAs is its
+  own maintenance problem.
+- Give the new job a graceful skip (a `::notice::`) when the consumer lacks the underlying
+  script, so enabling the input in a repo that is not ready cannot hard-fail.
+- Land it, then flip the input on in the consumer. The consumer's change is one line.
+
+Do not reach for `unit-test-command`-style override inputs to smuggle an extra suite into an
+existing job: those replace the job's instrumented default command and silently drop whatever
+it did (coverage upload, for instance).
+
 ## 7. Run with zero jobs whose name is the file path = workflow-validation failure
 
 A run with `conclusion: startup_failure` (or `failure`), **zero jobs**, and a displayed name that falls back to the workflow **file path** failed at workflow *validation*, before any job started. The exact reason is **only in the Actions UI banner** — it is not exposed via the REST API (`gh run view --log[-failed]` returns "log not found"; run/annotations/check-suite endpoints are empty). If you can't see the UI, ask for the banner text. Two causes seen in practice:

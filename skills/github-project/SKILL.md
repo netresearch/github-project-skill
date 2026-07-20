@@ -1,6 +1,6 @@
 ---
 name: github-project
-description: "Use when bootstrapping a repo (apply branch protection before first PR), PRs won't merge or BLOCKED, AI reviewer pushback, auto-merge fails for Dependabot/Renovate, branch protection or rulesets, CI fails, authoring reusable workflows, harden-runner, or CODEOWNERS/PR templates."
+description: "Use when bootstrapping a repo (apply branch protection before first PR), PRs won't merge or BLOCKED, AI reviewer pushback, auto-merge fails for Dependabot/Renovate, branch protection or rulesets, CI fails, authoring or consuming reusable workflows, editing a repo's own .github/workflows, harden-runner, or CODEOWNERS/PR templates."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
 compatibility: "Requires gh CLI, git."
 metadata:
@@ -14,7 +14,8 @@ allowed-tools: Bash(gh:*) Bash(git:*) Bash(grep:*) Read Write
 
 ## When to Use
 
-- **Post `gh repo create` + initial push, before first PR** — apply branch protection (REQUIRED, see below)
+- **Post `gh repo create` + push, before first PR** — REQUIRED: `scripts/init-branch-protection.sh OWNER/REPO` (`references/repo-bootstrap.md`)
+- Adding a job to a repo's workflow — see pitfall #6
 - PR won't merge / threads
 - Auto-merge fails (Dependabot/Renovate)
 - Solo auto-approve
@@ -25,8 +26,6 @@ allowed-tools: Bash(gh:*) Bash(git:*) Bash(grep:*) Read Write
 - Scorecard
 - CODEOWNERS, templates, labels
 - Fork PR merge base
-
-> **REQUIRED post `gh repo create`:** `scripts/init-branch-protection.sh OWNER/REPO` — see `references/repo-bootstrap.md`.
 
 ## Quick Diagnostics
 
@@ -72,7 +71,7 @@ gh pr view PR --repo OWNER/REPO --json reviewThreads --jq '.reviewThreads'
 
 ### Merge Strategy Issues
 
-See `references/auto-merge-guide.md` (signed-commit rebase fixes, workflow-file PRs, Copilot auto-approve race).
+See `references/auto-merge-guide.md` (signed-commit rebase, workflow-file PRs, Copilot race).
 
 ## Running Scripts
 
@@ -84,7 +83,7 @@ scripts/verify-github-project.sh /path/to/repository      # local-checkout audit
 
 ## No editorializing
 
-State what a change does, not how good it is; no self-praise. See `references/no-editorializing.md`.
+State what a change does, not how good it is. See `references/no-editorializing.md`.
 
 ## References
 
