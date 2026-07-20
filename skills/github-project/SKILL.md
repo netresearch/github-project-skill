@@ -14,7 +14,7 @@ allowed-tools: Bash(gh:*) Bash(git:*) Bash(grep:*) Read Write
 
 ## When to Use
 
-- **Post `gh repo create`, before first PR** — REQUIRED: `scripts/init-branch-protection.sh OWNER/REPO` (`references/repo-bootstrap.md`)
+- **Post `gh repo create` + push, before first PR** — REQUIRED: `scripts/init-branch-protection.sh OWNER/REPO` (`references/repo-bootstrap.md`)
 - Adding a job to a repo's workflow — see pitfall #6
 - PR won't merge / threads
 - Auto-merge fails (Dependabot/Renovate)

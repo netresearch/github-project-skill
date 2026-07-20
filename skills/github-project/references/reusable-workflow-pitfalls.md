@@ -112,7 +112,7 @@ setup, install, run — is the smell, and third-party actions (`actions/checkout
 smell stated in terms of `uses:`. Verify with:
 
 ```bash
-grep -rn "uses:" .github/workflows/ | grep -v "YOUR_ORG/"
+grep -rn "uses:" .github/workflows/ | grep -vi "YOUR_ORG/"
 ```
 
 Anything that returns is either a genuinely project-specific exception or work that belongs
@@ -126,7 +126,7 @@ supported path, not a workaround:
 
 - Add the input **defaulting to off** (`type: boolean`, `default: false`) and gate the new
   job on it, so every existing consumer is unaffected. Verify the diff is purely additive
-  (`git diff -U0 | grep -E '^-[^-]'` returns nothing) — an existing consumer must not change
+  (`git diff origin/main... -U0 | grep -E '^-[^-]'` returns nothing) — an existing consumer must not change
   behaviour because another repo needed a feature.
 - Copy the action pins verbatim from a neighbouring job in the same file rather than picking
   versions independently; a shared workflow with two different `actions/checkout` SHAs is its
