@@ -59,7 +59,6 @@ Rapid sequences of `gh api` calls (REST + GraphQL) sometimes return `401 "Requir
   ```
   The lines above the marker carry the actual cause (the failing command's own output); the marker line itself is often just `Process completed with exit code 1`.
 
-
 - **A bare status code matches things that are not errors.** `grep -c 403` over a job log also hits commit SHAs, ref names and git plumbing output in the `Checkout` step. A real case: a fixed run still showed 8 hits for `403` — all from `Checkout`, none an API error — which reads as "still broken". Match the error *text* (`Client Error: Forbidden`), and scope the count to the step that makes the calls.
 
   Each line is `<job>\t<step>\t<timestamp> <text>`, so anchor the step to the start of the line — an unanchored step name also matches log *prose* that mentions it:
