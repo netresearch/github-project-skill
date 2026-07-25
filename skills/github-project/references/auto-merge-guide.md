@@ -275,6 +275,8 @@ gh api repos/OWNER/REPO/actions/runs/RUN_ID/rerun -X POST
 
 Real case (2026-07-18): two bump PRs showed `mergeStateStatus: BLOCKED` with `copilot-pull-request-reviewer` at `conclusion: failure` — the failure body was *"Copilot was unable to review this pull request because the user who requested the review has reached their quota limit."* That check was **not** in `required_status_checks`, so both PRs auto-merged the moment the required set (Skill Validation, composer-audit, gitleaks, DCO, …) went green. Reporting them as "Copilot-blocked" was wrong.
 
+This holds even when a `copilot_code_review` rule is active on the branch — that rule requests a review, it does not gate the merge. See "A quota-limited Copilot review does not block the merge" in `merge-strategy.md`.
+
 ```bash
 # The required set (the ONLY checks that can BLOCK):
 gh api repos/OWNER/REPO/branches/main/protection \
