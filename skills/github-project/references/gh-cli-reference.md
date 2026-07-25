@@ -50,7 +50,14 @@ Rapid sequences of `gh api` calls (REST + GraphQL) sometimes return `401 "Requir
 
 ### Reading a run's log: grep the error text, not the status code
 
-`gh run view --job=<id> --log` prefixes every line with the step name. Two traps when you count errors in it:
+`gh run view --job=<id> --log` prefixes every line with the step name. Three traps when you read errors in it:
+
+- **`--log-failed | tail` shows the wrong end of the log.** On a repo running `step-security/harden-runner`, the post-job step appends its egress-audit dump — DNS resolutions, `sudo` calls, the full `agent.service` journal — *after* the step that failed. Tailing a failed job therefore returns pages of runner telemetry and none of the error. Redirect to a file and grep for the annotation marker instead:
+  ```bash
+  gh run view <RUN_ID> --repo OWNER/REPO --log-failed > run.log
+  grep -nE '##\[error\]' run.log      # then read the ~20 lines above each hit
+  ```
+  The lines above the marker carry the actual cause (the failing command's own output); the marker line itself is often just `Process completed with exit code 1`.
 
 - **A bare status code matches things that are not errors.** `grep -c 403` over a job log also hits commit SHAs, ref names and git plumbing output in the `Checkout` step. A real case: a fixed run still showed 8 hits for `403` — all from `Checkout`, none an API error — which reads as "still broken". Match the error *text* (`Client Error: Forbidden`), and scope the count to the step that makes the calls.
 
