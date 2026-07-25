@@ -254,17 +254,31 @@ When every `gh pr merge --merge/--rebase/--squash` (and REST `PUT .../merge`) re
 
 Diagnosis gotcha: `repos/<r>/rules/branches/main` may show a *permissive* list because `orgs/<org>/rulesets` is not listable without org-admin, so the stricter org ruleset is invisible and the contradiction looks like a GitHub bug — it isn't. `--admin` does **not** bypass `allowed_merge_methods` (it only bypasses status checks / required reviews). The only fixes are repo/org-admin actions (enable the org-required method at the repo level, exempt the repo, or adjust the org ruleset). Do not toggle repo merge settings autonomously on an inference — flag it for the owner.
 
-### Copilot-review ruleset blocked by Copilot's own quota
+### A quota-limited Copilot review does not block the merge
 
-Some repos gate merges on a `copilot_code_review` **ruleset** (visible via `gh api repos/$R/rules/branches/main`, not classic branch protection) that requires a fresh Copilot review on the head commit. When Copilot is quota-limited org-wide it posts a `COMMENTED` review saying it "was unable to review … reached their quota limit" — which does **not** satisfy the ruleset, so `gh pr merge` returns "add `--auto` or `--admin`" and `mergeStateStatus` stays `BLOCKED`. Re-requesting just reproduces the quota message.
+`copilot_code_review` in a ruleset is an **automation** rule — "automatically request Copilot code review" — not a merge gate. Per [GitHub's docs](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-automatic-review), Copilot always leaves a *Comment* review, it never counts toward required approvals, and it does not block merging. Its two parameters (`review_draft_pull_requests`, `review_on_push`) only widen *when* the request fires.
 
-When all real checks pass (CodeQL, actionlint, SonarCloud, DCO, …) and only the quota-stuck Copilot gate blocks, admin-merge:
+So when Copilot is quota-limited and posts `COMMENTED` — *"unable to review … reached their quota limit"* — nothing is gated by it. Observed in `netresearch/t3x-nr-image-optimize` PR #140: the `copilot_code_review` rule was active on `main`, Copilot posted exactly that quota review, `mergeStateStatus` went `CLEAN`, and a plain `gh pr merge --merge` succeeded without `--admin`.
+
+**Never reach for `--admin` on this diagnosis.** If a PR is `BLOCKED` while the Copilot check is red, the cause is elsewhere — find it before escalating:
 
 ```bash
-gh pr merge $PR --repo $R --merge --admin
+# 1. Which rules actually gate this branch? (copilot_code_review is not one)
+gh api repos/$R/rules/branches/main --jq '[.[].type]'
+
+# 2. The required contexts — the only checks that can BLOCK
+gh api repos/$R/rules/branches/main \
+  --jq '.[] | select(.type=="required_status_checks")
+        | .parameters.required_status_checks[].context'
+
+# 3. Are approvals required, and is one outstanding?
+gh api repos/$R/rules/branches/main --jq '.[] | select(.type=="pull_request")'
+gh pr view $PR --repo $R --json reviewDecision,latestReviews
 ```
 
-Only for the unfulfillable-Copilot case — never admin-merge to skip a *failing* real check.
+The usual real causes: a required check still pending (see "`mergeStateStatus: BLOCKED` — Check Required vs Non-Required Checks First" in `auto-merge-guide.md`), unresolved review threads, or a `pull_request` rule whose required approval is missing because the auto-approve job raced the Copilot review request (see "Auto-Approve Race Condition"). A quota-limited Copilot review is never the reason.
+
+**The real hazard runs the other way.** The gate reads as satisfied while no review happened: the `COMMENTED` review object exists, checks go green, the PR merges — and nothing reviewed the diff. Treat a quota-limited Copilot review as *no review*, and decide on that basis whether the change needs human eyes before merging.
 
 ### SonarCloud PR gate re-attributes pre-existing issues to a refactor
 
