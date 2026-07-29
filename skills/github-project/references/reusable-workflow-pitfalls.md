@@ -149,3 +149,55 @@ A run with `conclusion: startup_failure` (or `failure`), **zero jobs**, and a di
 ```bash
 gh api repos/O/R/actions/permissions --jq '.default_workflow_permissions? // ""'   # reveals a restrictive 'read' default
 ```
+
+
+## 8. `release: published` never fires for a release a workflow created
+
+A workflow that reacts to releases with
+
+```yaml
+on:
+  release:
+    types: [published]
+```
+
+is **inert for every automated release**. GitHub does not raise events from
+actions taken with the default `GITHUB_TOKEN` — a deliberate guard against
+recursive runs — and the release is created by the release workflow using
+exactly that token. The trigger only fires for releases a human creates in the
+UI or via a PAT.
+
+This fails silently in the worst way: the workflow is registered, `state:
+active`, and simply never runs. Nothing appears in the Actions tab to explain
+the absence.
+
+Trigger off the producing workflow instead:
+
+```yaml
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+
+jobs:
+  verify:
+    # A run that failed has nothing to verify, and head_branch is only a tag
+    # when the run came from a tag push.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+```
+
+`workflow_run` observes the run regardless of which token created what.
+
+**A repo's history can mislead you here.** Checking for past `event=release`
+runs is not evidence the trigger works today: a repo that once created releases
+by hand will show dozens of them, all predating the automation.
+
+### Corollary: test the trigger you ship, not a convenient one
+
+Adding `workflow_dispatch` alongside the real trigger makes the workflow easy to
+exercise — and a dispatch run proves only that the *jobs* work. It says nothing
+about whether the event you actually depend on ever arrives. A gate can pass its
+manual test and still be dead in production. If the real trigger cannot be
+exercised before merge, say so rather than treating the dispatch run as proof.
