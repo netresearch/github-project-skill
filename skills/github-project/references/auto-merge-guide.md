@@ -574,3 +574,73 @@ gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews -
 }
 EOF
 ```
+
+## Auto-merged PRs leave the base branch without post-merge CI
+
+A merge performed with `GITHUB_TOKEN` — which is what the auto-merge workflow
+uses, directly or via `gh pr merge --auto` — does not trigger further workflow
+runs. GitHub suppresses workflow triggers for events created by that token, so
+the `push` to the base branch produces nothing. Measured on one repository:
+
+| Merge commit | Merged by | push-triggered CI runs on `main` |
+|---|---|---|
+| `699df245` | maintainer (`gh pr merge`) | 5 |
+| `162c57b7` | maintainer (`gh pr merge`) | 5 |
+| `ddc3810a` | auto-merge workflow | **0** |
+| `5a513fe1` | auto-merge workflow | **0** |
+| `875fb1a4` | auto-merge workflow | **0** |
+| `c61d560f` | auto-merge workflow | **0** |
+
+Rule out the cheaper explanation first — a `paths`/`paths-ignore` filter on the
+`push` trigger produces the same symptom:
+
+```bash
+gh api repos/$R/contents/.github/workflows/ci.yml --jq .content | base64 -d | yq '.on'
+```
+
+On its own the missing run is tolerable, because the PR's own CI covered the
+head commit. It becomes a hole when combined with a non-strict status-check
+policy: the PR may have been tested against a `main` that has since advanced,
+and nothing ever tests the combination.
+
+```bash
+gh api repos/$R/rules/branches/main \
+  --jq '.[]|select(.type=="required_status_checks")|.parameters'
+# strict_required_status_checks_policy: false  →  stale PRs may merge untested
+```
+
+Two fixes, in increasing strength:
+
+1. **`strict_required_status_checks_policy: true`** — one flag. GitHub holds the
+   merge until the branch is current, so the tested tree equals the merged tree
+   and the missing post-merge run stops mattering. Cost: every base-branch push
+   invalidates open PRs, which then need an update (`allow_update_branch: true`
+   and the bots handle their own). Reversible with one API call — back the
+   ruleset up first (`gh api repos/$R/rulesets/$ID > backup.json`).
+2. **Merge queue** — tests the merge *result* before it lands, and covers
+   maintainer merges too. Needs a `merge_group:` trigger in the CI workflow and
+   queue configuration in the ruleset.
+
+Do **not** try to bolt a post-merge `workflow run` dispatch onto the auto-merge
+job. `workflow_dispatch` and `repository_dispatch` are indeed the documented
+exceptions to the `GITHUB_TOKEN` suppression, but when the base branch has
+required checks the job takes the native path — `gh pr merge --auto` followed by
+`exit 0` — and finishes long before GitHub performs the merge. There is no point
+in that job at which the merge commit exists.
+
+## Auto-merge can land a bot PR while you are still fixing it
+
+In a repo with an auto-merge deps workflow, pushing a fix to a bot PR's branch
+starts a clock: as soon as the required checks go green the workflow merges,
+with no further confirmation. Two dependency PRs merged four minutes apart while
+a correction to one of them was still being verified locally — the flawed commit
+reached the base branch and needed a follow-up PR instead of an amend.
+
+Treat "pushed and green" as "merged" on those branches:
+
+- Finish verification *before* the push that turns the PR green, not after.
+- Once it is green, plan on a follow-up PR against the base branch. Amending and
+  force-pushing races the workflow and fails with `stale info` once the branch
+  is deleted post-merge.
+- Check whether the merge already happened before diagnosing a push failure:
+  `gh pr view $PR --repo $R --json state,mergedAt,mergedBy`.

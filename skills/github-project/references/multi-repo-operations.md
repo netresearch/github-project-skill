@@ -60,6 +60,51 @@ Never enable auto-merge on archived repos — the auto-merge plumbing fails at s
 
 **Safer default for batch file edits**: open a one-commit PR per repo even when the Contents API would work. Gives you a reviewable diff, matches any future signing/protection rule tightening, and keeps behavior consistent across the fleet.
 
+### 4. Forks: "0 ahead" on the default branch does not mean "dead"
+
+Fleet cleanups and advisory sweeps both reach the same question — is this fork
+still needed, or can it go? The usual check compares the *default* branch:
+
+```bash
+gh api "repos/$UPSTREAM/compare/$DEFAULT...${OWNER}:$DEFAULT" --jq '.ahead_by'
+```
+
+`ahead_by: 0` plus no open upstream PRs reads as a pure mirror with nothing to
+lose. It is not sufficient. One fork that reported `0 ahead / 1 behind` on
+`master`, with issues disabled, no releases, no stars and no upstream PRs, held
+**26 commits across 8 non-default branches** — `task/build-setup` (9),
+`bugfix/sticky-header-scroll-flicker` (8), `task/simplify-tca` (4) and five more
+at 1 each. Deleting it would have destroyed all of them.
+
+Enumerate every branch before deleting or archiving a fork:
+
+```bash
+UPSTREAM=upstream-owner/repo; FORK=our-org/repo; DEFAULT=$(gh api "repos/$UPSTREAM" --jq .default_branch)
+for b in $(gh api "repos/$FORK/branches" --paginate --jq '.[].name'); do
+  n=$(gh api "repos/$UPSTREAM/compare/$DEFAULT...${FORK%%/*}:$b" --jq '.ahead_by' 2>/dev/null)
+  [ "${n:-0}" -gt 0 ] && echo "$b ahead=$n"
+done
+```
+
+Any non-zero result is unmerged local work: land it upstream or preserve it
+before the repo goes. Note that `open_issues_count` includes PRs, so a fork with
+issues disabled can still report `1` — resolve what it is rather than assuming.
+
+When the goal was only to clear the fork's Dependabot alerts, prefer dismissing
+them over deleting the repo. A fork's lockfile belongs to upstream; patching it
+diverges the fork without removing exposure that a never-built fork does not
+have.
+
+```bash
+gh api -X PATCH "repos/$FORK/dependabot/alerts/$N" \
+  -f state=dismissed -f dismissed_reason=not_used \
+  -f dismissed_comment="$COMMENT"   # 280 chars max, or HTTP 422
+```
+
+Say *why* in the comment — that the lockfile is upstream's, that upstream is
+still on the vulnerable version, and that the fork is never built or deployed.
+"not_used" alone tells the next reader nothing.
+
 ## Parallel PR Rebasing
 
 For N PRs that need rebasing on their default branches, dispatch parallel subagents — one per PR — with failure isolation.
