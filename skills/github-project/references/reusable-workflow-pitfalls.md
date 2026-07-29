@@ -188,7 +188,16 @@ jobs:
       startsWith(github.event.workflow_run.head_branch, 'v')
 ```
 
-`workflow_run` observes the run regardless of which token created what.
+`workflow_run` observes a workflow *run*, not a repository event, so the
+GITHUB_TOKEN suppression does not apply to it.
+
+Two constraints come with it:
+
+- The workflow file must be on the **default branch**. A `workflow_run`
+  trigger added on a feature branch does nothing until it is merged — so it
+  cannot be exercised on the PR that introduces it.
+- **`workflow_run` does not chain.** A workflow started by `workflow_run`
+  cannot itself trigger another one.
 
 **A repo's history can mislead you here.** Checking for past `event=release`
 runs is not evidence the trigger works today: a repo that once created releases
