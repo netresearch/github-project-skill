@@ -330,6 +330,57 @@ gh api repos/OWNER/REPO/check-runs/CHECK_RUN_ID/annotations \
 | 4 | All review threads resolved | GraphQL reviewThreads query |
 | 5 | Branch rebased on target | `gh pr view NUMBER --json mergeStateStatus` is `CLEAN` |
 
+## Secret Scanning: A Config File Replaces the Ruleset
+
+gitleaks does **not** merge your config with its built-in rules. A
+`.gitleaks.toml` that declares only an allowlist declares *no rules at all*, and
+the scan then matches nothing — reporting `no leaks found` for every input,
+including a live credential sitting in the diff.
+
+```toml
+# Without this block, everything below replaces the defaults
+# instead of extending them.
+[extend]
+useDefault = true
+
+[allowlist]
+paths = ['''testdata/''']
+```
+
+The failure is invisible by construction: a scanner that finds nothing looks
+exactly like a clean repository. A green secret-scanning check is therefore not
+evidence of anything until you have seen it fail once.
+
+**Verify by planting one.** Write a value matching a rule you expect to fire
+into a scratch file **outside the repository** and confirm the scan reports it:
+
+```bash
+# Assemble the probe so no secret-shaped literal is ever committed.
+printf 'token = "%s-1234567890-abcdefghijklmnopqrstuvwx"\n' 'xoxb' \
+  > /tmp/leak-probe.txt
+gitleaks dir /tmp --no-banner        # expect: leaks found: 1
+```
+
+Keep the probe out of the repository, and out of the documentation too:
+GitHub's push protection scans what you push and will **block a commit that
+merely documents a realistic-looking token** — including a page explaining how
+to test secret scanning. The block is correct behaviour; work around it by
+assembling the value at runtime rather than by requesting an exemption.
+
+Three traps when testing:
+
+- **Well-known example credentials are allowlisted upstream.** AWS's
+  `AKIAIOSFODNN7EXAMPLE` and friends will not be reported no matter what.
+  Use a value that is not in anyone's allowlist.
+- **gitleaks auto-discovers a config in the scanned directory.** Copying the
+  repo's `.gitleaks.toml` next to the probe file silently re-applies the config
+  you were trying to test without.
+
+Also distinguish the two scan modes: `gitleaks dir` scans the working tree,
+`gitleaks git` scans history. A repo can be clean on disk and still carry a
+credential in a commit from months ago — and replacing the file does not remove
+it from history, so a leaked credential still needs rotating.
+
 ## OpenSSF Scorecard Quick Reference
 
 If your Scorecard score is low, check these common issues:
