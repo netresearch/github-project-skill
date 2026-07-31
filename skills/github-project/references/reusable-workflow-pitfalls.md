@@ -210,3 +210,37 @@ exercise — and a dispatch run proves only that the *jobs* work. It says nothin
 about whether the event you actually depend on ever arrives. A gate can pass its
 manual test and still be dead in production. If the real trigger cannot be
 exercised before merge, say so rather than treating the dispatch run as proof.
+
+## 9. Converting an inline job to a reusable call renames its check → update the required contexts
+
+When you replace an inline job with a `uses:` reusable-workflow call, the surfaced
+check name changes from `<job-id>` to **`<caller-job-id> / <reusable-job-name>`**.
+Example: an inline `build:` job reported as `build`; after routing it through
+`build-container-bake.yml` it reports as `build / Build Container (Bake)`.
+
+Any branch-protection **required status check** or **merge-queue ruleset** that
+still lists the *old* context (`build`) now waits on a check that will never
+report — the PR sits `BLOCKED` / the merge-group is ejected, forever, even though
+every visible check is green.
+
+**Fix:** the required-context list must be migrated alongside the workflow change.
+Because the exact new name isn't always predictable, observe it on the first run,
+then update the gate:
+
+```bash
+# 1. New context name from the PR's first run
+gh pr checks <PR> --repo OWNER/REPO | grep -i build
+
+# 2a. Classic protection — preserve the other contexts, swap the renamed one
+gh api repos/OWNER/REPO/branches/main/protection/required_status_checks \
+  --jq '.contexts'                       # read current
+# PATCH back with the old name replaced by "build / Build Container (Bake)"
+
+# 2b. Merge-queue / ruleset — edit the ruleset's required_status_checks rule
+gh api repos/OWNER/REPO/rulesets/<id>    # find the required_status_checks rule
+# PUT the ruleset back with the context renamed
+```
+
+Do this in lockstep with merging the workflow PR, or the repo is unmergeable
+until someone notices. (See also `dependency-management.md` for enabling a
+required check via a ruleset when classic `required_status_checks` isn't set.)
