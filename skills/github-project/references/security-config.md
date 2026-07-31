@@ -403,6 +403,44 @@ Endpoint quirks when scripting repo security settings, verified against the GitH
 - **Grouped security updates, automatic dependency submission, and dependency graph have no per-repo REST API.** They exist only as org-level code-security configuration fields (`/orgs/{org}/code-security/configurations`) and in the UI. A `PATCH /repos security_and_analysis` with `dependency_graph_autosubmit_action` returns 200 but is silently ignored. For per-repo grouped security updates use `dependabot.yml` groups (see [`dependency-management.md`](dependency-management.md)).
 - **Free-plan private repos 403 on all ruleset / Dependabot / secret-scanning APIs** — you can't even `GET .../rulesets`. Public repos and paid plans (the Netresearch org) are unaffected.
 
+## SonarCloud: automatic analysis reads `.sonarcloud.properties`, not `sonar-project.properties`
+
+Exclusions placed in `sonar-project.properties` are **silently inert** under
+automatic analysis — the mode every Netresearch repository uses, since none runs
+a scanner in CI. Per the SonarQube Cloud docs: *"If you import a project that
+already contains a `sonar-project.properties` file, SonarQube Cloud will ignore
+the parameters in your `sonar-project.properties` file."* That file is what a
+**CI-run scanner** reads; automatic analysis reads `.sonarcloud.properties` on
+the default branch.
+
+The failure is quiet and looks like a code problem. One repo carried
+
+```properties
+sonar.exclusions=data/**
+sonar.cpd.exclusions=data/**
+```
+
+in `sonar-project.properties` for months while the duplication gate kept failing
+on exactly those files — 50 % on one PR, 91.5 % on the next, against a 3 %
+threshold — and both had to be merged with a red gate. Renaming the file (same
+two settings, byte-identical) moved the project from 40 analysed files to 32,
+and duplicated lines from 2188 to 0.
+
+```bash
+# Are exclusions set server-side instead? (empty result = nothing configured)
+curl -fsSL "https://sonarcloud.io/api/settings/values?component=KEY&keys=sonar.exclusions,sonar.cpd.exclusions" \
+  | jq '.settings'
+# Which files does Sonar actually analyse? Grep the paths you meant to exclude.
+curl -fsSL "https://sonarcloud.io/api/components/tree?component=KEY&qualifiers=FIL&ps=500" \
+  | jq -r '.components[].path' | grep '^data/'
+```
+
+Diagnose in that order — a *present* `sonar-project.properties` plus *empty*
+server-side settings plus the excluded paths still showing up in the file tree
+is the signature. Do not reshape the diff to satisfy the gate: fixture data,
+generated files and database seeds are duplicated by design. If the project ever
+switches to a CI-run scanner, the file has to be renamed back.
+
 ## SonarCloud Quality Gate: PR (new code) vs Branch (overall)
 
 A PR can pass SonarCloud's **new-code** quality gate (0 new issues) yet turn the
@@ -410,7 +448,7 @@ A PR can pass SonarCloud's **new-code** quality gate (0 new issues) yet turn the
 conditions. The branch gate adds conditions the PR analysis doesn't, most often
 `new_security_hotspots_reviewed` (must be **100%**) and overall coverage.
 
-- **Security Hotspots need _reviewing_, not fixing.** They are security-sensitive
+- **Security Hotspots need *reviewing*, not fixing.** They are security-sensitive
   code flagged for a human to mark **Safe** / **Fixed** in the SonarCloud UI (or
   via `POST api/hotspots/change_status`). An unreviewed hotspot fails the gate even
   though it is not a bug.
