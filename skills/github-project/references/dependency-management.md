@@ -640,3 +640,28 @@ PRs modifying workflow files require manual merge by a repository admin.
 ```
 
 The lockfile `name` then stays stable regardless of which worktree folder you run `npm install` in. This bites specifically in git worktree workflows; a plain clone (dir == repo name) masks it.
+
+## Enforcing Signed Commits + DCO Without Blocking the Bots
+
+Requiring **signed commits** (`required_signatures`) and/or **DCO sign-off** across repos collides head-on with dependency automation, because bot commits are typically **unsigned** and carry **no `Signed-off-by`**:
+
+- `required_signatures` has **no bot exemption** — it applies to every commit. Renovate commits pushed over git are unverified; Dependabot commits are *inconsistently* signed (some `verification.verified=true`, some `unsigned` in the same org). So turning it on blocks those PRs.
+- DCO requires a `Signed-off-by` trailer bots don't add — a naive DCO gate blocks **every** Dependabot/Renovate PR.
+
+Verify the blast radius before flipping anything on:
+
+```bash
+# Are bot commits signed?
+gh api "repos/OWNER/REPO/commits?per_page=40" \
+  --jq '[.[]|select(.commit.author.name|test("dependabot|renovate";"i"))][0]
+        | {verified:.commit.verification.verified, signoff:(.commit.message|test("Signed-off-by"))}'
+```
+
+**A working recipe (per repo — GitHub Free has no org-level rulesets, so there is no org-wide shortcut):**
+
+1. **Make Renovate sign.** Set `platformCommit: enabled` in the shared Renovate preset (or repo config). Renovate then creates commits through the GitHub API, which GitHub signs → `verified`.
+2. **Drop Dependabot** where signatures are required — it can't be made to sign reliably. Standardise on Renovate (which now signs). This also ends the double-manager problem if both were configured.
+3. **Exempt bots from DCO**, not from signatures. A reusable DCO check with a bot-login allowlist (`dependabot[bot],renovate[bot],github-actions[bot]`) lets bot PRs pass while still requiring humans to `git commit -s`. (Bots stay unsigned-off but are allowlisted; they are *signed* via step 1.)
+4. **Enforce.** `required_signatures` via classic protection `POST repos/OWNER/REPO/branches/main/protection/required_signatures`, or — on repos with **no classic protection** (rulesets only) — a ruleset rule `{"type":"required_signatures"}`. Add the DCO check as a required context the same way (classic `required_status_checks` or a `required_status_checks` ruleset rule).
+
+Note the classic `PATCH …/required_status_checks` **404s** ("Required status checks not enabled") when that component isn't already configured — add the check via a ruleset instead, which works regardless of classic protection.

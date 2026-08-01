@@ -274,3 +274,30 @@ PR never touched. To read them, list the analyses via
 newest analysis `id`, then fetch that analysis's SARIF —
 `gh api repos/OWNER/REPO/code-scanning/analyses/<id> -H 'Accept: application/sarif+json'`
 — and inspect the result locations. Fix the reusable workflow, not the innocent PR.
+
+## Some things should not be a reusable — the security gates are telling you
+
+Before wrapping an action in a shared workflow, ask whether the wrapper *fights*
+the org's own scanners. Two patterns that surfaced against zizmor + CodeQL:
+
+**A reusable that runs a caller-supplied script.** A generic "ssh-deploy" that
+executes `inputs.script` on a remote host is flagged by both zizmor
+(*template-injection*) and CodeQL (*code injection*) — **by design**, because a
+reusable input is attacker-influenceable if a caller ever wires it to an
+untrusted trigger. Routing the script through `env:` (`env.X`) silences zizmor
+but **not** CodeQL, which still traces `env.X ← inputs.script`. The gate is
+correct: a run-arbitrary-caller-code leaf is exactly what the injection rules
+exist to prevent. If the value the reusable adds is only "centralise one
+infrequently-bumped action," the honest call is often to **keep the single
+pinned action inline** as a documented exception rather than suppress security
+alerts on a production-deploy reusable.
+
+**Prefer the runner's `gh` CLI over wrapping a third-party release action.**
+zizmor flags `softprops/action-gh-release` with *"action functionality is
+already included by the runner: use `gh release` in a script step."* Rewriting
+the reusable to `gh release create`/`edit` (with the notes body passed through
+`env` and written via `--notes-file`) is both zizmor- and CodeQL-clean **and**
+leaves **zero external actions** in the chain — the ideal end state for an
+"actions live only in shared workflows" policy. General rule: if the runner
+already ships a CLI that does the job (`gh`, `docker`, `cosign`), a reusable
+built on that CLI beats one that pins yet another third-party action.
