@@ -562,13 +562,13 @@ if: github.actor == 'dependabot[bot]'
 if: github.event.pull_request.user.login == 'dependabot[bot]'
 ```
 
-### Secret Scanning Fails on Dependabot/Renovate PRs
+### The gitleaks Action Fails on Dependabot/Renovate PRs
 
 **Error:** `gitleaks-action@v2` fails with a license error on bot PRs.
 
 **Cause:** `gitleaks-action@v2` requires a `GITLEAKS_LICENSE` secret for organization repositories, and Dependabot runs with restricted secret access — it can only read secrets prefixed with `DEPENDABOT_`. So the scan cannot be licensed on exactly the PRs that need it.
 
-**Solution:** Call the org reusable, which runs betterleaks. It is OSS, needs no license, and therefore has no bot-PR failure mode — no secret is passed to it at all:
+**Solution:** Call the org reusable, which runs betterleaks. (This is the third-party scan in your workflow, not GitHub's own secret scanning, which is configured per repository and unaffected.) It is OSS, needs no license, and therefore has no bot-PR failure mode — no secret is passed to it at all:
 ```yaml
 jobs:
   gitleaks:

@@ -47,7 +47,7 @@ EOF
 | "Merge method X not allowed" | Wrong merge strategy | Use auto-detection (see below) or check `gh api repos/O/R --jq '{merge: .allow_merge_commit, squash: .allow_squash_merge, rebase: .allow_rebase_merge}'` |
 | "Rebase merges cannot be automatically signed" | Signed commits + rebase | Enable squash merge on the repo; rebase merges cannot be auto-signed by GitHub |
 | Bot detection misses reruns | `github.actor` changes on synchronize | Use `github.event.pull_request.user.login` instead of `github.actor` |
-| Secret scanning fails on bot PRs | Legacy `gitleaks-action@v2` needs a license secret Dependabot cannot read | Call `netresearch/.github/.github/workflows/gitleaks.yml@main` (betterleaks, no license); tune `.gitleaks.toml` for false positives |
+| Third-party gitleaks scan fails on bot PRs | Legacy `gitleaks-action@v2` needs a license secret Dependabot cannot read | Call `netresearch/.github/.github/workflows/gitleaks.yml@main` (betterleaks, no license); tune `.gitleaks.toml` for false positives |
 | Old PRs not auto-merging | Opened before workflow existed | Comment `@dependabot rebase` / `@renovate rebase` to trigger `synchronize` |
 | Can't merge workflow file PRs | `GITHUB_TOKEN` lacks `workflows` scope | Merge manually; use workflow check in `auto-merge-direct.yml` template |
 | Auto-approve skipped, PR stuck `REVIEW_REQUIRED` or blank `reviewDecision` | Auto-approve raced with Copilot reviewer | Re-run the auto-approve workflow after Copilot finishes; long-term fix is adding `pull_request_review` trigger — see [Auto-Approve Race Condition with Copilot Reviewer](#auto-approve-race-condition-with-copilot-reviewer) |
