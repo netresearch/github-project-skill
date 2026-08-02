@@ -219,7 +219,7 @@ org-level secret while dozens of callers still passed it.
 Use the REST endpoint instead:
 
 ```bash
-gh api "search/code?q=SEARCHTERM+org:OWNER&per_page=100" \
+gh api --paginate "search/code?q=SEARCHTERM+org:OWNER&per_page=100" \
   --jq '.items[] | "\(.repository.name)|\(.path)"' | sort -u
 ```
 
@@ -229,10 +229,17 @@ repos and confirm the search finds them:
 
 ```bash
 # Sanity probe: this string is in every consumer, so a low count means the
-# search is lying, not that the consumers are gone.
+# search is lying, not that the consumers are gone. Deliberately unpaginated —
+# compare total_count against the page size to see whether results are capped.
 gh api "search/code?q=%22KNOWN_STRING%22+org:OWNER&per_page=100" \
-  --jq '"total=\(.total_count) repos=\([.items[].repository.name]|unique|length)"'
+  --jq '"total=\(.total_count) on_this_page=\(.items|length)"'
 ```
+
+`--paginate` is required for any enumeration you intend to act on, but it does
+not remove the ceiling: the Search API stops at **1000 results** regardless of
+paging. If `total_count` approaches that, the result set is truncated and no
+amount of paging will complete it — narrow the query (per path, per topic, per
+repo batch) or switch to structural enumeration.
 
 A zero or suspiciously small result is a **search failure until proven
 otherwise** — the index also lags recent pushes, so a repo you changed minutes
@@ -285,7 +292,7 @@ When a consumer repo's template-drift check fails and the fix is "remove a thing
 ```
 1. Identify all consumers of the affected template path
    # Use the REST endpoint, NOT `gh search code` — see "Enumerating repos" below.
-   gh api "search/code?q=%22templates/<template-name>%22+org:netresearch&per_page=100" \
+   gh api --paginate "search/code?q=%22templates/<template-name>%22+org:netresearch&per_page=100" \
      --jq '.items[] | "\(.repository.name)|\(.path)"' | sort -u
 
 2. Open the template-side PR first
