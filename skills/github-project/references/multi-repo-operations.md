@@ -208,6 +208,46 @@ gh repo list OWNER --limit 500 --json name,url | jq '.[] | select(.name | endswi
 find ~/projects -maxdepth 3 -name ".bare" -type d | sed 's|/.bare||'
 ```
 
+### Never enumerate by content with `gh search code`
+
+`gh search code` silently under-reports and returns `null` for `repository`
+fields under `--json`. Two enumerations in one session came back wrong: a
+secret referenced in **63** repos was reported as **1**, and a consumer set of
+**51** came back as **39**. Acting on either number would have deleted an
+org-level secret while dozens of callers still passed it.
+
+Use the REST endpoint instead:
+
+```bash
+gh api --paginate "search/code?q=SEARCHTERM+org:OWNER&per_page=100" \
+  --jq '.items[] | "\(.repository.name)|\(.path)"' | sort -u
+```
+
+**Always validate a content search against a known-positive baseline before
+trusting a low or zero count.** Pick a string you already know appears in many
+repos and confirm the search finds them:
+
+```bash
+# Sanity probe: this string is in every consumer, so a low count means the
+# search is lying, not that the consumers are gone. Deliberately unpaginated —
+# compare total_count against the page size to see whether results are capped.
+gh api "search/code?q=%22KNOWN_STRING%22+org:OWNER&per_page=100" \
+  --jq '"total=\(.total_count) on_this_page=\(.items|length)"'
+```
+
+`--paginate` is required for any enumeration you intend to act on, but it does
+not remove the ceiling: the Search API stops at **1000 results** regardless of
+paging. If `total_count` approaches that, the result set is truncated and no
+amount of paging will complete it — narrow the query (per path, per topic, per
+repo batch) or switch to structural enumeration.
+
+A zero or suspiciously small result is a **search failure until proven
+otherwise** — the index also lags recent pushes, so a repo you changed minutes
+ago may not appear. Where correctness matters (deleting a secret, removing a
+declaration other repos depend on), enumerate structurally instead: probe each
+repo for the marker file with `gh api repos/OWNER/REPO/contents/<path>`, which
+reads the live tree rather than an index.
+
 ## Cache-Safety for Batch Operations
 
 When iterating across many local worktrees, it's easy to edit an installed skill/plugin cache by mistake. Before any write in a multi-repo loop:
@@ -251,7 +291,9 @@ When a consumer repo's template-drift check fails and the fix is "remove a thing
 
 ```
 1. Identify all consumers of the affected template path
-   gh search code --owner netresearch "templates/<template-name>" --limit 20
+   # Use the REST endpoint, NOT `gh search code` — see "Enumerating repos" below.
+   gh api --paginate "search/code?q=%22templates/<template-name>%22+org:netresearch&per_page=100" \
+     --jq '.items[] | "\(.repository.name)|\(.path)"' | sort -u
 
 2. Open the template-side PR first
    - Remove the bad entry / tighten the template
