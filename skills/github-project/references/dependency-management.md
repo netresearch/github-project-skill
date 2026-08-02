@@ -562,24 +562,20 @@ if: github.actor == 'dependabot[bot]'
 if: github.event.pull_request.user.login == 'dependabot[bot]'
 ```
 
-### Gitleaks Fails on Dependabot/Renovate PRs
+### The gitleaks Action Fails on Dependabot/Renovate PRs
 
-**Error:** `gitleaks-action` fails with license error on bot PRs.
+**Error:** `gitleaks-action@v2` fails with a license error on bot PRs.
 
-**Cause:** `gitleaks-action@v2` requires a `GITLEAKS_LICENSE` secret, but Dependabot runs with restricted secret access — it can only access secrets prefixed with `DEPENDABOT_`.
+**Cause:** `gitleaks-action@v2` requires a `GITLEAKS_LICENSE` secret for organization repositories, and Dependabot runs with restricted secret access — it can only read secrets prefixed with `DEPENDABOT_`. So the scan cannot be licensed on exactly the PRs that need it.
 
-**Solution:** Skip gitleaks on bot PRs or use the free mode:
+**Solution:** Call the org reusable, which runs betterleaks. (This is the third-party scan in your workflow, not GitHub's own secret scanning, which is configured per repository and unaffected.) It is OSS, needs no license, and therefore has no bot-PR failure mode — no secret is passed to it at all:
 ```yaml
-- name: Gitleaks
-  uses: gitleaks/gitleaks-action@v2
-  # Skip on bot PRs where GITLEAKS_LICENSE is unavailable
-  if: github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'renovate[bot]'
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+jobs:
+  gitleaks:
+    uses: netresearch/.github/.github/workflows/gitleaks.yml@main
 ```
 
-Or add a `.gitleaks.toml` allowlist for known false positives.
+Do not skip the scan for bot PRs: a dependency update can carry a secret like any other change. For known false positives, add a `.gitleaks.toml` allowlist — the repo's own file is honoured, so tune it there rather than disabling the job.
 
 ### Pre-existing PRs Don't Auto-merge
 
