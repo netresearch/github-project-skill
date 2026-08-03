@@ -503,6 +503,8 @@ confusing half-state.
 - `platformAutomerge: true` - Renovate enables auto-merge (uses bypass permissions)
 - `lockFileMaintenance` - Handles lock file updates via PR (not direct push)
 
+**The `renovate/stability-days` check (produced by the `minimumReleaseAge` config option, formerly `stabilityDays`) keeps an armed PR `UNSTABLE` on purpose.** A Renovate PR with auto-merge armed, every real check green, and only `renovate/stability-days` PENDING is not stuck — the pending status *is* the supply-chain delay, and Renovate completes the merge when the window elapses. `mergeStateStatus` shows `UNSTABLE` the whole time. Leave it alone; merging by hand defeats the deliberate release-age gate.
+
 ## Canonical Auto-merge Workflow Template
 
 ```yaml
