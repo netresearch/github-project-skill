@@ -238,6 +238,29 @@ Then name the specific rule (`copilot_code_review`, `required_status_checks`, `n
 
 Once a reviewer is requested or has *started* (by you, a ruleset, or automation), its pendency blocks the merge until it resolves — regardless of `mergeStateStatus`. `CLEAN` is necessary but never sufficient: a `copilot_code_review` ruleset with `review_on_push: false` reports `CLEAN` off an *earlier* commit's review while a new one is still running, and a reviewer that has *started* drops off the request list without submitting — so `reviewRequests: []` is **not** "all clear". Check the timeline / pending-review state, not just `reviewRequests`. Do not request or re-request a reviewer as a pre-merge step (announcing one commits you to waiting). The absence of a review is not itself a blocker — you cannot require a review to *exist* (bots fail, decline, or are unconfigured) — but an *announced* one must be allowed to finish.
 
+### CodeQL default-setup check queued forever on a diff with nothing to analyze
+
+CodeQL **default setup** (app `github-advanced-security`, check name `CodeQL`)
+can sit `queued` indefinitely on a PR whose diff contains **no files of any
+configured language** — e.g. default setup configured for `actions` only and a
+docs-only diff (`SKILL.md` + `plugin.json`). Instead of auto-passing, the check
+never concludes, and `mergeStateStatus` stays `UNSTABLE` (or `BLOCKED` if the
+check is required). Verified behaviors (2026-08-03, two wedged suites on one PR):
+
+- `POST /repos/{owner}/{repo}/check-suites/{check_suite_id}/rerequest` returns
+  **404** for default-setup suites — there is no workflow run to re-run either.
+- **Close/reopen spawns a fresh suite that wedges identically** — the re-run
+  has the same nothing-to-analyze diff.
+- Diagnose with: `gh api repos/{owner}/{repo}/code-scanning/default-setup`
+  (languages) vs. the PR's changed files.
+
+Escape paths, in preference order: (1) if the check is not required, get
+explicit human authorization and merge via the REST endpoint
+(`gh api -X PUT repos/{owner}/{repo}/pulls/{n}/merge -f merge_method=merge` —
+see the section below on REST-vs-GraphQL); (2) touch a file of a configured language so the
+analysis has an object; (3) wait — GitHub sometimes expires wedged queued
+check-runs after several hours, but neither timing nor outcome is dependable.
+
 ### `gh pr merge` falsely reports "base branch policy prohibits the merge"
 
 `gh pr merge` (GraphQL path) can fail with "the base branch policy prohibits the merge" even when every requirement is verifiably satisfied (rollup SUCCESS, signature valid, 0 required approvals, 0 unresolved threads, branch up to date, no blocking rulesets), and `--auto` never fires either. The REST endpoint succeeds immediately on the same head SHA:
