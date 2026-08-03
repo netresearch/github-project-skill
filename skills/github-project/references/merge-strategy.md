@@ -247,17 +247,17 @@ docs-only diff (`SKILL.md` + `plugin.json`). Instead of auto-passing, the check
 never concludes, and `mergeStateStatus` stays `UNSTABLE` (or `BLOCKED` if the
 check is required). Verified behaviors (2026-08-03, two wedged suites on one PR):
 
-- `POST /repos/{o}/{r}/check-suites/{id}/rerequest` returns **404** for
-  default-setup suites — there is no workflow run to re-run either.
+- `POST /repos/{owner}/{repo}/check-suites/{check_suite_id}/rerequest` returns
+  **404** for default-setup suites — there is no workflow run to re-run either.
 - **Close/reopen spawns a fresh suite that wedges identically** — the re-run
   has the same nothing-to-analyze diff.
-- Diagnose with: `gh api repos/{o}/{r}/code-scanning/default-setup` (languages)
-  vs. the PR's changed files.
+- Diagnose with: `gh api repos/{owner}/{repo}/code-scanning/default-setup`
+  (languages) vs. the PR's changed files.
 
 Escape paths, in preference order: (1) if the check is not required, get
 explicit human authorization and merge via the REST endpoint
-(`gh api -X PUT .../pulls/{n}/merge -f merge_method=merge` — see the section
-below on REST-vs-GraphQL); (2) touch a file of a configured language so the
+(`gh api -X PUT repos/{owner}/{repo}/pulls/{n}/merge -f merge_method=merge` —
+see the section below on REST-vs-GraphQL); (2) touch a file of a configured language so the
 analysis has an object; (3) wait — GitHub sometimes expires wedged queued
 check-runs after several hours, but neither timing nor outcome is dependable.
 
