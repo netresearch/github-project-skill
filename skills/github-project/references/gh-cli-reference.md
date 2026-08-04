@@ -128,6 +128,23 @@ When a fork's `main` is behind upstream and a PR is created after syncing, GitHu
 gh pr close NUMBER --repo OWNER/REPO && sleep 2 && gh pr reopen NUMBER --repo OWNER/REPO
 ```
 
+### Inline `--body` with Backticks EXECUTES Them — Always `--body-file`
+
+An inline body in double quotes — `gh pr create --body "..."` with a Markdown code span inside — makes bash run the span's **unescaped** backtick contents as command substitution before `gh` ever sees the text (escaped backticks or a single-quoted body stay literal — but bodies are routinely assembled unescaped). In one real session this executed `bun audit`, `npm login`, and `npm publish` (only an ENEEDAUTH failure prevented an actual publish), and the resulting bodies were garbled with the substituted output. Any double-quoted body whose code spans are not escaped will misfire.
+
+```bash
+# WRONG: unescaped backticks execute npm test, $ expands
+gh pr create --body "Run `npm test` first"
+
+# RIGHT: quoted heredoc (no expansion) + --body-file
+cat > /tmp/body.md <<'EOF'
+Run `npm test` first
+EOF
+gh pr create --body-file /tmp/body.md
+```
+
+Applies equally to `gh issue create/comment`, `gh release create --notes`, `gh pr comment`, and `git commit -m` with backticks (`-F file` there). Verify the posted body afterward (`gh pr view N --json body`) — garbling is silent.
+
 ### GraphQL with Special Characters (--input pattern)
 
 When GraphQL variables contain backticks, dollar signs, or other characters that cause bash escaping issues, pipe JSON via `--input -`:
