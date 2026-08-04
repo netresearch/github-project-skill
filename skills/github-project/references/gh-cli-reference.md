@@ -81,7 +81,7 @@ In PR/issue **bodies and comments**, GitHub's renderer turns a single newline in
 
 ### Escape every `@`-token — GitHub mentions are live
 
-Any raw `@something` in GitHub-rendered text (PR/issue bodies, comments, release notes, wiki, README) is parsed as a user mention and NOTIFIES that account — `@main` in a workflow-pinning discussion repeatedly pinged the real GitHub user named "main". Wrap every non-mention `@`-token in backticks (`` `@main` ``) or escape it (`\@main`) before posting; audit generated bodies for bare `@` before sending.
+Any raw `@something` in interactive GitHub surfaces (PR/issue/discussion bodies and comments, release notes) is parsed as a user mention and — when it resolves to an existing user or team — can notify that account — `@main` in a workflow-pinning discussion repeatedly pinged the real GitHub user named "main". Repository docs (README, wiki) render the link but generally do not notify. Wrap every non-mention `@`-token in backticks (`` `@main` ``) or escape it (`\@main`) before posting; audit generated bodies for bare `@` before sending.
 
 ### Add an image to an issue or PR (no browser needed)
 
