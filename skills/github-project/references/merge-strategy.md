@@ -234,7 +234,7 @@ gh pr view N --json reviewDecision,mergeStateStatus,statusCheckRollup
 
 Then name the specific rule (`copilot_code_review`, `required_status_checks`, `non_fast_forward`, merge queue, …). A `pull_request` rule with `reviewDecision: ""` means there is **no human-approval requirement at all**.
 
-**BLOCKED with every visible check green: look for a second, still-running check suite.** `gh run list --commit $SHA` only shows runs with known triggers (push, pull_request, schedule, dispatch) — GitHub-managed **default code scanning and Copilot review run as "dynamic" events and never appear there**. Check-runs are equally misleading: they list completed runs by name, so every required name can show green while a *second* suite from the same app is still in progress — and that suite is the actual blocker. Before concluding the block is structural, list the suites:
+**BLOCKED with every visible check green: look for a second, still-running check suite.** `gh run list --commit $SHA` only shows runs with known triggers (push, pull_request, schedule, dispatch) — GitHub-managed **default code scanning and Copilot review run as "dynamic" events and never appear there**. Check-runs are equally misleading for a different reason: the API does include in-progress runs, but a *second* suite from the same app may not have created any check runs yet — so every required context name shows green while that suite is still in progress, and it is the actual blocker. Before concluding the block is structural, list the suites:
 
 ```bash
 gh api "repos/{owner}/{repo}/commits/{SHA}/check-suites" \
