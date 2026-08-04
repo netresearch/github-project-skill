@@ -143,3 +143,6 @@ EOF
 | `patterns_allowed` | List of glob patterns for additional allowed actions |
 
 > **Important:** Composite actions' internal sub-actions must also be in the allow-list. See [`security-config.md`](./security-config.md#composite-action-sub-action-allow-list-gotcha) for the Composite Action Sub-Action Allow-List Gotcha.
+## Push protection vs. secret-shaped test fixtures
+
+With push protection enabled, a complete secret-shaped literal in any committed file rejects the whole push (`GH013 … Push cannot contain secrets`) — even an obvious fixture in a redaction test. The scanner matches one contiguous literal, so build fixtures by concatenation instead: `'sk_live_' . str_repeat('9', 24)` passes, while the same value written out as one contiguous literal is blocked. (This document cannot even *show* the blocked form — writing it here rejected the push of this very section.) Never "fix" this by weakening push protection or using a real-looking key with one character changed (still matches some patterns) — concatenate.

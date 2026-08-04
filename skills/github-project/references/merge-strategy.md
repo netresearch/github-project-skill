@@ -322,6 +322,7 @@ SonarCloud measures "new code" as lines touched by the PR, so mechanical refacto
 ### SonarCloud operational gotchas (onboarding + Automatic Analysis)
 
 - **The project's "Main Branch" slot defaults to `master`** regardless of the GitHub default branch, so first scans of a `main`-repo land on a short-lived branch literally named `main` and the overview claims "master branch has not been analyzed yet". Fix in Project → Administration → Branches: delete the short-lived `main` first (else the rename fails with "name already exists"), rename the Main Branch to `main`, trigger a fresh scan.
+- **What Automatic Analysis honors vs. ignores**: `.sonarcloud.properties` file exclusions and inline `// NOSONAR` comments work; `sonar.issue.ignore.multicriteria` rule-ignores are a **no-op** there — don't spend a round-trip on them, use exclusions or NOSONAR.
 - **Automatic Analysis (GitHub-App mode) silently ignores `sonar-project.properties`.** The file it honors is **`.sonarcloud.properties`** at repo root (Java-properties syntax), on the analyzed branch; it overrides UI Analysis-Scope settings. For false-positive sensors on template files (e.g. TYPO3 Fluid tripping the HTML sensor), plain `sonar.exclusions=...` removes the files from scope and cannot break analysis — prefer it over disabling sensors or `sonar.issue.ignore.multicriteria`.
 
 ### "Merge commits are not allowed on this repository"
