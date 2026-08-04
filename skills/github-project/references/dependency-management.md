@@ -661,3 +661,6 @@ gh api "repos/OWNER/REPO/commits?per_page=40" \
 4. **Enforce.** `required_signatures` via classic protection `POST repos/OWNER/REPO/branches/main/protection/required_signatures`, or — on repos with **no classic protection** (rulesets only) — a ruleset rule `{"type":"required_signatures"}`. Add the DCO check as a required context the same way (classic `required_status_checks` or a `required_status_checks` ruleset rule).
 
 Note the classic `PATCH …/required_status_checks` **404s** ("Required status checks not enabled") when that component isn't already configured — add the check via a ruleset instead, which works regardless of classic protection.
+## Cross-repo release race: dependent PR CI resolves composer too early
+
+When repo B depends on a version of repo A that was *just* released, the order is: merge the upstream PR → tag → **wait for A's release workflow AND the package registry (Packagist) to publish** → only then push to / mark-ready the dependent PR in B. Touching B's PR earlier gives a CI run whose composer/npm resolve step reads stale registry metadata — every dependency-installing job fails at once. That failure pattern (all jobs red at the install step, right after an upstream release) is pure timing: re-run the checks, don't debug the PR.
