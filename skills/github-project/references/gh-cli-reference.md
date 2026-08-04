@@ -79,6 +79,10 @@ Set `PYTHONUNBUFFERED: 1` in the step's `env:` (or run `python -u`) when you nee
 
 In PR/issue **bodies and comments**, GitHub's renderer turns a single newline into a hard line break (`<br>`) — it enables hard line breaks for issue/PR/comment text, unlike the CommonMark default (where a single newline is a soft break and an intentional break needs two trailing spaces, a trailing `\`, or an explicit `<br>`). So a prose paragraph hard-wrapped at ~80 columns renders as jagged, mid-sentence lines. Write each prose paragraph as one continuous line and separate paragraphs with a blank line; keep line breaks only where the break is the content (inside fenced code blocks, one item per line in a list). Source files behave the other way — reStructuredText and CommonMark `.md` render a single newline as a *soft* break, and a commit-message body is plain text, so all three are conventionally wrapped at ~72–80 columns and the wrap never shows. The rule follows how the destination treats a single newline, not whether the text is Markdown. When generating a body with `gh pr create --body-file` / `gh issue create --body-file`, do not pipe it through a hard-wrapper.
 
+### Escape every `@`-token — GitHub mentions are live
+
+Any raw `@something` in interactive GitHub surfaces (PR/issue/discussion bodies and comments, release notes) is parsed as a user mention and — when it resolves to an existing user or team — can notify that account — `@main` in a workflow-pinning discussion repeatedly pinged the real GitHub user named "main". Repository docs (README, wiki) render the link but generally do not notify. Wrap every non-mention `@`-token in backticks (`` `@main` ``) or escape it (`\@main`) before posting; audit generated bodies for bare `@` before sending.
+
 ### Add an image to an issue or PR (no browser needed)
 
 GitHub's native attachment uploader (`user-attachments/assets/…`) needs a browser session + CSRF and cannot be driven by `gh`/the API — but that does **not** mean images are impossible. Commit the PNGs to a dedicated branch (in a fork if you lack push to the target), then embed the raw URL in the body/comment:

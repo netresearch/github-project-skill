@@ -318,6 +318,12 @@ The usual real causes: a required check still pending (see "`mergeStateStatus: B
 
 SonarCloud measures "new code" as lines touched by the PR, so mechanical refactors (e.g. method extraction, literal→const swaps) re-attribute pre-existing duplication and uncovered lines to the PR, failing `new_duplicated_lines_density` or `codecov/patch`. Don't resort to test-theater or risky out-of-scope de-duplication inside a behavior-preserving PR. First fix what is genuinely cheap and meaningful (a small unit test for an extracted helper often flips `codecov/project` green). For the structural residue, confirm the gate is **non-required** (`mergeStateStatus: UNSTABLE`, not `BLOCKED`), write a "Quality gate note" section into the PR body naming the metric, the cause, and why it is out of scope, then merge. Style-rule whack-a-mole (each push surfacing the next batch) is best handled by modernizing the whole file in one pass — but verify bulk codemods with the language's own parser (a naive `var`→`const` regex turns `var x;` into invalid `const x;`).
 
+
+### SonarCloud operational gotchas (onboarding + Automatic Analysis)
+
+- **The project's "Main Branch" slot defaults to `master`** regardless of the GitHub default branch, so first scans of a `main`-repo land on a short-lived branch literally named `main` and the overview claims "master branch has not been analyzed yet". Fix in Project → Administration → Branches: delete the short-lived `main` first (else the rename fails with "name already exists"), rename the Main Branch to `main`, trigger a fresh scan.
+- **Automatic Analysis (GitHub-App mode) silently ignores `sonar-project.properties`.** The file it honors is **`.sonarcloud.properties`** at repo root (Java-properties syntax), on the analyzed branch; it overrides UI Analysis-Scope settings. For false-positive sensors on template files (e.g. TYPO3 Fluid tripping the HTML sensor), plain `sonar.exclusions=...` removes the files from scope and cannot break analysis — prefer it over disabling sensors or `sonar.issue.ignore.multicriteria`.
+
 ### "Merge commits are not allowed on this repository"
 
 **Cause:** `allow_merge_commit` is false in repository settings.
