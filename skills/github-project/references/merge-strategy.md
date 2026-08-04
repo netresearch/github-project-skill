@@ -234,6 +234,15 @@ gh pr view N --json reviewDecision,mergeStateStatus,statusCheckRollup
 
 Then name the specific rule (`copilot_code_review`, `required_status_checks`, `non_fast_forward`, merge queue, …). A `pull_request` rule with `reviewDecision: ""` means there is **no human-approval requirement at all**.
 
+**BLOCKED with every visible check green: look for a second, still-running check suite.** `gh run list --commit $SHA` only shows runs with known triggers (push, pull_request, schedule, dispatch) — GitHub-managed **default code scanning and Copilot review run as "dynamic" events and never appear there**. Check-runs are equally misleading for a different reason: the API does include in-progress runs, but a *second* suite from the same app may not have created any check runs yet — so every required context name shows green while that suite is still in progress, and it is the actual blocker. Before concluding the block is structural, list the suites:
+
+```bash
+gh api "repos/{owner}/{repo}/commits/{SHA}/check-suites" \
+  --jq '.check_suites[] | "\(.status)/\(.conclusion // "—")\t\(.app.slug)\trun_count=\(.latest_check_runs_count)"'
+```
+
+An `in_progress` row here with all visible checks green means the BLOCKED state is transient — wait for that suite instead of diagnosing rulesets. (A suite that never concludes is the adjacent, different case — see "CodeQL default-setup check queued forever" below.)
+
 ### Never merge while a review is announced or in flight
 
 Once a reviewer is requested or has *started* (by you, a ruleset, or automation), its pendency blocks the merge until it resolves — regardless of `mergeStateStatus`. `CLEAN` is necessary but never sufficient: a `copilot_code_review` ruleset with `review_on_push: false` reports `CLEAN` off an *earlier* commit's review while a new one is still running, and a reviewer that has *started* drops off the request list without submitting — so `reviewRequests: []` is **not** "all clear". Check the timeline / pending-review state, not just `reviewRequests`. Do not request or re-request a reviewer as a pre-merge step (announcing one commits you to waiting). The absence of a review is not itself a blocker — you cannot require a review to *exist* (bots fail, decline, or are unconfigured) — but an *announced* one must be allowed to finish.
