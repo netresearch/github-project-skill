@@ -251,6 +251,6 @@ Common archived TYPO3 CI actions:
 
 GitHub renders `.rst` through a bare docutils HTML writer with **no admonition CSS**: `.. danger::`/`.. warning::`/`.. caution::` come out as a literal `!DANGER!`/`!WARNING!` paragraph — no box, no colour — and `note/tip/important/hint` render as plain text. An admonition directive is worse than nothing there.
 
-- For a prominent notice in GitHub-rendered RST, use top-level **bold paragraphs + emoji**, separated by `----` transitions (`<hr>`). The `.. header::` directive already emits a trailing `<hr>` — don't stack another `----` right after it.
+- For a prominent notice in GitHub-rendered RST, use top-level **bold paragraphs + emoji**, separated by `----` transitions (`<hr>`) — and check the rendered output for doubled rules before stacking a transition next to other elements that emit their own `<hr>`.
 - A real coloured callout exists only in Markdown: `> [!WARNING]` / `> [!CAUTION]` / `> [!NOTE]` — one more reason to prefer `README.md` over `README.rst`.
 - Verify the actual render without a browser: `gh api "repos/OWNER/REPO/readme?ref=BRANCH" -H "Accept: application/vnd.github.html"` (use the `?ref=` query form; confirm you got real HTML before grepping — a 404 body trivially contains 0 matches).
