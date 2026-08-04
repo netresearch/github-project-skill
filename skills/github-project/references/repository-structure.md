@@ -246,3 +246,11 @@ Common archived TYPO3 CI actions:
 3. **Follow conventions**: Use standard names (src/, tests/, docs/)
 4. **Document structure**: Include structure explanation in README
 5. **Ignore properly**: Maintain comprehensive .gitignore
+
+## RST READMEs: admonition directives do not render on GitHub
+
+GitHub renders `.rst` through a bare docutils HTML writer with **no admonition CSS**: `.. danger::`/`.. warning::`/`.. caution::` come out as a literal `!DANGER!`/`!WARNING!` paragraph — no box, no colour — and `note/tip/important/hint` render as plain text. An admonition directive is worse than nothing there.
+
+- For a prominent notice in GitHub-rendered RST, use top-level **bold paragraphs + emoji**, separated by `----` transitions (`<hr>`). The `.. header::` directive already emits a trailing `<hr>` — don't stack another `----` right after it.
+- A real coloured callout exists only in Markdown: `> [!WARNING]` / `> [!CAUTION]` / `> [!NOTE]` — one more reason to prefer `README.md` over `README.rst`.
+- Verify the actual render without a browser: `gh api "repos/OWNER/REPO/readme?ref=BRANCH" -H "Accept: application/vnd.github.html"` (use the `?ref=` query form; confirm you got real HTML before grepping — a 404 body trivially contains 0 matches).
