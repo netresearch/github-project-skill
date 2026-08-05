@@ -44,6 +44,14 @@ Three recurring bugs in ad-hoc watchers:
 - For `pull_request` workflows that SHA is the **merge commit** computed when the run was first created, so a rerun still tests the PR against the **old base**. After fixing a base-branch breakage, a rerun reproduces the old failure. To pick up new base state, create a new event: rebase the PR branch onto the fixed base and push (an empty commit works). (Reusable-workflow `@ref` resolution is also pinned at run-creation — see `reusable-workflow-pitfalls.md`.)
 - Reruns are correct only for genuinely transient infra failures where the same code state should pass: runner/network blips, partial codecov uploads, registry pull flakes (e.g. `Get "https://registry-1.docker.io/v2/": context deadline exceeded`), Sigstore/Rekor 409s. Don't debug the workflow for those — just `gh run rerun --failed`.
 
+### A Copilot review request can evaporate — verify after requesting
+
+`POST …/requested_reviewers` for `copilot-pull-request-reviewer[bot]` returns success, but the request can silently vanish without a review ever landing: `reviewRequests` comes back `[]` and `latestReviews` stays empty on the head. Observed after a force-push replaced the head shortly after the request. After requesting, verify (`gh pr view N --json reviewRequests,latestReviews`); if both are empty a few minutes later, re-request once — the second request reliably sticks.
+
+### `gh pr view --json merged` is not a field
+
+The rollup field is `mergedAt` (null while open) — or ask `state` (`MERGED`/`OPEN`/`CLOSED`). `--json merged` errors "Unknown JSON field"; GraphQL (`pullRequest.merged`) does have the boolean.
+
 ### Rapid `gh api` calls intermittently return HTTP 401
 
 Rapid sequences of `gh api` calls (REST + GraphQL) sometimes return `401 "Requires authentication"` even with valid auth — transient, clears with ~5-10s spacing and a retry. **Trap:** piping a `gh` listing straight into `while read` consumes the 401 error text as data when a call fails (e.g. JSON error braces get fed into a GraphQL mutation as "thread IDs"). Always capture output into a variable first, check the exit status, then iterate; add a `sleep 5-10` between bulk review-thread replies/resolves.
