@@ -378,7 +378,7 @@ fi
 
 ### Renaming a CI job orphans its required status check → PR stuck "Expected"
 
-**Every CI step that runs on a PR belongs in `required_status_checks` — advisory checks are decorative.** If a job's result would not stop a merge, the job's existence is theatre; a "flaky" or "in flux" check gets fixed or removed, not demoted to advisory. When adding a new CI job, add its context name to the ruleset in the same change; when a future shape change (sharding, matrix expansion) will rename the contexts, edit the ruleset twice — once now to lock the current shape, once at the change — rather than deferring the lock.
+**Every CI step that runs on a PR belongs in `required_status_checks` — advisory checks are decorative.** If a job's result would not stop a merge, the job provides no protection; a "flaky" or "in flux" check gets fixed or removed, not demoted to advisory. When adding a new CI job, add its context name to the ruleset in the same change; when a future shape change (sharding, matrix expansion) will rename the contexts, edit the ruleset twice — once now to lock the current shape, once at the change — rather than deferring the lock.
 
 Required status checks are matched by **exact context name**. Renaming a job — including changing a **matrix value** that appears in the job name (e.g. `PHPStan (8.2, ^14.0)` → `PHPStan (8.2, ^14.3)`) — produces a *new* context name. The old required context no longer reports, so it sits "Expected — Waiting for status to be reported" forever and the PR is `BLOCKED`, even though every job is green.
 
