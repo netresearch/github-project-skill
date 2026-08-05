@@ -244,3 +244,17 @@ gh api repos/OWNER/REPO/rulesets/<id>    # find the required_status_checks rule
 Do this in lockstep with merging the workflow PR, or the repo is unmergeable
 until someone notices. (See also `dependency-management.md` for enabling a
 required check via a ruleset when classic `required_status_checks` isn't set.)
+
+## Own reusables stay `@main` — never SHA-pin them
+
+Reusables in Netresearch-owned repos (`netresearch/.github`, typo3-ci-workflows) are called `@main` (or a tag once releases exist), NEVER by commit SHA: pinning freezes every consumer to a snapshot and defeats "fix once, all pick it up". The trust model differs from third-party actions (which DO get SHA-pinned). SonarCloud `githubactions:S7637` flags every new `@main` reusable line on migration PRs — a false positive for first-party reusables: mark Safe/Won't-fix (or add an org-level exception for `netresearch/.github/**@main`), never capitulate with a SHA pin.
+
+## Validating a new reusable: the first caller IS the test — use a temp branch pin
+
+A new reusable is inert until a caller runs it. Loop: wire the first caller `@main`, let its PR CI fail, fix the reusable on a branch, and validate BEFORE merging by temporarily pointing the caller at the fix branch (`uses: …/x.yml@fix/branch` — GitHub allows branch refs). Once green: merge the reusable fix, revert the caller to `@main` (the fix branch dies on merge), confirm green, and squash the temp-pin/revert commits out of the caller PR.
+
+## Inline → reusable migration checklist (each bit a real PR)
+
+1. **The calling job must grant `permissions:`** (usually `contents: read`) — with workflow-level `permissions: {}` and no job grant the run **startup-fails** and the reusable's checks NEVER APPEAR; a repo without required checks then looks deceptively green. Verify the reusable RAN: `gh run list --branch <b> --json name,conclusion` shows `success`, not `startup_failure`.
+2. **Required-check contexts go stale**: inline names (`PHP 8.2`) become `<caller-job-id> / <name>` (`php-ci / PHP 8.2`) — old contexts wait "Expected" forever. PATCH the protection contexts in the same change.
+3. **`composer validate --strict`** (the reusable default) rejects intentional `*` constraints for virtual packages — pass `composer-validate: false` plus a non-strict `pre-install-cmd: "composer validate"`.

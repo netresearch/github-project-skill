@@ -23,6 +23,15 @@ Verify the token's effective scopes from GitHub's response header, not `gh auth 
 gh api "" --include 2>&1 | grep -i '^X-Oauth-Scopes:'
 ```
 
+### GHCR cleanup can brick every tag of a multi-arch image
+
+`actions/delete-package-versions` with `delete-only-untagged-versions: true` is NOT manifest-list aware: for a multi-arch image the per-arch child manifests and the cosign/SLSA referrers are stored as separate UNTAGGED versions — the cleanup deletes them and every tagged index then points at missing children (`docker pull` fails with manifest errors). Cleanup for multi-arch GHCR images must resolve which untagged digests are referenced by tagged indexes/referrers and keep them.
+
+### Contents/Git-Data API commits are unsigned and carry no sign-off
+
+A `PUT /repos/…/contents/…` commit is created server-side — `-S` and `--signoff` never apply, so it lands `verified: false` without a DCO trailer, and an archived repo makes it unfixable. When commits must be signed/signed-off (always, per policy): clone and commit locally; land signed commits BEFORE archiving.
+
+
 ## Common Troubleshooting Patterns
 
 ### Wait for CI with the native watcher, not a hand-rolled loop
