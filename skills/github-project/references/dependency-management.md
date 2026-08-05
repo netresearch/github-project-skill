@@ -664,3 +664,19 @@ Note the classic `PATCH …/required_status_checks` **404s** ("Required status c
 ## Cross-repo release race: dependent PR CI resolves composer too early
 
 When repo B depends on a version of repo A that was *just* released, the order is: merge the upstream PR → tag → **wait for A's release workflow AND the package registry (Packagist) to publish** → only then act on the dependent PR in B (push commits to its branch, or flip it from draft to ready). Doing either earlier gives a CI run whose composer/npm resolve step reads stale registry metadata — every dependency-installing job fails at once. That failure pattern (all jobs red at the install step, right after an upstream release) is pure timing: re-run the checks, don't debug the PR.
+
+## Dependabot alert dismissal: 280-character comment cap
+
+`gh api -X PATCH repos/OWNER/REPO/dependabot/alerts/N` rejects a `dismissed_comment` over 280 characters with HTTP 422 (`Only 280 characters are allowed`) — check `${#COMMENT}` before the call. Valid `dismissed_reason` values: `fix_started`, `inaccurate`, `no_bandwidth`, `not_used`, `tolerable_risk` (use `not_used` for "vulnerable code not in execution path").
+
+## Merging the workflow-file bot PRs that auto-merge skipped
+
+The "GITHUB_TOKEN Cannot Modify Workflow Files" section above explains why auto-merge skips these PRs. To land them by hand: clone and merge locally — SSH (`git clone git@github.com:…`) is the reliable path in environments without a working credential helper (HTTPS works only when credentials are explicitly available). For repos with several workflow PRs, merge them one at a time — they typically touch the same files.
+
+## Updating GitHub Actions versions: fetch the latest from the API, never guess
+
+```bash
+gh api 'repos/OWNER/REPO/tags?per_page=1' --jq '.[0] | "\(.name) \(.commit.sha)"'
+```
+
+Verify the SHA is valid AND that it is the latest version (a valid SHA of an old tag passes review while staying outdated), then update ALL occurrences across `.github/workflows/*.yml`, not just the failing one.
