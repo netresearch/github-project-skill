@@ -669,14 +669,14 @@ When repo B depends on a version of repo A that was *just* released, the order i
 
 `gh api -X PATCH repos/OWNER/REPO/dependabot/alerts/N` rejects a `dismissed_comment` over 280 characters with HTTP 422 (`Only 280 characters are allowed`) — check `${#COMMENT}` before the call. Valid `dismissed_reason` values: `fix_started`, `inaccurate`, `no_bandwidth`, `not_used`, `tolerable_risk` (use `not_used` for "vulnerable code not in execution path").
 
-## Bot PRs that touch `.github/workflows/` need an SSH merge
+## Merging the workflow-file bot PRs that auto-merge skipped
 
-`GITHUB_TOKEN` lacks the `workflows` permission scope, so Dependabot/Renovate PRs modifying workflow files cannot be merged through the normal token path — clone via SSH (`git clone git@github.com:…`; HTTPS fails where `gh auth git-credential` is unavailable) and merge locally. For repos with several workflow PRs, merge them one at a time — they typically touch the same files.
+The "GITHUB_TOKEN Cannot Modify Workflow Files" section above explains why auto-merge skips these PRs. To land them by hand: clone and merge locally — SSH (`git clone git@github.com:…`) is the reliable path in environments without a working credential helper (HTTPS works only when credentials are explicitly available). For repos with several workflow PRs, merge them one at a time — they typically touch the same files.
 
 ## Updating GitHub Actions versions: fetch the latest from the API, never guess
 
 ```bash
-gh api repos/OWNER/REPO/tags --jq '.[0] | "\(.name) \(.commit.sha)"'
+gh api 'repos/OWNER/REPO/tags?per_page=1' --jq '.[0] | "\(.name) \(.commit.sha)"'
 ```
 
 Verify the SHA is valid AND that it is the latest version (a valid SHA of an old tag passes review while staying outdated), then update ALL occurrences across `.github/workflows/*.yml`, not just the failing one.
