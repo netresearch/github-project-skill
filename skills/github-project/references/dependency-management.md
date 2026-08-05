@@ -680,3 +680,11 @@ gh api 'repos/OWNER/REPO/tags?per_page=1' --jq '.[0] | "\(.name) \(.commit.sha)"
 ```
 
 Verify the SHA is valid AND that it is the latest version (a valid SHA of an old tag passes review while staying outdated), then update ALL occurrences across `.github/workflows/*.yml`, not just the failing one.
+
+## `composer audit` flags a transitive CVE nothing can bump — mirror the audit-ignore
+
+A transitive package can be pinned below its fixed version by a direct dependency you don't control (e.g. `firebase/php-jwt < 7` held back by an OAuth lib's constraint, which is itself pinned by a wrapper library). No `composer update` in the app repo can fix that. The default branch usually already tolerates the CVE via `config.audit.ignore` in `composer.json` — mirror the identical entry onto the diverging branch: JSON-only, lock untouched, no behaviour change. Verify with the exact CI command (`composer audit --locked …` → exit 0, advisory listed as "ignored"). The real fix — releasing the pinning library with a loosened constraint — is a separate effort; don't block the immediate green on it.
+
+## `pnpm/action-setup` must run BEFORE `actions/setup-node` with `cache: "pnpm"`
+
+`actions/setup-node` with pnpm caching resolves the pnpm executable at setup time — if `pnpm/action-setup` hasn't run yet, it fails with `Unable to locate executable: pnpm`. Order the steps pnpm-first in any workflow using both.
