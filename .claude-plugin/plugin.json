@@ -1,6 +1,6 @@
 {
   "name": "github-project",
-  "version": "2.15.13",
+  "version": "2.15.14",
   "description": "GitHub repository setup, branch protection, and configuration",
   "repository": "https://github.com/netresearch/github-project-skill",
   "license": "(MIT AND CC-BY-SA-4.0)",
