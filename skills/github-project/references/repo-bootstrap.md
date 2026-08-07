@@ -133,6 +133,16 @@ gh api repos/OWNER/REPO/actions/permissions/fork-pr-contributor-approval -X PUT 
 | `first_time_contributors` | First-time contributors to this repo |
 | `all_external_contributors` | Every external contributor (safest) |
 
+**From the contributor side, this looks like a broken PR.** Every workflow reports `action_required` — `completed/action_required`, not `failure` — and `gh pr checks` shows only the handful of jobs that run without approval (`pull_request_target` ones, e.g. a PR-title linter). Nothing is wrong and there is nothing to fix; a maintainer has to click *Approve and run workflows*. Confirm rather than guess:
+
+```bash
+gh api "repos/OWNER/REPO/actions/runs?event=pull_request" \
+  --jq '.workflow_runs[] | select(.head_branch=="MY-BRANCH")
+        | "\(.name): \(.status)/\(.conclusion)"'
+```
+
+A uniform `completed/action_required` across every workflow is the approval gate, not a red build. Do not push "fix CI" commits at it.
+
 ### Security toggles
 
 ```bash
