@@ -1,4 +1,5 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "github-project",
   "version": "2.15.14",
   "description": "GitHub repository setup, branch protection, and configuration",
@@ -7,12 +8,5 @@
     "url": "https://www.netresearch.de"
   },
   "repository": "https://github.com/netresearch/github-project-skill",
-  "license": "(MIT AND CC-BY-SA-4.0)",
-  "support": {
-    "issues": "https://github.com/netresearch/github-project-skill/issues",
-    "source": "https://github.com/netresearch/github-project-skill"
-  },
-  "skills": [
-    "./skills/github-project"
-  ]
+  "license": "(MIT AND CC-BY-SA-4.0)"
 }
