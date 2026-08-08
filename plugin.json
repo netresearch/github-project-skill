@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "github-project",
-  "version": "2.15.14",
+  "version": "2.16.0",
   "description": "GitHub repository setup, branch protection, and configuration",
   "author": {
     "name": "Netresearch DTT GmbH",
