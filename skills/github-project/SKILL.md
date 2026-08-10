@@ -48,9 +48,9 @@ Requires `allow_auto_merge`, `pull_request_target`, bot detection, `gh pr merge 
 
 ```bash
 gh pr view PR --repo OWNER/REPO --json autoMergeRequest --jq .autoMergeRequest
-gh api repos/OWNER/REPO/branches/main/protection/required_pull_request_reviews \
-  --jq '.bypass_pull_request_allowances.apps[].slug'
 ```
+
+Bypass actors: `references/security-config.md`.
 
 ### GitHub Actions Failing
 
@@ -63,6 +63,7 @@ gh run rerun RUN_ID --repo OWNER/REPO
 ### Security & Compliance Quick Checks
 
 ```bash
+gh api repos/OWNER/REPO/rules/branches/main
 gh api repos/OWNER/REPO/branches/main/protection \
   --jq '{rcr: .required_conversation_resolution.enabled, admins: .enforce_admins.enabled}'
 gh api repos/OWNER/REPO/code-scanning/default-setup --jq '.state'

@@ -464,3 +464,140 @@ curl -fsSL "https://sonarcloud.io/api/qualitygates/project_status?projectKey=KEY
 curl -fsSL "https://sonarcloud.io/api/hotspots/search?projectKey=KEY&branch=main&status=TO_REVIEW&ps=30" \
   | jq -r '.hotspots[]? | "\(.component | sub(".*:"; "")):\(.line // "?") \(.securityCategory // "")"'
 ```
+
+## Effective Branch Rules
+
+Reading what a branch actually enforces, and auditing whether a required check
+can fail.
+
+### Two rule sources, and only one of them is obvious
+
+A branch can be governed by **classic branch protection** and by **rulesets**
+at the same time. GitHub composes them and applies the most restrictive result.
+The classic endpoint cannot see rulesets, so reading it alone reports a branch
+as unprotected that is in fact fully gated:
+
+```bash
+# Classic protection — returns real values, but is BLIND to rulesets
+gh api repos/OWNER/REPO/branches/main/protection
+
+# Rulesets — the effective rules from every active ruleset on the branch
+gh api repos/OWNER/REPO/rules/branches/main
+```
+
+Observed on a repository where both were configured:
+
+| Field, classic endpoint | Reads as | Reality (rulesets) |
+|---|---|---|
+| `required_status_checks: null` | nothing is required | 23 required contexts |
+| `required_approving_review_count: 0` | no review required | 1 required approval |
+| `required_conversation_resolution: true` | correct | also required |
+| `enforce_admins: false` | correct | plus per-ruleset bypass actors |
+
+The two failure shapes are asymmetric and both are bad:
+
+- **`null` reads as "not configured".** `required_status_checks` is absent from
+  the classic payload entirely when a ruleset supplies the checks.
+- **`0` reads as a real answer.** `required_approving_review_count: 0` is the
+  *classic* setting, not the effective one. Nothing in the response says a
+  ruleset requires 1.
+
+A compliance document was written off the classic endpoint alone and attested
+that the repository required neither review nor status checks. Both statements
+were false, and nothing in the response hinted at it.
+
+**Read both. When they disagree, the effective answer is the more restrictive
+one.** Name which endpoint a claim came from whenever the claim lands in a
+document, an issue or a PR body.
+
+### Bypass actors live on the ruleset, not on the branch
+
+`enforce_admins` covers classic protection only. Rulesets carry their own list:
+
+```bash
+gh api repos/OWNER/REPO/rulesets/RULESET_ID \
+  --jq '{name, enforcement, bypass: [.bypass_actors[]? | {actor_type, actor_id, bypass_mode}]}'
+```
+
+`bypass_mode: always` lets the actor push straight past the rule;
+`pull_request` lets it merge a pull request that does not satisfy it. The REST
+API returns `actor_id` as a number and does not resolve it to a role name — say
+"repository role id 5" rather than guessing "admin" unless you resolved it.
+
+### Auditing whether a required check can actually fail
+
+A context being in the required list does not mean it gates anything.
+
+### A required check that is always skipped enforces nothing
+
+```bash
+gh api "repos/OWNER/REPO/commits/SHA/check-runs?per_page=100" \
+  --jq '.check_runs[] | "\(.conclusion // .status)\t\(.name)"' | sort -u
+```
+
+Cross-check every required context against that list. A context whose
+conclusion is `skipped` on every commit is a requirement that no state of the
+code can violate. Observed case: `fuzz / Fuzz Tests` was required and always
+skipped, because the job that produced it passed no inputs to its reusable
+workflow and the suite defaulted to off. The job that actually ran the suite was
+a different context and was not required at all.
+
+### Check-run names come from the JOB name, not the workflow
+
+Two jobs calling the same reusable workflow produce check-runs under
+**different** prefixes, because the prefix is the calling job's name:
+
+```yaml
+# .github/workflows/checks.yml
+jobs:
+  fuzz:            # -> "fuzz / Fuzz Tests"
+    uses: org/reusables/.github/workflows/fuzz.yml@main
+
+# .github/workflows/ci.yml
+jobs:
+  fuzz-mutation:   # -> "fuzz-mutation / Fuzz Tests"
+    uses: org/reusables/.github/workflows/fuzz.yml@main
+    with: { run-fuzz-tests: true }
+```
+
+The two names look interchangeable and are not. Do not infer which workflow
+emits a context — measure it:
+
+```bash
+for id in $(gh run list --repo OWNER/REPO --commit SHA --limit 30 --json databaseId --jq '.[].databaseId'); do
+  wf=$(gh api repos/OWNER/REPO/actions/runs/$id --jq .path)
+  gh api "repos/OWNER/REPO/actions/runs/$id/jobs?per_page=100" --jq '.jobs[].name' \
+    | sed "s|^|$(basename "$wf")\t|"
+done | sort -u
+```
+
+### A gate job is only worth requiring if it reads its own `needs`
+
+Requiring one aggregate context instead of many is a good pattern — it makes a
+job that is missing from `gate.needs` the only failure mode, rather than a
+silent coverage loss. It is only sound if the gate actually evaluates its
+dependencies:
+
+```yaml
+- name: Fail unless every job succeeded or was skipped
+  env:
+    RESULTS: ${{ toJSON(needs) }}
+  run: |
+    bad=$(jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key)=\(.value.result)"' <<<"$RESULTS")
+    [ -z "$bad" ] || { echo "::error::gate failed — $bad"; exit 1; }
+```
+
+Read the gate's steps before requiring it. A job with `if: always()` and no
+result evaluation is a green rubber stamp, and requiring it would be worse than
+requiring nothing. Treating `skipped` as passing is deliberate: jobs skipped by
+an event gate must not block the merge queue.
+
+### Before changing a required-context list
+
+1. Back up the ruleset: `gh api repos/OWNER/REPO/rulesets/ID > backup.json`.
+2. Confirm every context you are about to require reports on `merge_group`, not
+   only on `pull_request` — requiring a context the queue never produces wedges
+   the queue for everyone.
+3. Apply with `gh api -X PUT repos/OWNER/REPO/rulesets/ID --input new.json`.
+4. Read the effective list back from `rules/branches/BRANCH` and confirm the
+   next pull request reports every newly required context.
