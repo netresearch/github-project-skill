@@ -336,12 +336,27 @@ mechanical:
       by required status checks and review requirements. Severity is info
       (not error) because netresearch's org default leaves this off — admins
       retain bypass for emergency response. Tighten to true if your org
-      requires admin-bind policy.
+      requires admin-bind policy. This covers CLASSIC protection only — a
+      ruleset carries its own bypass_actors list, so also read
+      `gh api repos/OWNER/REPO/rulesets/ID --jq '.bypass_actors'` before
+      concluding who can bypass (references/security-config.md).
 
   - id: GH-31
-    type: gh_api
-    endpoint: "repos/{owner}/{repo}/branches/{default_branch}/protection"
-    json_path: ".required_conversation_resolution.enabled"
+    type: command
+    target: |
+      # Conversation resolution can come from EITHER classic branch protection
+      # OR a ruleset, and the classic endpoint is blind to rulesets — reading it
+      # alone fails a repository that is correctly configured through a ruleset.
+      # See references/security-config.md.
+      command -v gh >/dev/null 2>&1 || exit 0
+      R=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || exit 0
+      B=$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name 2>/dev/null) || exit 0
+      classic=$(gh api "repos/$R/branches/$B/protection" \
+        --jq '.required_conversation_resolution.enabled // false' 2>/dev/null || echo false)
+      ruleset=$(gh api "repos/$R/rules/branches/$B" \
+        --jq 'any(.[]?; .type == "pull_request"
+                       and .parameters.required_review_thread_resolution == true)' 2>/dev/null || echo false)
+      [ "$classic" = "true" ] || [ "$ruleset" = "true" ]
     severity: error
     desc: >-
       required_conversation_resolution must be enabled. Without it, PR
@@ -422,8 +437,11 @@ llm_reviews:
          leaves this off so admins retain bypass for emergency response;
          tighten to true only if your org requires admin-bind policy. Do NOT
          report this as an error on its own — flag it as info/advisory.
-      2. Run: gh api repos/OWNER/REPO/branches/BRANCH/protection --jq '.required_conversation_resolution.enabled'
-         Must be true. Without this, unresolved review threads do not block merges.
+      2. Run BOTH, because a ruleset is invisible to the classic endpoint:
+           gh api repos/OWNER/REPO/branches/BRANCH/protection --jq '.required_conversation_resolution.enabled'
+           gh api repos/OWNER/REPO/rules/branches/BRANCH --jq 'any(.[]?; .type=="pull_request" and .parameters.required_review_thread_resolution == true)'
+         Either being true is enough. Without both being false, unresolved
+         review threads do not block merges.
          This is the primary error-level enforcement check (paired with GH-31).
       3. Note the interaction: enforce_admins=false means admins COULD bypass
          required_conversation_resolution. Surface this as an advisory trade-off,
