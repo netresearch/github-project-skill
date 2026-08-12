@@ -5,7 +5,7 @@ license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
 compatibility: "Requires gh CLI, git."
 metadata:
   author: Netresearch DTT GmbH
-  version: "2.16.0"
+  version: "2.16.1"
   repository: https://github.com/netresearch/github-project-skill
 allowed-tools: Bash(gh:*) Bash(git:*) Bash(grep:*) Read Write
 ---
