@@ -248,6 +248,37 @@ declaration other repos depend on), enumerate structurally instead: probe each
 repo for the marker file with `gh api repos/OWNER/REPO/contents/<path>`, which
 reads the live tree rather than an index.
 
+### Probing paths answers a narrower question than it looks
+
+The `contents/<path>` probe above is right about the index, but it only ever
+answers *is the file at this path*. A sweep built from a list of plausible paths
+reports the same "absent" for a file that does not exist and for one that sits
+somewhere the list does not name — and the resulting count reads like a
+measurement.
+
+Measured across 25 extensions: a sweep of five plausible `php-cs-fixer` config
+paths reported 11 repositories with no config. Ten of them had one, at a sixth
+path that was the single most common layout in that fleet. The real figure for
+the defect being tracked was 13 repositories, not 3, and the number had already
+reached an issue and a colleague. Worse, the fix under review had been built
+from the same guessed list, so it repaired the flag and left ten repositories
+exactly as broken as before.
+
+A candidate list is assembled from the layouts you already know. The layouts you
+do not know are the reason the sweep exists. So list the tree and classify what
+comes back:
+
+```bash
+# Every matching path, whatever the layout — one request per repo
+gh api "repos/OWNER/REPO/git/trees/BRANCH?recursive=1" \
+  --jq '[.tree[] | select(.path|test("php-cs-fixer";"i"))
+        | select(.path|test("^vendor/|^\\.Build/")|not) | .path] | join(" ")'
+```
+
+Where probing is genuinely the only option, do not name the empty bucket
+"absent". Call it "none of the paths checked" and print which ones were checked,
+so the next reader can see the hole instead of inheriting the number.
+
 ## Cache-Safety for Batch Operations
 
 When iterating across many local worktrees, it's easy to edit an installed skill/plugin cache by mistake. Before any write in a multi-repo loop:
