@@ -10,9 +10,10 @@ Batch ops amplify small mistakes linearly. A version-bump ordering bug that affe
 
 Syncing a shared file (`checks.yml`, a lint config, a workflow) by writing the template over each consumer destroys repo-specific content **silently**. Nothing errors, nothing is reported, and the loss only surfaces when someone misses the thing that used to be there.
 
-Make the sweep decide per repo, and let removals stop it:
+Make the sweep decide per repo, and let removals stop it. As one function per repository — the early `return` below needs that, and a paste into a bare loop wants `continue` instead:
 
 ```bash
+sync_one() {   # $current = the consumer's copy, $template = the shared source
 d=$(diff -u "$current" "$template" 2>/dev/null); rc=$?
 [ "$rc" -ge 2 ] && { echo "$REPO: CANNOT COMPARE (file missing?)"; return; }
 
@@ -24,6 +25,7 @@ if   [ "$added" = 0 ] && [ "$removed" = 0 ]; then echo "$REPO: already current"
 elif [ "$removed" != 0 ]; then echo "$REPO: MANUAL +$added/-$removed"; printf '%s\n' "$d" | tail -n +3 | grep '^-'
 else apply_and_open_pr
 fi
+}
 ```
 
 Two details in that snippet are load-bearing, and the obvious shorter forms are wrong:
