@@ -6,6 +6,38 @@ Batch and fleet-wide operations — releases, rebases, lint fixes, config rollou
 
 Batch ops amplify small mistakes linearly. A version-bump ordering bug that affects 1 repo is a nuisance; across 30 repos it's 30 broken release workflows. Before executing on more than 3 repos, produce a dry-run manifest and get explicit approval.
 
+### Copying a template file across repos: gate on a purely additive diff
+
+Syncing a shared file (`checks.yml`, a lint config, a workflow) by writing the template over each consumer destroys repo-specific content **silently**. Nothing errors, nothing is reported, and the loss only surfaces when someone misses the thing that used to be there.
+
+Make the sweep decide per repo, and let removals stop it:
+
+```bash
+d=$(diff -u "$current" "$template" 2>/dev/null); rc=$?
+[ "$rc" -ge 2 ] && { echo "$REPO: CANNOT COMPARE (file missing?)"; return; }
+
+# Drop the two `---`/`+++` header lines, then count every marked line.
+added=$(printf '%s\n'   "$d" | tail -n +3 | grep -c '^+' || true)
+removed=$(printf '%s\n' "$d" | tail -n +3 | grep -c '^-' || true)
+
+if   [ "$added" = 0 ] && [ "$removed" = 0 ]; then echo "$REPO: already current"
+elif [ "$removed" != 0 ]; then echo "$REPO: MANUAL +$added/-$removed"; printf '%s\n' "$d" | tail -n +3 | grep '^-'
+else apply_and_open_pr
+fi
+```
+
+Two details in that snippet are load-bearing, and the obvious shorter forms are wrong:
+
+- **Strip the header, do not exclude a second character.** `grep -cE '^-[^-]'` looks right — it skips the `--- file` header — but it also skips every removed **blank** line and every removed line whose own first character is `-`, which is what a YAML list item at column 0 looks like. Both then count as zero removals and the repo lands in the *first* branch: reported as already current, never flagged, never opened. The gate fails exactly in the case it exists for. (`cur='on:\n- push\n- local\n'` vs `tpl='on:\n- push\n'` scores `+0/-0` under the short form and `+0/-1` under this one.)
+- **Check `diff`'s exit status before trusting the counts.** If the consumer does not have the file yet, `diff` exits 2 with empty stdout, both counts are 0, and `|| true` swallows the failure — so the repositories that are *missing* the shared file are the ones reported as synced. `|| true` is still required on the `grep -c` (no matches exits 1, fatal under `set -e`), it just must not be the only status handling.
+
+Removals are not automatically wrong — they are **unclassified**. In a 21-repository sweep on 2026-08-21 one repository came back non-additive (`+24/-1`) and the removed line turned out to be a stale action pin the template updates, not local customisation; it was then done as its own PR with the replaced line quoted in the body. That sweep used the short pattern above, so "the other twenty removed nothing" is only established for removals that pattern can see.
+
+Two things the gate must not skip:
+
+- **Honour declared exemptions by reading the key, not the file.** `intentional-drift:` lives in `.github/template.yaml`, and those manifests also mention managed files in prose — a comment reading *"byte-identical, drift-enforced checks.yml"* matches a grep for `checks.yml` and means the opposite. Use `yq '.["intentional-drift"]'` and test for the path.
+- **Distrust an implausible classification rate.** If a dry run reports that most of the fleet has deliberately opted out of one shared file, the query is broken, not the fleet. Read one matched item in full before believing the aggregate.
+
 ### Dry-run manifest format
 
 Emit a table — one row per repo, one column per step. Do not execute until the user approves the plan.
