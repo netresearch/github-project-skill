@@ -14,8 +14,9 @@ allowed-tools: Bash(gh:*) Bash(git:*) Bash(grep:*) Read Write
 
 ## When to Use
 
-- **Post `gh repo create` + push, before first PR** — REQUIRED: `scripts/init-branch-protection.sh OWNER/REPO` (`references/repo-bootstrap.md`)
-- Adding a job to a repo's workflow — see pitfall #6
+- **Post `gh repo create` + push, before first PR** — REQUIRED: `scripts/init-branch-protection.sh OWNER/REPO`
+- **First issue/PR into a foreign repo** — `references/upstream-contributions.md` BEFORE filing
+- Adding a workflow job — pitfall #6
 - PR won't merge / threads
 - Auto-merge fails (Dependabot/Renovate)
 - Solo auto-approve
@@ -36,13 +37,13 @@ gh pr view PR --repo OWNER/REPO \
   --json mergeStateStatus,reviewDecision,mergeable,reviewThreads
 ```
 
-### Solo Maintainer: PRs Stuck on REVIEW_REQUIRED
+### Solo Maintainer: Stuck on REVIEW_REQUIRED
 
-Use `assets/pr-quality.yml.template` for auto-approve with `required_approving_review_count >= 1`.
+`assets/pr-quality.yml.template`: auto-approve with `required_approving_review_count >= 1`.
 
 ### Auto-merge Setup
 
-Requires `allow_auto_merge`, `pull_request_target`, bot detection, `gh pr merge --auto`. See `references/auto-merge-guide.md`.
+Requires `allow_auto_merge`, `pull_request_target`, bot detection, `gh pr merge --auto` (`references/auto-merge-guide.md`).
 
 ### Auto-merge Not Working
 
@@ -60,7 +61,7 @@ gh run view RUN_ID --repo OWNER/REPO --log-failed
 gh run rerun RUN_ID --repo OWNER/REPO
 ```
 
-### Security & Compliance Quick Checks
+### Security Quick Checks
 
 ```bash
 gh api repos/OWNER/REPO/rules/branches/main
@@ -72,19 +73,19 @@ gh pr view PR --repo OWNER/REPO --json reviewThreads --jq '.reviewThreads'
 
 ### Merge Strategy Issues
 
-See `references/auto-merge-guide.md` (signed-commit rebase, workflow-file PRs, Copilot race).
+`references/auto-merge-guide.md`: signed-commit rebase, workflow-file PRs, Copilot race.
 
 ## Running Scripts
 
 ```bash
-scripts/init-branch-protection.sh OWNER/REPO              # baseline (post gh repo create)
+scripts/init-branch-protection.sh OWNER/REPO              # baseline
 scripts/init-branch-protection.sh OWNER/REPO --from-current-checks   # after first CI
 scripts/verify-github-project.sh /path/to/repository      # local-checkout audit
 ```
 
 ## No editorializing
 
-State what a change does, not how good it is. See `references/no-editorializing.md`.
+State what a change does, not how good it is.
 
 ## References
 
@@ -108,6 +109,7 @@ State what a change does, not how good it is. See `references/no-editorializing.
 | Fork merge base | `references/pr-commit-cleanup.md` |
 | Multi-repo batch ops | `references/multi-repo-operations.md` |
 | Cross-repo references | `references/cross-repo-references.md` |
+| Foreign-repo contributions | `references/upstream-contributions.md` |
 | Reusable workflow security | `references/reusable-workflow-security.md` |
 | Reusable workflow pitfalls | `references/reusable-workflow-pitfalls.md` |
 | Org security settings | `references/org-security-settings.md` |
