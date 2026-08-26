@@ -270,6 +270,46 @@ see the section below on REST-vs-GraphQL); (2) touch a file of a configured lang
 analysis has an object; (3) wait — GitHub sometimes expires wedged queued
 check-runs after several hours, but neither timing nor outcome is dependable.
 
+### CodeQL default setup never analyzes fork PRs — required `Analyze` contexts become unsatisfiable
+
+The sibling failure to the wedge above, structural instead of transient:
+CodeQL **default setup** does not analyze pull requests from forks at all.
+Where its contexts (`Analyze (actions)`, `Analyze (python)`, …) are **required**
+in branch protection, every fork PR sits at `mergeStateStatus: BLOCKED` with
+all visible gates green — the contexts simply never appear on the head commit.
+Same-repo PRs merge fine, so the hole stays invisible until the first outside
+contribution (observed 2026-08-26, netresearch/git-workflow-skill#226).
+
+Two things make the diagnosis slow if you do not know them:
+
+- The requirement usually hides in **classic branch protection**
+  (`repos/{r}/branches/{base}/protection`, admin-only), which the
+  `rules/branches/{base}` endpoint never shows — the ruleset view looks
+  permissive while the classic list names the Analyze contexts.
+- The missing contexts leave **no trace in the rollup**. Diagnose with GraphQL
+  `statusCheckRollup { contexts { ... isRequired(pullRequestNumber: N) } }`:
+  the required-but-absent names are the ones not in the list at all. The head's
+  `github-advanced-security` check suite carrying only third-party SARIF
+  uploads (Sonar, zizmor, …) confirms default setup never ran.
+
+**Workaround to land the blocked fork PR:** push the identical head commit as
+a base-repo branch and open a helper draft PR — default setup analyzes that
+one and attaches its `Analyze` check runs to the SHA, which the fork PR shares,
+so it unblocks. After the fork PR merges, GitHub marks the helper PR "merged"
+by reachability and auto-deletes its branch; no separate cleanup.
+
+**Durable fix:** replace default setup with an advanced-setup `codeql.yml`
+whose job is named `Analyze` with a language matrix — the check runs then carry
+exactly the context names the protection already requires, so the required list
+stays untouched. Order matters: **disable default setup first**
+(`gh api -X PATCH repos/{r}/code-scanning/default-setup -f state=not-configured`)
+— while it is enabled, GitHub refuses SARIF uploads from advanced
+configurations and the new workflow's Analyze jobs fail. Mirror the old
+config (`gh api repos/{r}/code-scanning/default-setup` shows languages, query
+suite, schedule). As a workflow it runs on fork PRs like any other, subject to
+the usual once-per-push run approval (fixed this way in
+netresearch/git-workflow-skill#240).
+
 ### `gh pr merge` falsely reports "base branch policy prohibits the merge"
 
 `gh pr merge` (GraphQL path) can fail with "the base branch policy prohibits the merge" even when every requirement is verifiably satisfied (rollup SUCCESS, signature valid, 0 required approvals, 0 unresolved threads, branch up to date, no blocking rulesets), and `--auto` never fires either. The REST endpoint succeeds immediately on the same head SHA:
