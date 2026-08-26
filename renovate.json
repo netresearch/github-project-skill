@@ -1,1 +1,9 @@
-{"$schema":"https://docs.renovatebot.com/renovate-schema.json","extends":["github>netresearch/renovate-config"]}
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>netresearch/renovate-config"
+  ],
+  "pre-commit": {
+    "enabled": true
+  }
+}
