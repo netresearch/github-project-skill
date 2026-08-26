@@ -126,7 +126,7 @@ Add to `lint.yml` with `tags: ['v*']` trigger. Runs on every tag push as a safet
     name: Plugin Version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Validate version file matches tag
         run: |
           # Adapt extraction per ecosystem (see table below)
