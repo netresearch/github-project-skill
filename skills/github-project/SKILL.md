@@ -103,6 +103,7 @@ State what a change does, not how good it is.
 | Polyglot CI checklists | `references/repo-setup-guide.md` |
 | Scorecard, CodeQL, security | `references/security-config.md` |
 | actionlint | `references/actionlint-guide.md` |
+| Actions upgrades, Node-runtime wave | `references/actions-upgrade-guide.md` |
 | Workflow bash pitfalls | `references/workflow-bash-patterns.md` |
 | Runner capacity | `references/ci-runner-capacity.md` |
 | No editorializing | `references/no-editorializing.md` |
