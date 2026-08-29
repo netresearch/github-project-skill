@@ -523,11 +523,6 @@ locally, run the relevant suites once, and push a **single** commit. Only then
 reply to and resolve the threads. This costs one CI cycle instead of N, and avoids
 racing a half-fixed head into the queue.
 
-## References
-
-- [GitHub Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)
-- [Signing Commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits)
-- [About Merge Methods](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/about-merge-methods-on-github)
 
 ### A red non-required check on a commit its tool reports clean is a stale mirror — wait for the next analysis, never dismiss
 
@@ -550,3 +545,9 @@ curl -sS "https://api.codecov.io/api/v2/github/$ORG/repos/$REPO/pulls/$PR" | jq 
 ```
 
 If the source is clean: do **not** dismiss the code-scanning alert or mark anything "safe" — the next analysis (i.e. the next push) closes the alert and the check with it; a check-run's conclusion is immutable, so on the current commit `UNSTABLE` stays until then. Since the fix is already in the tree, this is the one case where an otherwise idle push (the next real commit, a rebase onto a moved base) is the remedy rather than a workaround. If the source is *not* clean, the finding is real: read the taint flow (`additionalFields=_all` → `.flows`) before touching code — the rule title names the category, the flow names the sink.
+
+## References
+
+- [GitHub Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)
+- [Signing Commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits)
+- [About Merge Methods](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/about-merge-methods-on-github)
