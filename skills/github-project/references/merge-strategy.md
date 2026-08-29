@@ -523,6 +523,29 @@ locally, run the relevant suites once, and push a **single** commit. Only then
 reply to and resolve the threads. This costs one CI cycle instead of N, and avoids
 racing a half-fixed head into the queue.
 
+
+### A red non-required check on a commit its tool reports clean is a stale mirror — wait for the next analysis, never dismiss
+
+Two non-required checks regularly go red *after* the underlying problem is gone, and both keep `mergeStateStatus` at `UNSTABLE` until they clear:
+
+- **SonarCloud code-scanning (`SonarCloud`, the SARIF upload)** lags SonarCloud's own analysis. On `netresearch/t3x-nr-image-optimize` PR #174 the fix commit's analysis closed the `tssecurity:S8707` issue at 11:22:48Z (`api/issues/search … status=CLOSED`, quality gate `OK`), yet the SARIF uploaded at 11:23:12Z still carried it, so GitHub opened a code-scanning alert and the `SonarCloud` check failed on the very commit that fixed it. The `SonarCloud Code Analysis` check (the quality gate) was green the whole time.
+- **`codecov/project`** posts an interim status after the *first* flag upload. With a unit and a functional flag, the first status compares the unit-only total against the full base (`89.38% (-4.60%) compared to …`) and goes red; it flips green once the functional upload arrives. `api.codecov.io/api/v2/github/<org>/repos/<repo>/pulls/<n>` shows `head_totals` = `base_totals` while the check still says red.
+
+Diagnose at the source, not at the badge:
+
+```bash
+# SonarCloud: is anything actually open on this PR?
+curl -sS "https://sonarcloud.io/api/qualitygates/project_status?projectKey=$KEY&pullRequest=$PR" | jq '.projectStatus.status'
+curl -sS "https://sonarcloud.io/api/issues/search?componentKeys=$KEY&pullRequest=$PR&issueStatuses=OPEN,CONFIRMED" | jq '.total'   # `statuses` is deprecated; REOPENED is not an issueStatuses value
+# When did the analysis close the issue vs. when was the SARIF uploaded?
+curl -sS "https://sonarcloud.io/api/issues/search?componentKeys=$KEY&pullRequest=$PR&rules=$RULE&additionalFields=_all" | jq '.issues[] | {status, closeDate}'
+gh api "repos/$R/code-scanning/analyses?pr=$PR&tool_name=SonarCloud&per_page=3"   # pr=, not ref=: an upload against refs/pull/$PR/merge is invisible to the ref filter --jq '.[] | "\(.created_at) \(.commit_sha[0:8]) results=\(.results_count)"'
+# codecov: head vs base totals, independent of the interim status
+curl -sS ${CODECOV_TOKEN:+-H "Authorization: Bearer $CODECOV_TOKEN"} "https://api.codecov.io/api/v2/github/$ORG/repos/$REPO/pulls/$PR" | jq '{head: .head_totals.coverage, base: .base_totals.coverage}'
+```
+
+If the source is clean: do **not** dismiss the code-scanning alert or mark anything "safe" — the next analysis closes the alert and the check with it; a check-run's conclusion is immutable, so on the current commit `UNSTABLE` stays until then. Since the fix is already in the tree, this is the one case where an otherwise idle push is the remedy rather than a workaround — but it must be one that actually triggers an analysis. Automatic Analysis runs on any push; a CI-based analysis runs only when its workflow handles the event, so check which `pull_request` types the workflow subscribes to before assuming a rebase will clear it. If the source is *not* clean, the finding is real: read the taint flow (`additionalFields=_all` → `.flows`) before touching code — the rule title names the category, the flow names the sink.
+
 ## References
 
 - [GitHub Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)
