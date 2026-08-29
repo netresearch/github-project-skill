@@ -32,6 +32,33 @@ gh api "" --include 2>&1 | grep -i '^X-Oauth-Scopes:'
 A `PUT /repos/…/contents/…` commit is created server-side — `-S` and `--signoff` never apply, so it lands `verified: false` without a DCO trailer, and an archived repo makes it unfixable. When commits must be signed/signed-off (always, per policy): clone and commit locally; land signed commits BEFORE archiving.
 
 
+## Org billing — which repository is spending the allowance
+
+A "You have used 100% of the Git LFS bandwidth" (or Actions minutes / storage)
+mail names the org, never the repository. The per-repository answer is the
+billing usage report; the older `orgs/ORG/settings/billing/shared-storage` and
+`…/actions` endpoints answer `410 This endpoint has been moved`.
+
+```bash
+# Every usage line item of a month, per product / SKU / repository.
+# Products seen so far: actions, code_quality, copilot, git_lfs.
+# LFS SKUs: "Git LFS bandwidth" (unitType Gigabytes) and "Git LFS storage"
+# (unitType GigabyteHours) — a quantity is only comparable within one SKU,
+# so filter on the SKU before converting a unit.
+gh api "organizations/ORG/settings/billing/usage?year=2026&month=8" \
+  | jq -r '.usageItems[] | select(.product=="git_lfs" and .sku=="Git LFS bandwidth")
+           | [.date[0:10], .repositoryName, (.quantity*1000|floor|tostring)+" MB"] | @tsv'
+```
+
+Two readings to keep straight (typo3-demo, 2026-08-29): the report lags the
+alert by about two weeks (rows ended on the 14th while the mail on the 29th
+said 10 GB; the rows summed to 6.8 GB), and bandwidth is spent by *downloads*
+of LFS objects — CI checkouts with `lfs: true`, `git lfs pull` on deploy
+hosts, clones of forks, source archives that include LFS objects — never by
+pushes. Look for those before looking for who uploaded what. For the fix when
+the tracked set is small, see git-workflow's `advanced-git.md`, "Removing LFS
+without a history rewrite".
+
 ## Common Troubleshooting Patterns
 
 ### Wait for CI with the native watcher, not a hand-rolled loop
