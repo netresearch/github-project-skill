@@ -536,15 +536,15 @@ Diagnose at the source, not at the badge:
 ```bash
 # SonarCloud: is anything actually open on this PR?
 curl -sS "https://sonarcloud.io/api/qualitygates/project_status?projectKey=$KEY&pullRequest=$PR" | jq '.projectStatus.status'
-curl -sS "https://sonarcloud.io/api/issues/search?componentKeys=$KEY&pullRequest=$PR&statuses=OPEN,CONFIRMED,REOPENED" | jq '.total'
+curl -sS "https://sonarcloud.io/api/issues/search?componentKeys=$KEY&pullRequest=$PR&issueStatuses=OPEN,CONFIRMED" | jq '.total'   # `statuses` is deprecated; REOPENED is not an issueStatuses value
 # When did the analysis close the issue vs. when was the SARIF uploaded?
 curl -sS "https://sonarcloud.io/api/issues/search?componentKeys=$KEY&pullRequest=$PR&rules=$RULE&additionalFields=_all" | jq '.issues[] | {status, closeDate}'
-gh api "repos/$R/code-scanning/analyses?ref=refs/pull/$PR/head&tool_name=SonarCloud&per_page=3" --jq '.[] | "\(.created_at) \(.commit_sha[0:8]) results=\(.results_count)"'
+gh api "repos/$R/code-scanning/analyses?pr=$PR&tool_name=SonarCloud&per_page=3"   # pr=, not ref=: an upload against refs/pull/$PR/merge is invisible to the ref filter --jq '.[] | "\(.created_at) \(.commit_sha[0:8]) results=\(.results_count)"'
 # codecov: head vs base totals, independent of the interim status
-curl -sS "https://api.codecov.io/api/v2/github/$ORG/repos/$REPO/pulls/$PR" | jq '{head: .head_totals.coverage, base: .base_totals.coverage}'
+curl -sS ${CODECOV_TOKEN:+-H "Authorization: Bearer $CODECOV_TOKEN"} "https://api.codecov.io/api/v2/github/$ORG/repos/$REPO/pulls/$PR" | jq '{head: .head_totals.coverage, base: .base_totals.coverage}'
 ```
 
-If the source is clean: do **not** dismiss the code-scanning alert or mark anything "safe" — the next analysis (i.e. the next push) closes the alert and the check with it; a check-run's conclusion is immutable, so on the current commit `UNSTABLE` stays until then. Since the fix is already in the tree, this is the one case where an otherwise idle push (the next real commit, a rebase onto a moved base) is the remedy rather than a workaround. If the source is *not* clean, the finding is real: read the taint flow (`additionalFields=_all` → `.flows`) before touching code — the rule title names the category, the flow names the sink.
+If the source is clean: do **not** dismiss the code-scanning alert or mark anything "safe" — the next analysis closes the alert and the check with it; a check-run's conclusion is immutable, so on the current commit `UNSTABLE` stays until then. Since the fix is already in the tree, this is the one case where an otherwise idle push is the remedy rather than a workaround — but it must be one that actually triggers an analysis. Automatic Analysis runs on any push; a CI-based analysis runs only when its workflow handles the event, so check which `pull_request` types the workflow subscribes to before assuming a rebase will clear it. If the source is *not* clean, the finding is real: read the taint flow (`additionalFields=_all` → `.flows`) before touching code — the rule title names the category, the flow names the sink.
 
 ## References
 
