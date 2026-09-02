@@ -260,7 +260,7 @@ mechanical:
   # exempt — they have no runner steps to harden.
   - id: GH-35
     type: command
-    target: |
+    pattern: |
       command -v python3 >/dev/null 2>&1 || exit 0
       python3 - <<'PY'
       try:
@@ -306,7 +306,7 @@ mechanical:
   # === AUTO-APPROVE (pr-quality.yml) COPILOT RACE CONDITION ===
   - id: GH-33
     type: command
-    target: |
+    pattern: |
       # If pr-quality.yml exists, verify it triggers on pull_request_review as
       # well as pull_request_target. Without pull_request_review, the approval
       # job races with Copilot and leaves PRs BLOCKED with empty reviewDecision.
@@ -322,9 +322,20 @@ mechanical:
       reviewDecision)
 
   # === BRANCH PROTECTION AUDIT ===
-  # GH-30 / GH-31 require GitHub API access (gh CLI + auth) which is outside
-  # the assessment runner's command allowlist. Declared as type: gh_api so the
-  # runner skips them with a clear evidence string instead of rejecting them.
+  # GH-30 / GH-31 both need GitHub API access (gh CLI + auth). GH-30 is a
+  # type: gh_api checkpoint, which the runner skips with a clear evidence
+  # string when gh is unavailable. GH-31 needs two endpoints (classic
+  # protection AND rulesets), which gh_api cannot express, so it is a
+  # type: command checkpoint whose body exits 0 whenever the answer cannot be
+  # obtained — gh absent, gh present but unauthenticated, or the repo lookup
+  # failing — so an unknowable gate is never reported as a missing one.
+  #
+  # A command body goes under `pattern:` — the key the assessment runner reads
+  # for type: command (it aliases `command:` onto the same variable). GH-31,
+  # GH-33 and GH-35 previously used `target:`, which the runner did not collect
+  # as a command body, so none of the three ever executed. The validator that
+  # enforces this ships with the automated-assessment skill, not with this repo.
+  #
   # The semantically equivalent LLM-driven audit lives in GH-32 (llm_reviews).
   - id: GH-30
     type: gh_api
@@ -343,7 +354,7 @@ mechanical:
 
   - id: GH-31
     type: command
-    target: |
+    pattern: |
       # Conversation resolution can come from EITHER classic branch protection
       # OR a ruleset, and the classic endpoint is blind to rulesets — reading it
       # alone fails a repository that is correctly configured through a ruleset.
