@@ -328,10 +328,11 @@ mechanical:
   # protection AND rulesets), which gh_api cannot express, so it is a
   # type: command checkpoint whose body exits 0 when gh is missing.
   #
-  # A command body goes under `pattern:` — the key validate-checkpoints.sh
-  # requires for type: command, and the one the runner reads first. GH-31,
-  # GH-33 and GH-35 previously used `target:`, which the runner did not
-  # collect as a command body, so none of the three ever executed.
+  # A command body goes under `pattern:` — the key the assessment runner reads
+  # for type: command (it aliases `command:` onto the same variable). GH-31,
+  # GH-33 and GH-35 previously used `target:`, which the runner did not collect
+  # as a command body, so none of the three ever executed. The validator that
+  # enforces this ships with the automated-assessment skill, not with this repo.
   #
   # The semantically equivalent LLM-driven audit lives in GH-32 (llm_reviews).
   - id: GH-30
