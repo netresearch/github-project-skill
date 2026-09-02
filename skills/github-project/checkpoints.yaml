@@ -326,7 +326,9 @@ mechanical:
   # type: gh_api checkpoint, which the runner skips with a clear evidence
   # string when gh is unavailable. GH-31 needs two endpoints (classic
   # protection AND rulesets), which gh_api cannot express, so it is a
-  # type: command checkpoint whose body exits 0 when gh is missing.
+  # type: command checkpoint whose body exits 0 whenever the answer cannot be
+  # obtained — gh absent, gh present but unauthenticated, or the repo lookup
+  # failing — so an unknowable gate is never reported as a missing one.
   #
   # A command body goes under `pattern:` — the key the assessment runner reads
   # for type: command (it aliases `command:` onto the same variable). GH-31,
