@@ -88,6 +88,30 @@ Three recurring bugs in ad-hoc watchers:
 
 The rollup field is `mergedAt` (null while open) — or ask `state` (`MERGED`/`OPEN`/`CLOSED`). `--json merged` errors "Unknown JSON field"; GraphQL (`pullRequest.merged`) does have the boolean.
 
+### `/stats/*` answers HTTP 202 with the body `{}` — call it again
+
+The repository statistics endpoints (`/stats/contributors`, `/stats/commit_activity`, `/stats/participation`, …) are computed on demand and cached. On a cold cache GitHub starts the job and answers **202 Accepted with the body `{}`** rather than waiting; the numbers arrive on a later call, once the job has finished. Nothing about the `gh api` invocation looks wrong: it exits **0**, and `--jq 'length'` returns **0** — indistinguishable from a repository that genuinely has no contributors. The Contributors graph in the web UI shows the same shape — blank on one visit, populated on a reload — though which endpoint it calls is not something these measurements establish.
+
+Measured across four repositories in one sweep: two answered 202, two answered 200 — a cold cache is the normal state for anything nobody has queried recently, not an error.
+
+```bash
+# Ask the status line; never infer "empty" from an empty result
+gh api repos/OWNER/REPO/stats/contributors -i 2>/dev/null | awk 'NR==1{print $2}'   # 202 -> not ready
+```
+
+Poll the status rather than the payload, and give the job time — a second call moments later is still 202; the computation, not the cache write, is what you are waiting for:
+
+```bash
+for _ in 1 2 3 4 5; do
+  code=$(gh api repos/OWNER/REPO/stats/contributors -i 2>/dev/null | awk 'NR==1{print $2}')
+  [ "$code" = "200" ] && break
+  sleep 10
+done
+gh api repos/OWNER/REPO/stats/contributors --jq 'length'
+```
+
+The general shape: test the status code, never the emptiness of the output.
+
 ### Rapid `gh api` calls intermittently return HTTP 401
 
 Rapid sequences of `gh api` calls (REST + GraphQL) sometimes return `401 "Requires authentication"` even with valid auth — transient, clears with ~5-10s spacing and a retry. **Trap:** piping a `gh` listing straight into `while read` consumes the 401 error text as data when a call fails (e.g. JSON error braces get fed into a GraphQL mutation as "thread IDs"). Always capture output into a variable first, check the exit status, then iterate; add a `sleep 5-10` between bulk review-thread replies/resolves.
