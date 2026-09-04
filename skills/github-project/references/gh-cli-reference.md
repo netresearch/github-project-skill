@@ -102,11 +102,15 @@ gh api repos/OWNER/REPO/stats/contributors -i 2>/dev/null | awk 'NR==1{print $2}
 Poll the status rather than the payload, and give the job time — a second call moments later is still 202; the computation, not the cache write, is what you are waiting for:
 
 ```bash
+code=""
 for _ in 1 2 3 4 5; do
   code=$(gh api repos/OWNER/REPO/stats/contributors -i 2>/dev/null | awk 'NR==1{print $2}')
   [ "$code" = "200" ] && break
   sleep 10
 done
+# Exhausting the retries is NOT an empty repository — say so and fail, or the
+# next line prints the 0 this whole section exists to stop you believing.
+[ "$code" = "200" ] || { echo "stats still not ready (last status: ${code:-none})" >&2; exit 1; }
 gh api repos/OWNER/REPO/stats/contributors --jq 'length'
 ```
 
