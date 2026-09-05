@@ -1,6 +1,6 @@
 {
   "name": "github-project",
-  "version": "2.17.1",
+  "version": "2.17.2",
   "description": "GitHub repository setup, branch protection, and configuration",
   "author": {
     "name": "Netresearch DTT GmbH",
