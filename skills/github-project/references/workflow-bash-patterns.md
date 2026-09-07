@@ -280,7 +280,7 @@ data: >-
   {"id":${{ toJSON(format('{0}', github.event.client_payload.id)) }}}
 ```
 
-Expression strings are single-quoted, and inside a single-quoted YAML scalar `''` is the escape for one quote. The parser hands the runner `… || ')` and the workflow fails at expression evaluation, far from the line that caused it. Check what the file actually parses to (`yq '.jobs.x.steps[0].env.data'`) rather than what it looks like.
+Expression strings are single-quoted, and inside a single-quoted YAML scalar `''` is the escape for one quote. The parser hands the runner `… || ')` and the workflow fails at expression evaluation, far from the line that caused it. A single-quoted scalar is not ruled out — it works when every quote of the expression is doubled (`format(''{0}'', x)`, an empty string as `''''`) — but the folded scalar removes that bookkeeping, and one missed doubling changes the expression silently. Check what the file actually parses to (`yq '.jobs.x.steps[0].env.data'`) rather than what it looks like.
 
 Two related points on building JSON in a workflow: `toJSON` emits the value's native type, so an id that arrives as a number is no longer a JSON string for the receiver — wrap it (`toJSON(format('{0}', …))`) when the consumer expects one. And hand-quoting the field (`"id":"${{ … }}"`) is the injection: a quote in the value appends keys to your body, which a downstream `jq -c .` then resolves in the attacker's favour.
 
