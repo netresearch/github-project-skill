@@ -167,6 +167,12 @@ Error: input "node-versions" is not defined in action "actions/setup-node@v4"
     node-version: '22'   # correct: singular
 ```
 
+**Only for actions actionlint knows.** The check runs against a bundled metadata set of popular actions (`actions/*`, `docker/*` and similar). For every other action the `with:` block is unchecked — an input the action does not declare is accepted silently.
+
+Measured, 2026-09-07, TYPO3-Documentation/t3docs-ci-deploy: a step passed `script:` to `appleboy/scp-action`, which has no such input. The action tarred its empty `source` and failed on every single invocation for six months; `actionlint` on that file exits 0. So a green actionlint says nothing about a third-party `with:` block — read the pinned `action.yml` (`gh api repos/<owner>/<action>/contents/action.yml?ref=<sha> --jq .content | base64 -d`) when a step is not doing what its inputs say.
+
+What it *does* check on every file is expression syntax. That part is worth trusting: breaking one quote in `${{ toJSON(format('{0}', x)) }}` reports `unexpected EOF while lexing end of string literal [expression]` and exits 1.
+
 ### YAML Type Errors
 
 ```
