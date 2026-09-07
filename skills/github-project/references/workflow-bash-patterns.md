@@ -256,6 +256,8 @@ done
 **3. Into a remote script, pass values as environment variables, never as text.** `appleboy/ssh-action`'s `envs:` input names variables from the step `env:`; drone-ssh uppercases each name and emits `export NAME='value'` with the value single-quote-escaped (`escapeArg`), so no payload character can leave its argument. Quote at the point of use, and require the variable — an empty segment silently collapses a path onto its root:
 
 ```yaml
+# The validation step from rule 1 runs first in this job; without it the
+# transport is safe but the value is still whatever the sender put in.
 - uses: appleboy/ssh-action@<sha>
   env:
     TARGET_PATH: ${{ secrets.TARGET_PATH }}
