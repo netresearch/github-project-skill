@@ -12,6 +12,9 @@ Recurring shell-scripting gotchas that turn workflow `run:` steps into silent da
 | ldflags silently drop values; no error | Expression in top-level job `with:` evaluated BEFORE reusable checkout | [Expression context availability](#expression-context-availability) |
 | Workflow runs on triggers it shouldn't, all jobs fail instantly | File failed validation — GitHub creates a failing run regardless of `on:` match | [Workflow-file validation failure](#workflow-file-validation-failure) |
 | Random startup_failure across the whole fleet after a template change | Caller job permissions < reusable job's declared permissions | [Permission propagation](#permission-propagation) |
+| Dispatch payload reaches `rm -Rf`, `git clone` or a console command | `client_payload.*` interpolated into a script instead of passed as an env var | [Untrusted payload fields](#untrusted-payload-fields-in-a-run-step-or-a-remote-script) |
+| Annotations stop appearing mid-job after a rejected input | An error message echoed an untrusted value containing `\n::stop-commands::` | [Untrusted payload fields](#untrusted-payload-fields-in-a-run-step-or-a-remote-script) |
+| Expression fails to evaluate; the file "looks right" | `''` inside a single-quoted YAML scalar collapsed to one quote | [toJSON in a single-quoted scalar](#tojson-inside-a-single-quoted-yaml-scalar) |
 
 ## `set -e` + command substitution
 
@@ -229,6 +232,59 @@ ${{ inputs['make-latest'] }}       # not inputs.make-latest (parsed as subtracti
 ```
 
 Prefer underscored names (`make_latest`) so dot-notation works. Matches GitHub's own action parameter style (`softprops/action-gh-release` uses `make_latest`, not `make-latest`).
+
+## Untrusted payload fields in a `run:` step or a remote script
+
+`repository_dispatch` `client_payload.*` is the same trust class as an issue title: whoever holds a write token on the repo composes it, and the sender usually forwards a value it took from somewhere else (a branch name, a `composer.json`). Three rules, all from t3docs-ci-deploy, where `rm -Rf ${{ … }}/${{ … }}` ran against the production documentation host.
+
+**1. Validate the fields as what they are, in a step of their own, first in the job.** For a path segment: no character outside `[A-Za-z0-9._-]`, no `..`, no leading `.` or `-`. The leading dash is not cosmetic — `-q` reaching a Symfony console command as a positional argument is parsed as an option cluster.
+
+```bash
+for name in TYPE_SHORT VENDOR NAME; do
+  value="${!name}"
+  case "$value" in
+    *[!A-Za-z0-9._-]* | *..* | .* | -* | '')
+      echo "::error::client_payload field $name is not a plain path segment"
+      exit 1
+      ;;
+  esac
+done
+```
+
+**2. Never echo the value in the diagnostic.** A payload field may contain a newline, and the runner reads every line of step output: a value of `x\n::stop-commands::abc` disables annotations for the rest of the job, `\n::add-mask::/` masks unrelated log lines. The field name identifies the problem; the value adds nothing a rejected dispatch needs.
+
+**3. Into a remote script, pass values as environment variables, never as text.** `appleboy/ssh-action`'s `envs:` input names variables from the step `env:`; drone-ssh uppercases each name and emits `export NAME='value'` with the value single-quote-escaped (`escapeArg`), so no payload character can leave its argument. Quote at the point of use, and require the variable — an empty segment silently collapses a path onto its root:
+
+```yaml
+# The validation step from rule 1 runs first in this job; without it the
+# transport is safe but the value is still whatever the sender put in.
+- uses: appleboy/ssh-action@<sha>
+  env:
+    TARGET_PATH: ${{ secrets.TARGET_PATH }}
+    VENDOR: ${{ github.event.client_payload.vendor }}
+  with:
+    envs: TARGET_PATH,VENDOR
+    script: |
+      : "${TARGET_PATH:?not set}" "${VENDOR:?not set}"
+      rm -Rf "$TARGET_PATH/$VENDOR"
+```
+
+An **action input** cannot take this route — `appleboy/scp-action`'s `target:` is interpolated by the action itself, so a destructive `rm: true` upload depends on the validation step having run first in the same job. Say so in a comment above it; step order is the only thing holding it.
+
+## `toJSON()` inside a single-quoted YAML scalar
+
+```yaml
+# Broken - YAML turns '' into ' before the expression is ever evaluated
+data: '{"id":${{ toJSON(github.event.client_payload.id || '') }}}'
+
+# Correct - a folded scalar carries the expression verbatim
+data: >-
+  {"id":${{ toJSON(format('{0}', github.event.client_payload.id)) }}}
+```
+
+Expression strings are single-quoted, and inside a single-quoted YAML scalar `''` is the escape for one quote. The parser hands the runner `… || ')` and the workflow fails at expression evaluation, far from the line that caused it. A single-quoted scalar is not ruled out — it works when every quote of the expression is doubled (`format(''{0}'', x)`, an empty string as `''''`) — but the folded scalar removes that bookkeeping, and one missed doubling changes the expression silently. Check what the file actually parses to (`yq '.jobs.x.steps[0].env.data'`) rather than what it looks like.
+
+Two related points on building JSON in a workflow: `toJSON` emits the value's native type, so an id that arrives as a number is no longer a JSON string for the receiver — wrap it (`toJSON(format('{0}', …))`) when the consumer expects one. And hand-quoting the field (`"id":"${{ … }}"`) is the injection: a quote in the value appends keys to your body, which a downstream `jq -c .` then resolves in the attacker's favour.
 
 ## Related
 

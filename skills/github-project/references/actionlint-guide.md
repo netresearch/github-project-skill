@@ -167,6 +167,18 @@ Error: input "node-versions" is not defined in action "actions/setup-node@v4"
     node-version: '22'   # correct: singular
 ```
 
+**Local actions always, remote actions only if actionlint knows them.** A local action (`uses: ./.github/actions/foo`) is read from the repository, so its `with:` block is fully checked — a bogus input reports `input "bogus_input" is not defined in action "local" defined at "./.github/actions/local"` and exits 1. A remote action is checked against a bundled metadata set of popular actions (`actions/*`, `docker/*` and similar); for a remote action outside that set the `with:` block is unchecked, and an input the action does not declare is accepted silently.
+
+Measured, 2026-09-07, TYPO3-Documentation/t3docs-ci-deploy: a step passed `script:` to `appleboy/scp-action`, which has no such input. The action tarred its empty `source` and failed on every invocation for six months; `actionlint` on that file exits 0. So a green actionlint says nothing about an unknown remote action's `with:` block — read the pinned metadata file when a step is not doing what its inputs say (GitHub accepts both spellings, so try `action.yml` and fall back to `action.yaml`):
+
+```bash
+for f in action.yml action.yaml; do
+  gh api "repos/<owner>/<action>/contents/$f?ref=<sha>" --jq .content 2>/dev/null | base64 -d && break
+done
+```
+
+What it *does* check on every file is expression syntax. That part is worth trusting: breaking one quote in `${{ toJSON(format('{0}', x)) }}` reports `unexpected EOF while lexing end of string literal [expression]` and exits 1.
+
 ### YAML Type Errors
 
 ```
