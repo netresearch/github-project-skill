@@ -109,7 +109,20 @@ Add the [Netresearch marketplace](https://github.com/netresearch/claude-code-mar
 ```bash
 # Claude Code
 /plugin marketplace add netresearch/claude-code-marketplace
+/plugin install github-project@netresearch-claude-code-marketplace
 ```
+
+### Without a marketplace
+
+Since Claude Code 2.1.157 a plugin directory under your personal skills directory loads on its own:
+
+```bash
+mkdir -p ~/.claude/skills
+git clone https://github.com/netresearch/github-project-skill.git \
+  ~/.claude/skills/github-project
+```
+
+It loads as `github-project@skills-dir` on the next session. Update with `git -C ~/.claude/skills/github-project pull` and start a new session; remove it by deleting the directory. This route has no `claude plugin update`.
 
 ### npx ([skills.sh](https://skills.sh))
 
