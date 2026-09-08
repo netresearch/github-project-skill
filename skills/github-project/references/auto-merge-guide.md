@@ -288,6 +288,43 @@ gh api repos/OWNER/REPO/branches/main/protection \
 
 Corollary: a quota-exhausted Copilot review returns `conclusion: failure`, not `neutral` — treat "failure" on an advisory reviewer check as noise, not a code problem. Never reach for `--admin` to "unblock" it.
 
+## Migrating Inline Jobs to Reusable Workflows Renames Every Required Check
+
+A called workflow reports its checks as `<caller job name> / <inner job name>`,
+so converting an inline job to `uses:` changes the context name even when the
+job keeps its id. On a repository with required status checks the old context
+then never reports again, and a required context that never reports blocks
+merges forever — the PR sits at `BLOCKED` with every visible check green.
+
+Three consequences, all of which bit a single `render-guides` migration:
+
+- **The ruleset has to change in the same step.** Reproducing the old names is
+  not possible: the ` / ` segment is always inserted, so an inline
+  `Tests (8.2)` becomes at best `Tests / Tests (PHP 8.2)`.
+- **No ordering keeps the gate closed.** Switching the ruleset first blocks
+  every other open PR, whose checks still report the old names; merging first
+  blocks the queue. The workable sequence is to drop the required contexts for
+  the merge window and set the new ones immediately afterwards — a short,
+  deliberate window without a gate, not something to discover mid-merge.
+- **Steps promoted out of a required job become ungated.** Commands that ran as
+  *steps inside* a required check are implicitly required. Split into their own
+  called jobs they are separate checks and gate nothing unless the ruleset lists
+  them. In the case above `composer normalize --dry-run`, `make test-docs` and
+  `make test-rendertest` would have gone from required to optional as a side
+  effect of a change whose subject was action-version hygiene.
+
+Read the new names from a real run rather than predicting them — the inner job
+name lives in the called workflow, in another repository, and may carry its own
+matrix suffix:
+
+```bash
+gh api "repos/:owner/:repo/commits/<head-sha>/check-runs" --paginate \
+  --jq '.check_runs[] | "\(.conclusion // .status)\t\(.name)"' | sort
+```
+
+Same caution as elsewhere: never compare such a check name with `==`; match by
+suffix.
+
 ## Merge Queue Behavior and Pitfalls
 
 ### Sequential Processing
