@@ -314,16 +314,20 @@ Three consequences, all of which bit a single `render-guides` migration:
   effect of a change whose subject was action-version hygiene.
 
 Read the new names from a real run rather than predicting them — the inner job
-name lives in the called workflow, in another repository, and may carry its own
-matrix suffix:
+name is defined in the called workflow, which may sit in another repository, and
+it can carry its own matrix suffix:
 
 ```bash
-gh api "repos/:owner/:repo/commits/<head-sha>/check-runs" --paginate \
+gh api "repos/{owner}/{repo}/commits/<head-sha>/check-runs" --paginate \
   --jq '.check_runs[] | "\(.conclusion // .status)\t\(.name)"' | sort
 ```
 
-Same caution as elsewhere: never compare such a check name with `==`; match by
-suffix.
+Suffix matching belongs to *discovery*, not to configuration. Use it to find the
+check run a reusable produced, then put its complete `.name` into the ruleset —
+a required context is compared for equality, so `Tests (PHP 8.2)` as a required
+context matches nothing and leaves the check pending forever. The rule against
+`==` applies to your own filtering code (`gh pr checks` output, self-gating
+workflows), where the caller prefix is not yours to know.
 
 ## Merge Queue Behavior and Pitfalls
 
