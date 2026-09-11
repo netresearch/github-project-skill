@@ -206,6 +206,51 @@ When the reviewer raised a real concern but suggested a wrong fix:
 - **Leaving the thread unresolved with no reply.** Reads as ignoring the bot. Reply, then resolve.
 - **Marking a thread resolved without replying when you applied the change.** Drops the rationale; future readers see a closed thread with no record of the decision.
 
+## When the finding is about scope, not content — CodeRabbit guideline files
+
+A recurring class of CodeRabbit finding is not wrong about the rule, only about
+where the rule applies: a PHP rule quoted at a Markdown-only diff, a frontend
+convention raised on a CI file. The cause is configuration, not the reviewer.
+`knowledge_base.code_guidelines` supplies a guideline document — `AGENTS.md`,
+`CLAUDE.md` and friends are in the defaults — to reviews of **every** path, so a
+rule reading "in every file" is evaluated against every file.
+
+Two settings sound interchangeable and are not:
+
+| Setting | What it does | What it cannot do |
+|---|---|---|
+| `knowledge_base.code_guidelines.filePatterns[]` | selects **which files are read** as guidelines; an entry may carry `applyTo` to scope **where they apply** | — |
+| `reviews.path_instructions[]` | **adds** guidance for a glob | subtract a repository-wide guideline document |
+
+So the fix for a mis-scoped rule is `applyTo`, not `path_instructions`:
+
+```yaml
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "**/AGENTS.md"                 # repo-wide: plain string
+      - files: "docs/php-rules.md"     # scoped: object form
+        applyTo: "**/*.php"
+```
+
+Three traps, each of which cost a wrong turn:
+
+- **`applyTo` is absent from the prose documentation.** It exists only in the
+  [published schema](https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json).
+  Reading the docs page and concluding "nothing can scope a guideline document"
+  is the wrong answer, confidently reached.
+- **The object form requires both `files` and `applyTo`.** An entry with `files`
+  alone is schema-invalid, so a document you want unscoped must be written as a
+  plain string.
+- **`filePatterns` is declared `default: []` with the default set documented in
+  prose only**, which does not say whether an explicit list extends or replaces
+  it. List the repo-wide document explicitly and the question stops mattering.
+
+Validate the result against the schema, not merely as well-formed YAML —
+`jsonschema` against `schema.v2.json` catches the `files`-without-`applyTo` case
+that a YAML parser accepts happily.
+
 ## Per-bot quirks
 
 Behavior is bot-specific and changes; treat as starting hints, verify against current behavior:
