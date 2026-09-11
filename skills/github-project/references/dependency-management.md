@@ -195,6 +195,43 @@ repo had merged without a single test running.
 
 ## Renovate
 
+### Forks are skipped, and the opt-in is only read from the repository root
+
+A fork with a perfectly valid `renovate.json` can sit there for months without Renovate ever running: no pull requests, no Dependency Dashboard, nothing in the log. The configuration is not the problem.
+
+`forkProcessing` defaults to `"auto"`, which means **disabled when Renovate runs in autodiscover mode** — and installing the Mend app against *All repositories* is autodiscover. Forks are then skipped with:
+
+```
+Repository is a fork and not manually configured - skipping
+```
+
+Installing against *Select repositories* instead processes forks, so the same organisation can have working and silent forks with byte-identical config.
+
+To opt a fork back in:
+
+```json
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>myorg/renovate-config"],
+  "forkProcessing": "enabled"
+}
+```
+
+**The setting is read only from a `renovate.json` in the repository root.** A `.github/renovate.json` cannot carry it. And a repository must not hold two Renovate config files — that is a configuration error, not a merge — so a repo whose config lives under `.github/` has to **move** the file to the root rather than add a second one:
+
+```bash
+git mv .github/renovate.json renovate.json   # then add forkProcessing
+```
+
+Diagnosing this from GitHub alone is hard, because every visible signal looks healthy — the app is installed org-wide, the config extends the org preset, nothing is archived. The tells are the *absence* of a Dependency Dashboard issue and `repository_selection` on the installation:
+
+```bash
+gh api /orgs/ORG/installations --jq '.installations[] | select(.app_slug=="renovate") | .repository_selection'
+gh api "repos/ORG/REPO" --jq .fork
+```
+
+`repository_selection: all` plus `fork: true` plus no dashboard is the signature.
+
 ### Auto-merge Configuration (Recommended)
 
 **IMPORTANT:** Use `platformAutomerge: true` to leverage Renovate's bypass permissions:
