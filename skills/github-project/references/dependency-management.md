@@ -614,6 +614,18 @@ jobs:
 
 Do not skip the scan for bot PRs: a dependency update can carry a secret like any other change. For known false positives, add a `.gitleaks.toml` allowlist — the repo's own file is honoured, so tune it there rather than disabling the job.
 
+### One False Positive Turns the Scan Red on Every Open PR
+
+**Error:** `gitleaks / Secret Scanning` fails on pull requests whose diff contains nothing secret-like, including other people's.
+
+**Cause:** the reusable runs `betterleaks git` over the checked-out history, and on a pull request that history includes every branch the checkout fetched — in practice, commits of other open PRs. The generic rules match prose as readily as code: `generic-api-key` fired on a SECURITY.md sentence in which the plural of "key" was followed by a comma and then a long cipher name — keyword, separator, long token. (This page names the pattern instead of quoting it, because a quote would trip the same rule.) One such commit on one branch made the scan red on all five open PRs of the repository, among them an unrelated one by another author. Code scanning shows the finding with `commit_sha` of the offending commit, which is how you find the branch.
+
+**Solution:**
+- Reword the line so no separator and long token follow the keyword, and **replace the commit** (amend or rebase, then `git push --force-with-lease`). A follow-up commit leaves the matching text in history, and the history scan keeps finding it.
+- Check before pushing with the scanner version the reusable pins, over the branch's own commits only: `betterleaks git . --log-opts="origin/main..HEAD" --redact`. Scanning the old and the new wording as two files (`betterleaks dir`) confirms the rewording actually clears the rule.
+- Re-run the red scans on the other PRs **after** each run has finished: `gh run rerun --job <job-database-id>` answers `cannot be rerun` while its run is still in progress (the database ID, not the number in the Actions URL: `gh run view <run-id> --json jobs --jq '.jobs[] | {name, databaseId}'`). Once it has finished, `gh run rerun <run-id> --failed` also re-runs the aggregate job ("All security checks") that went red only because the scan did.
+- Prefer rewording over an allowlist entry: a path allowlist on `SECURITY.md` or a regex for the phrase would also hide a real key pasted into that file later.
+
 ### Pre-existing PRs Don't Auto-merge
 
 **Problem:** PRs opened before the auto-merge workflow was added don't get auto-merged.
