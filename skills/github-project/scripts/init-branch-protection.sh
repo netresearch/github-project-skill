@@ -5,8 +5,9 @@
 # REQUIRED step after `gh repo create` + initial push, BEFORE opening the
 # first PR. (The default branch ref must exist — push your initial commit
 # first; this script exits 4 on empty repos.) The structural enforcement
-# applied here (required_conversation_resolution + min-1-approver) is what
-# makes the unresolved-threads workflow rule actually safe — operator
+# applied here (required_conversation_resolution, plus one required approval
+# unless --solo) is what makes the unresolved-threads workflow rule actually
+# safe — operator
 # discipline alone has demonstrably failed (see
 # netresearch/snipe-it-docker-compose-stack#17).
 #
@@ -32,9 +33,18 @@
 #       restrictions) is carried over, required_status_checks is added,
 #       required_signatures is left out (separate endpoint, not a PUT field).
 #
+#   bash init-branch-protection.sh <owner>/<repo> --solo
+#       Same as the first form, but with required_approving_review_count 0,
+#       for a single-maintainer repository without a pr-quality.yml
+#       auto-approve workflow. GitHub does not let an author approve their
+#       own pull request, so one required approval would make every merge
+#       need an admin bypass there. Conversation resolution, the force-push
+#       and deletion bans and the later required status checks still gate
+#       the merge. Drift is checked against the same 0.
+#
 # Baseline applied (see assets/branch-protection.json.template):
 #   required_conversation_resolution: true   <- the load-bearing field
-#   required_approving_review_count:  1
+#   required_approving_review_count:  1      (0 with --solo)
 #   allow_force_pushes:               false
 #   allow_deletions:                  false
 #   required_linear_history:          false  (must be false for merge-commit
@@ -81,6 +91,7 @@ usage() {
 Usage:
   init-branch-protection.sh <owner>/<repo>
   init-branch-protection.sh <owner>/<repo> --from-current-checks
+  init-branch-protection.sh <owner>/<repo> --solo
 
 See script header comment for full documentation.
 EOF
@@ -94,7 +105,7 @@ EOF
 SLUG="$1"
 MODE="${2:-apply}"
 
-if [[ "$MODE" != "apply" && "$MODE" != "--from-current-checks" ]]; then
+if [[ "$MODE" != "apply" && "$MODE" != "--from-current-checks" && "$MODE" != "--solo" ]]; then
     err "unknown second argument: $MODE"
     usage
 fi
@@ -278,8 +289,13 @@ if [[ "$MODE" == "--from-current-checks" ]]; then
     fi
 fi
 
-# ---------- apply mode ----------
+# ---------- apply mode (plain or --solo) ----------
 TEMPLATE_BODY="$(cat "$TEMPLATE")"
+if [[ "$MODE" == "--solo" ]]; then
+    # Single maintainer: an author cannot approve their own pull request, so a
+    # required approval would force an admin bypass on every merge.
+    TEMPLATE_BODY="$(jq '.required_pull_request_reviews.required_approving_review_count = 0' <<<"$TEMPLATE_BODY")"
+fi
 
 # Check whether protection already exists.
 EXISTING="$(gh api "$PROTECTION_URL" 2>/dev/null || echo '')"
@@ -336,7 +352,7 @@ info "no existing protection on $DEFAULT_BRANCH — applying template"
 if RESP="$(gh api -X PUT "$PROTECTION_URL" --input - <<<"$TEMPLATE_BODY" 2>&1)"; then
     ok "branch protection applied to $SLUG on $DEFAULT_BRANCH"
     ok "required_conversation_resolution: true"
-    ok "required_approving_review_count:  1"
+    ok "required_approving_review_count:  $(jq -r '.required_pull_request_reviews.required_approving_review_count' <<<"$TEMPLATE_BODY")"
     info "next steps:"
     info "  1. push at least one CI run on $DEFAULT_BRANCH"
     info "  2. re-run with --from-current-checks to capture required status checks"

@@ -29,6 +29,12 @@ bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/
 #                                                 signing strategy)
 #    Required status checks are intentionally NOT set yet — a brand-new repo
 #    has no CI history to discover context names from.
+#
+#    Single maintainer without pr-quality.yml? Use --solo instead: same
+#    baseline with required_approving_review_count 0, because an author
+#    cannot approve their own PR (see auto-merge-guide.md, "Choose One of
+#    Two Setups"):
+#      bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/REPO --solo
 
 # 2. After the first CI run completes on the default branch:
 bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/REPO --from-current-checks
