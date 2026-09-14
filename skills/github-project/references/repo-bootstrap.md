@@ -4,6 +4,17 @@ After creating any new Netresearch repository — `gh repo create`, push your in
 
 **Concrete incident:** [netresearch/snipe-it-docker-compose-stack#17](https://github.com/netresearch/snipe-it-docker-compose-stack/pull/17). The repo was created mid-session, branch protection was never applied, and three of the next eight merged PRs shipped with unresolved bot-reviewer threads — including a HIGH-severity token leak that both Copilot and gemini-code-assist had flagged. The structural enforcement (`required_conversation_resolution: true`) would have blocked those merges. The skill had the docs; nothing prompted the apply.
 
+## Creating the repo from a bare-repo worktree
+
+`gh repo create OWNER/REPO --public --source . --remote origin --push` run inside a worktree of a bare repository (`.bare/` + `main/` layout) fails with `current directory is not a git repository. Run 'git init' to initialize it` (exit 1) and does **not** create the repository (observed with gh on 2026-09-14). Create it without `--source`, then wire the remote by hand:
+
+```bash
+gh repo create OWNER/REPO --public --description "..."
+git -C <worktree> remote add origin git@github.com:OWNER/REPO.git
+git -C <worktree> config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+git -C <worktree> push -u origin main
+```
+
 ## Two-step flow
 
 ```bash
