@@ -393,8 +393,11 @@ llm_reviews:
          (merge queue commits dismiss approvals, causing permanent blocks)
       2. If require_code_owner_review is true, verify CODEOWNERS file exists
          on the default branch (enabling without the file blocks all PRs)
-      3. For solo-maintainer repos: required_approving_review_count should be 1
-         (not 0) paired with an auto-approve workflow
+      3. For solo-maintainer repos: either required_approving_review_count 1
+         paired with an auto-approve workflow (Setup A), or 0 with
+         required_conversation_resolution enabled (Setup B, --solo). Flag 1
+         WITHOUT an auto-approve workflow: the maintainer cannot merge
+         without an admin bypass.
 
       Check via: gh api repos/OWNER/REPO/rulesets --jq '.[].rules[]'
     severity: error
