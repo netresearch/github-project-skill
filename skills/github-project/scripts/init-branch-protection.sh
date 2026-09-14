@@ -297,8 +297,19 @@ if [[ "$MODE" == "--solo" ]]; then
     TEMPLATE_BODY="$(jq '.required_pull_request_reviews.required_approving_review_count = 0' <<<"$TEMPLATE_BODY")"
 fi
 
-# Check whether protection already exists.
-EXISTING="$(gh api "$PROTECTION_URL" 2>/dev/null || echo '')"
+# Check whether protection already exists. Only GitHub's explicit "Branch not
+# protected" answer means bootstrap: any other failed read (rate limit, auth,
+# network) must not lead to a PUT, because the template's
+# required_status_checks: null would clear checks already configured.
+if EXISTING="$(gh api "$PROTECTION_URL" 2>&1)"; then
+    :
+elif grep -q 'Branch not protected' <<<"$EXISTING"; then
+    EXISTING=""
+else
+    err "cannot read branch protection on $DEFAULT_BRANCH — not applying the template over an unknown state:"
+    printf '%s\n' "$EXISTING" >&2
+    exit 3
+fi
 
 if [[ -n "$EXISTING" ]] && [[ -n "$(jq -r '.url // empty' <<<"$EXISTING" 2>/dev/null)" ]]; then
     info "protection already exists — checking for drift against template baseline"
