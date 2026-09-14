@@ -301,12 +301,21 @@ fi
 # protected" answer means bootstrap: any other failed read (rate limit, auth,
 # network) must not lead to a PUT, because the template's
 # required_status_checks: null would clear checks already configured.
-if EXISTING="$(gh api "$PROTECTION_URL" 2>&1)"; then
-    :
-elif grep -q 'Branch not protected' <<<"$EXISTING"; then
+# stderr is kept apart from the body: a warning gh prints on a successful read
+# would otherwise make the JSON unparseable and send the script into the PUT.
+PROTECTION_ERR="$(mktemp)"
+trap 'rm -f "$PROTECTION_ERR"' EXIT
+if EXISTING="$(gh api "$PROTECTION_URL" 2>"$PROTECTION_ERR")"; then
+    if [[ -z "$(jq -r '.url // empty' <<<"$EXISTING" 2>/dev/null)" ]]; then
+        err "unexpected branch protection response on $DEFAULT_BRANCH — not applying the template over an unknown state:"
+        printf '%s\n' "$EXISTING" >&2
+        exit 3
+    fi
+elif grep -q 'Branch not protected' "$PROTECTION_ERR" - <<<"$EXISTING"; then
     EXISTING=""
 else
     err "cannot read branch protection on $DEFAULT_BRANCH — not applying the template over an unknown state:"
+    cat "$PROTECTION_ERR" >&2
     printf '%s\n' "$EXISTING" >&2
     exit 3
 fi

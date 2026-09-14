@@ -117,7 +117,7 @@ gh api repos/OWNER/REPO/branches/main/protection --jq 'if .enforce_admins.enable
   - **A:** `required_approving_review_count >= 1` with the `pr-quality.yml` auto-approve workflow.
   - **B:** `required_approving_review_count: 0` via `init-branch-protection.sh --solo`, keeping `required_conversation_resolution` and required status checks. GitHub does not let an author approve their own PR, so `>= 1` without A leaves only an admin bypass.
 
-> **Scorecard note:** The OpenSSF Scorecard Branch-Protection and Code-Review checks score `required_approving_review_count >= 1`. Setup B lowers both scores; prefer A where the Scorecard result matters.
+> **Scorecard note:** The OpenSSF Scorecard Branch-Protection check scores the `required_approving_review_count >= 1` setting, and the Code-Review check scores whether recently merged changes carried an approval. Setup B lowers both scores; prefer A where the Scorecard result matters.
 
 ## Repository Rulesets vs Branch Protection
 
