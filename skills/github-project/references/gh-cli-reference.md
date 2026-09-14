@@ -123,7 +123,7 @@ Rapid sequences of `gh api` calls (REST + GraphQL) sometimes return `401 "Requir
 
 ### Reading a run's log: grep the error text, not the status code
 
-`gh run view --job=<id> --log` prefixes every line with the step name. Three traps when you read errors in it:
+`gh run view --job=<id> --log` prefixes every line with the step name. Four traps when you read errors in it:
 
 - **`--log-failed | tail` shows the wrong end of the log.** On a repo running `step-security/harden-runner`, the post-job step appends its egress-audit dump — DNS resolutions, `sudo` calls, the full `agent.service` journal — *after* the step that failed. Tailing a failed job therefore returns pages of runner telemetry and none of the error. Redirect to a file and grep for the annotation marker instead:
   ```bash
@@ -141,6 +141,11 @@ Rapid sequences of `gh api` calls (REST + GraphQL) sometimes return `401 "Requir
   grep -cP '^check-stars\tCheck for new stars\t.*403' job.log  # scoped to the step
   ```
 - **Count what failed, not what succeeded.** A step can print `Found: 0 items` because there is nothing new *or* because every fetch failed. Those are the same line. Assert on the failure count (`grep -c 'Failed to get'`) before reading a zero as good news.
+- **`gh api …/actions/jobs/<id>/logs` refuses a colourised log.** When the job output carries ANSI colour codes (Composer, PHPUnit and Rector all emit them), `gh` prints `the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway` and exits 1. Redirected to a file, that is a one-line file and exit code 1 — easy to read as "the log is empty" or "the job has no log". Pass the flag and strip the codes before grepping:
+  ```bash
+  gh api repos/OWNER/REPO/actions/jobs/$JOB/logs --allow-escape-sequences > job.raw
+  sed -E 's/\x1b\[[0-9;]*m//g; s/^[0-9T:.Z-]+ //' job.raw > job.log   # drop colour codes and timestamps
+  ```
 
 ### Python steps: timestamps are flush times, not print times
 
