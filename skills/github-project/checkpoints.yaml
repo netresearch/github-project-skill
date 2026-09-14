@@ -399,7 +399,13 @@ llm_reviews:
          WITHOUT an auto-approve workflow: the maintainer cannot merge
          without an admin bypass.
 
-      Check via: gh api repos/OWNER/REPO/rulesets --jq '.[].rules[]'
+      Check via both sources, because init-branch-protection.sh writes classic
+      branch protection, which the rulesets endpoint does not return:
+        gh api repos/OWNER/REPO/rulesets --jq '.[].rules[]'
+        gh api repos/OWNER/REPO/branches/BRANCH/protection \
+          --jq '{approvals: .required_pull_request_reviews.required_approving_review_count, conversation_resolution: .required_conversation_resolution.enabled}'
+      A 404 "Branch not protected" from the second call means no classic
+      protection; evaluate Setup A and B on whichever source sets the values.
     severity: error
     desc: "Verify branch protection rules are compatible with merge queue configuration"
 
