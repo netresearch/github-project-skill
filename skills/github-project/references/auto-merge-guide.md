@@ -2,9 +2,20 @@
 
 Auto-merge for dependency bots and auto-approve for solo maintainers.
 
-## Solo Maintainer: Auto-approve via `pr-quality.yml`
+## Solo Maintainer: Choose One of Two Setups
 
-Solo maintainer projects should keep `required_approving_review_count >= 1` (required for OpenSSF Scorecard and good practice) and use a `pr-quality.yml` workflow that auto-approves PRs from repo collaborators.
+GitHub does not let an author approve their own pull request. A repository with one maintainer therefore needs either an automated approver or no required approval; `required_approving_review_count: 1` without `pr-quality.yml` leaves an admin bypass as the only way to merge.
+
+| Setup | Branch protection | Needs | Trade-off |
+|-------|-------------------|-------|-----------|
+| **A — auto-approve** | `required_approving_review_count: 1` | `pr-quality.yml` on the default branch (template below); `can_approve_pull_request_reviews=true` | Keeps the OpenSSF Scorecard Code-Review point and an approval record per PR; the bootstrap PR adding the workflow needs a manual approval |
+| **B — no required approval** | `required_approving_review_count: 0`, `required_conversation_resolution: true`, required status checks | nothing extra; bootstrap with `init-branch-protection.sh OWNER/REPO --solo` | Unresolved threads, failing checks, force pushes and deletions still block; Scorecard's Code-Review check scores lower |
+
+Measured 2026-09-14 across eight netresearch repositories: data-tools-skill, jira-skill, git-workflow-skill, maint, timetracker and retro-skill use B; ofelia and ldap-manager use A (issue #191). Pick A where Scorecard matters or several people review; pick B for single-maintainer skill and tooling repositories.
+
+### Setup A: Auto-approve via `pr-quality.yml`
+
+Keep `required_approving_review_count >= 1` and use a `pr-quality.yml` workflow that auto-approves PRs from repo collaborators.
 
 **How it works:** The workflow checks the PR author's repository permission. If they have `write` or `admin` access, it approves the PR automatically via `github-actions[bot]`, satisfying the review requirement without manual intervention.
 
@@ -142,7 +153,7 @@ Before approving, poll `requested_reviewers` until it's empty or a timeout elaps
 
 Gate the approval step on `github.event.review.user.login == 'copilot-pull-request-reviewer[bot]' && github.event.review.state != 'changes_requested'` in a `pull_request_review`-triggered job. Race-free but fires only after Copilot posts — not useful when Copilot isn't actually assigned to the PR.
 
-**Do NOT** "fix" this by dropping `required_approving_review_count` to `0` — that loses the OpenSSF Scorecard Code-Review point and removes the audit trail that shows a deliberate approval happened.
+**Do NOT** "fix" this race by dropping `required_approving_review_count` to `0` on a Setup A repository — that silently switches it to Setup B, losing the OpenSSF Scorecard Code-Review point and the approval record. Switching to B is a deliberate choice (see [Solo Maintainer: Choose One of Two Setups](#solo-maintainer-choose-one-of-two-setups)), not a race workaround.
 
 ## Post-Merge Review Sweep
 

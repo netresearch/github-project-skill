@@ -112,12 +112,12 @@ gh api repos/OWNER/REPO/branches/main/protection --jq 'if .enforce_admins.enable
 
 ## Branch Protection: Required Reviews
 
-All projects MUST have `required_approving_review_count >= 1`.
+- **Team projects:** MUST have `required_approving_review_count >= 1`; reviews come from team members.
+- **Single-maintainer projects:** choose one of the two setups in `references/auto-merge-guide.md` → "Solo Maintainer: Choose One of Two Setups":
+  - **A:** `required_approving_review_count >= 1` with the `pr-quality.yml` auto-approve workflow.
+  - **B:** `required_approving_review_count: 0` via `init-branch-protection.sh --solo`, keeping `required_conversation_resolution` and required status checks. GitHub does not let an author approve their own PR, so `>= 1` without A leaves only an admin bypass.
 
-- **Solo maintainer projects:** Use `pr-quality.yml` auto-approve workflow. See `references/auto-merge-guide.md` → "Solo Maintainer" for full setup.
-- **Team projects:** Reviews come from team members.
-
-> **Scorecard note:** The OpenSSF Scorecard Branch-Protection check requires `required_approving_review_count >= 1`. Setting it to 0 lowers your score.
+> **Scorecard note:** The OpenSSF Scorecard Branch-Protection check scores the `required_approving_review_count >= 1` setting, and the Code-Review check scores whether recently merged changes carried an approval. Setup B lowers both scores; prefer A where the Scorecard result matters.
 
 ## Repository Rulesets vs Branch Protection
 

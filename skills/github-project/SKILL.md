@@ -39,7 +39,7 @@ gh pr view PR --repo OWNER/REPO \
 
 ### Solo Maintainer: Stuck on REVIEW_REQUIRED
 
-`assets/pr-quality.yml.template`: auto-approve with `required_approving_review_count >= 1`.
+Either `assets/pr-quality.yml.template` (auto-approve, `required_approving_review_count >= 1`) or `scripts/init-branch-protection.sh OWNER/REPO --solo` (approvals 0, conversation resolution kept) — `references/auto-merge-guide.md` compares both.
 
 ### Auto-merge Setup
 
