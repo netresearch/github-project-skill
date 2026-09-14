@@ -21,10 +21,16 @@
 #
 #   bash init-branch-protection.sh <owner>/<repo> --from-current-checks
 #       Follow-up after the first successful CI run. Reads check-run names
-#       from /commits/{default_branch}/check-runs and PATCHes them in via
-#       the .../protection/required_status_checks subresource (so other
-#       branch-protection fields — bypass_pull_request_allowances,
-#       dismissal_restrictions, etc. — are untouched).
+#       from /commits/{default_branch}/check-runs. If the protection already
+#       has a required_status_checks block, PATCHes it via the
+#       .../protection/required_status_checks subresource (other fields
+#       untouched). If it has none — the state the baseline leaves behind —
+#       that subresource answers 404 "Required status checks not enabled"
+#       and cannot create the block, so the script re-PUTs the whole
+#       protection built from the current GET: every existing field
+#       (incl. bypass_pull_request_allowances, dismissal_restrictions,
+#       restrictions) is carried over, required_status_checks is added,
+#       required_signatures is left out (separate endpoint, not a PUT field).
 #
 # Baseline applied (see assets/branch-protection.json.template):
 #   required_conversation_resolution: true   <- the load-bearing field
@@ -143,12 +149,9 @@ PROTECTION_URL="repos/$OWNER/$REPO/branches/$DEFAULT_BRANCH/protection"
 
 # ---------- --from-current-checks mode ----------
 if [[ "$MODE" == "--from-current-checks" ]]; then
-    # Baseline protection MUST already exist — we PATCH the
-    # required_status_checks subresource only. This avoids clobbering
-    # fields the apply-mode template does not enumerate (e.g.
-    # bypass_pull_request_allowances, dismissal_restrictions, or any
-    # field GitHub adds later).
-    if ! gh api "$PROTECTION_URL" --silent 2>/dev/null; then
+    # Baseline protection MUST already exist — this mode only adds required
+    # status checks to it; it never creates protection from scratch.
+    if ! CURRENT="$(gh api "$PROTECTION_URL" 2>/dev/null)"; then
         err "no existing branch protection on $SLUG"
         err "run without --from-current-checks first to apply the baseline."
         exit 1
@@ -199,21 +202,77 @@ if [[ "$MODE" == "--from-current-checks" ]]; then
     info "discovered ${#CHECK_NAMES[@]} required check(s):"
     for n in "${CHECK_NAMES[@]}"; do printf '  - %s\n' "$n" >&2; done
 
-    # PATCH only the required_status_checks subresource. This endpoint
-    # accepts a partial body and leaves all other branch-protection fields
-    # untouched — the safe way to add required checks without enumerating
-    # (and potentially dropping) other settings.
-    SUBRES="$PROTECTION_URL/required_status_checks"
-    PATCH_BODY="$(jq -n \
-        --argjson checks "$(printf '%s\n' "${CHECK_NAMES[@]}" | jq -R . | jq -s .)" \
-        '{strict: true, contexts: $checks}')"
+    CHECKS_JSON="$(printf '%s\n' "${CHECK_NAMES[@]}" | jq -R . | jq -s .)"
 
-    info "PATCH $SUBRES"
-    if RESP="$(gh api -X PATCH "$SUBRES" --input - <<<"$PATCH_BODY" 2>&1)"; then
+    # Status checks already enabled: PATCH only the required_status_checks
+    # subresource. It accepts a partial body and leaves all other
+    # branch-protection fields untouched.
+    if [[ "$(jq -r '.required_status_checks != null' <<<"$CURRENT")" == "true" ]]; then
+        SUBRES="$PROTECTION_URL/required_status_checks"
+        PATCH_BODY="$(jq -n --argjson checks "$CHECKS_JSON" \
+            '{strict: true, contexts: $checks}')"
+
+        info "PATCH $SUBRES"
+        if RESP="$(gh api -X PATCH "$SUBRES" --input - <<<"$PATCH_BODY" 2>&1)"; then
+            ok "required status checks applied (${#CHECK_NAMES[@]} contexts, strict=true)"
+            exit 0
+        else
+            err "PATCH failed:"
+            printf '%s\n' "$RESP" >&2
+            exit 1
+        fi
+    fi
+
+    # Status checks not enabled: the subresource PATCH answers 404
+    # "Required status checks not enabled" — it can update the block, never
+    # create it. Re-PUT the whole protection instead, translated from the
+    # GET shape ({enabled: bool} wrappers, user/team/app objects) to the PUT
+    # shape (bare bools, login/slug strings) so every existing setting is
+    # carried over. required_signatures is deliberately absent: it is a
+    # separate endpoint and not a PUT field (see header).
+    info "required status checks not enabled yet — re-applying protection with them added"
+    PUT_BODY="$(jq --argjson checks "$CHECKS_JSON" '
+        def enabled($f): (.[$f].enabled // false);
+        def actors: {
+            users: [(.users // [])[].login],
+            teams: [(.teams // [])[].slug],
+            apps:  [(.apps  // [])[].slug]
+        };
+        {
+            required_status_checks: {strict: true, contexts: $checks},
+            enforce_admins: enabled("enforce_admins"),
+            required_pull_request_reviews: (
+                .required_pull_request_reviews
+                | if . == null then null else
+                    {
+                        dismiss_stale_reviews: (.dismiss_stale_reviews // false),
+                        require_code_owner_reviews: (.require_code_owner_reviews // false),
+                        require_last_push_approval: (.require_last_push_approval // false),
+                        required_approving_review_count: (.required_approving_review_count // 0)
+                    }
+                    + (if .dismissal_restrictions then
+                        {dismissal_restrictions: (.dismissal_restrictions | actors)} else {} end)
+                    + (if .bypass_pull_request_allowances then
+                        {bypass_pull_request_allowances: (.bypass_pull_request_allowances | actors)} else {} end)
+                  end
+            ),
+            restrictions: (.restrictions | if . == null then null else actors end),
+            required_linear_history: enabled("required_linear_history"),
+            allow_force_pushes: enabled("allow_force_pushes"),
+            allow_deletions: enabled("allow_deletions"),
+            block_creations: enabled("block_creations"),
+            required_conversation_resolution: enabled("required_conversation_resolution"),
+            lock_branch: enabled("lock_branch"),
+            allow_fork_syncing: enabled("allow_fork_syncing")
+        }' <<<"$CURRENT")"
+
+    info "PUT $PROTECTION_URL"
+    if RESP="$(gh api -X PUT "$PROTECTION_URL" --input - <<<"$PUT_BODY" 2>&1)"; then
         ok "required status checks applied (${#CHECK_NAMES[@]} contexts, strict=true)"
+        ok "all other protection settings carried over from the current state"
         exit 0
     else
-        err "PATCH failed:"
+        err "PUT failed:"
         printf '%s\n' "$RESP" >&2
         exit 1
     fi

@@ -22,7 +22,10 @@ bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/
 # 2. After the first CI run completes on the default branch:
 bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/REPO --from-current-checks
 #    Discovers successful check-run names from /commits/{default}/check-runs
-#    and PATCHes them in as required contexts with strict=true.
+#    and sets them as required contexts with strict=true: PATCHes the
+#    existing status-check block, or — when step 1 left none — re-PUTs the
+#    protection with every current setting carried over (the PATCH
+#    subresource answers 404 "Required status checks not enabled").
 ```
 
 The script is idempotent: re-running on an already-compliant repo reports `already compliant` and exits 0. Drift on opinionated fields exits 1 with a per-field diff (no silent clobber of admin choices).
