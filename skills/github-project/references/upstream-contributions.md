@@ -29,17 +29,19 @@ with the same title. herdrdev/herdr#2045 was closed that way; the same request
 was open as discussion #2047 with no maintainer answer.
 
 ```bash
-gh api graphql -f query='{repository(owner:"OWNER",name:"REPO"){discussions(first:50,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title closed url}}}}'
+# search by keyword, not the newest N — a matching thread can be years old
+gh api graphql -f q='repo:OWNER/REPO <keywords>' -f query='query($q:String!){search(query:$q,type:DISCUSSION,first:25){nodes{... on Discussion{number title closed url}}}}'
 ```
 
 **Check whether the repo accepts pull requests from you at all — before writing
 code.** Some projects gate contributions on an allowlist: `CONTRIBUTING.md` says
 unsolicited pull requests are closed automatically, and only accounts listed in
 a file such as `.github/APPROVED_CONTRIBUTORS` (or the maintainers file) may
-open one. A finished patch has no route in there, and asking to be added is
-usually declined as well; the allowed step is a comment on the discussion. Read
-those two files with the issue and PR lists, and match them against the account
-`gh auth status` reports.
+open one. A finished patch then has no route in there. Follow whatever process the
+repository documents for getting access — and where it documents none, or
+forbids asking (herdr's `CONTRIBUTING.md` does), the remaining step is a comment
+on the relevant discussion. Read those two files with the issue and PR lists,
+and match them against the account `gh auth status` reports.
 
 ## Read the contribution contract — and run ALL of it
 
