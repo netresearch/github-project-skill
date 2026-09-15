@@ -21,6 +21,26 @@ gh pr list -R OWNER/REPO --state open      # the fix may already be in flight
 
 An empty keyword search is first a broken query, never evidence of absence.
 
+**Read Discussions too, and do not read a bot-closed issue as a decision.** Where
+a project routes feature requests to Discussions, the issue tracker takes bug
+reports only and a bot closes everything else within the minute — `NOT_PLANNED`
+there is triage, not a verdict, while the live thread sits open in Discussions
+with the same title. herdrdev/herdr#2045 was closed that way; the same request
+was open as discussion #2047 with no maintainer answer.
+
+```bash
+gh api graphql -f query='{repository(owner:"OWNER",name:"REPO"){discussions(first:50,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title closed url}}}}'
+```
+
+**Check whether the repo accepts pull requests from you at all — before writing
+code.** Some projects gate contributions on an allowlist: `CONTRIBUTING.md` says
+unsolicited pull requests are closed automatically, and only accounts listed in
+a file such as `.github/APPROVED_CONTRIBUTORS` (or the maintainers file) may
+open one. A finished patch has no route in there, and asking to be added is
+usually declined as well; the allowed step is a comment on the discussion. Read
+those two files with the issue and PR lists, and match them against the account
+`gh auth status` reports.
+
 ## Read the contribution contract — and run ALL of it
 
 `CONTRIBUTING.md` or the README's contributing section, every linked step, the
