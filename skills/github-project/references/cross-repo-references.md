@@ -55,15 +55,15 @@ grep -noE '[^/A-Za-z0-9_.-]#[0-9]+' body.md
 
 ## Referencing code: a permalink needs a commit SHA
 
-Pointing at source in an issue, PR or review comment has the same failure mode
-one level over: a link that looks right and does something else.
+Pointing at source in an issue, PR or review comment fails the same way a bare
+`#NN` does: the link looks right and quietly means something else.
 
 GitHub renders the **embedded code preview** — file, line range, syntax
 highlighting, always matching what it points at — only for a URL that carries a
 **commit SHA** and sits alone on its own line:
 
 ```markdown
-https://github.com/owner/repo/blob/2a44dd1527a1f70da48d6b484bcb7a8849a6e5fb/src/File.php#L164-L173
+https://github.com/owner/repo/blob/0000000000000000000000000000000000000000/src/File.php#L164-L173
 ```
 
 A `/blob/<tag>/…` or `/blob/<branch>/…` link is **not** a permalink. It renders
@@ -78,7 +78,7 @@ plain URL. Cross-repo, the SHA still buys the thing that matters most — the li
 keeps pointing at the code you meant — so use it there too, and write the
 sentence so it reads without the preview.
 
-Two consequences worth stating, because both cost a correction:
+Two consequences follow:
 
 **Do not paste the code next to the link.** A rendered permalink already shows
 the source. A copy beside it is duplication that goes stale, and an abbreviated
