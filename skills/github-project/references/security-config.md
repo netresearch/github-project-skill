@@ -243,7 +243,7 @@ The `failed` status is the second thing this listing exposes: a configuration th
 
 ### A default-setup analysis with no source does not close stale alerts
 
-When default setup runs a language for which the repository contains **no source files**, the analysis completes but records `error: "unsuccessful execution"` with `results_count: 0` and `rules_count: 0`. Such an analysis does **not** count as having re-observed the code, so existing alerts for that language are not closed — deleting the offending file does not retire the alert, and if the scanner is disabled afterwards, it strands permanently with no way to close it honestly (`false positive` / `won't fix` / `used in tests` are all wrong labels for "the code is gone").
+When default setup runs a language for which the repository contains **no source files**, the analysis completes but records `error: "unsuccessful execution"` with `results_count: 0` and `rules_count: 0`. Such an analysis does **not** count as having re-observed the code, so existing alerts for that language are not closed — deleting the offending file does not retire the alert, and if the scanner is disabled afterwards, nothing will ever close it automatically. The honest manual close in that case is `mitigated`: removing the code is a mitigation, whereas `false positive`, `won't fix` and `used in tests` all assert something untrue about code that no longer exists.
 
 ```bash
 # Why did a deletion not close the alert? Check the analysis, not the alert.
@@ -255,7 +255,7 @@ Seen on `netresearch/claude-code-marketplace`: a `/language:python` analysis ran
 
 ### Dismissal comments are capped at 280 characters here too
 
-`PATCH /repos/OWNER/REPO/code-scanning/alerts/N` rejects a `dismissed_comment` over 280 characters with HTTP 422, exactly like the Dependabot endpoint ([`dependency-management.md`](dependency-management.md)) — but the reason enum is different: `false positive`, `won't fix`, `used in tests` (with spaces, not underscores).
+`PATCH /repos/OWNER/REPO/code-scanning/alerts/N` rejects a `dismissed_comment` over 280 characters with HTTP 422, exactly like the Dependabot endpoint ([`dependency-management.md`](dependency-management.md)) — but the reason enum is different: `false positive`, `won't fix`, `used in tests`, `mitigated` (with spaces, not underscores). The membership is not guesswork: sending an invalid value returns a 422 that lists all four, which is the cheapest way to check an enum you are unsure about.
 
 ### Supported Languages — PHP Is NOT Supported
 
