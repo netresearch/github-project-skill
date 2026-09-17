@@ -224,6 +224,39 @@ gh api repos/OWNER/REPO/code-scanning/default-setup -X PATCH -f state=not-config
 gh api repos/OWNER/REPO/code-scanning/default-setup --jq 'if .state == "not-configured" then "OK: Default Setup disabled" else "FAIL: Default Setup still enabled - DISABLE IT" end'
 ```
 
+### An `enforced` org configuration does NOT hold the per-repo toggle on
+
+An org code-security configuration attached with `enforcement: enforced` and `code_scanning_default_setup: enabled` looks like it guarantees the scanner is on. It does not — the per-repo toggle can be off while the attachment still reads `enforced`, and nothing reports the divergence. So **org configuration state is not evidence about a repository**; query the repository.
+
+```bash
+# What the org configuration CLAIMS, per repo
+gh api "orgs/ORG/code-security/configurations/ID/repositories?per_page=100" --paginate \
+  --jq '.[] | [.status, .repository.name] | @tsv'
+
+# What is actually true for one repo — the only answer that counts
+gh api repos/OWNER/REPO/code-scanning/default-setup --jq '.state'
+```
+
+Measured on `netresearch` 2026-09-17: configuration 425 reported `enforced` for all 287 public repos, while `simple-ldap-go`, `jira-skill`, `git-workflow-skill`, `timetracker` and `claude-code-marketplace` each reported `not-configured` — correctly so, since all five run advanced setup, which requires default setup off. A repo can therefore sit in permanent, silent contradiction with its org policy.
+
+The same listing also exposes `status: failed` — a configuration that never applied at all, so none of its settings are in force. Nine of the 287 were in that state and nothing alarmed on it.
+
+### A default-setup analysis with no source does not close stale alerts
+
+When default setup runs a language for which the repository contains **no source files**, the analysis completes but records `error: "unsuccessful execution"` with `results_count: 0` and `rules_count: 0`. Such an analysis does **not** count as having re-observed the code, so existing alerts for that language are not closed — deleting the offending file does not retire the alert, and if the scanner is disabled afterwards, it strands permanently with no way to close it honestly (`false positive` / `won't fix` / `used in tests` are all wrong labels for "the code is gone").
+
+```bash
+# Why did a deletion not close the alert? Check the analysis, not the alert.
+gh api "repos/OWNER/REPO/code-scanning/analyses?tool_name=CodeQL&ref=refs/heads/main&per_page=20" \
+  --jq '.[] | [.created_at, .commit_sha[0:7], .category, (.results_count|tostring), (.error // "-")] | @tsv'
+```
+
+Seen on `netresearch/claude-code-marketplace`: a `/language:python` analysis ran *after* the commit that deleted the only Python file, but the repo held 0 `.py` files at that commit, so the analysis errored empty and a `py/clear-text-storage-sensitive-data` alert stayed open for eight months. It closed only once a scanner ran against a tree that actually contained Python.
+
+### Dismissal comments are capped at 280 characters here too
+
+`PATCH /repos/OWNER/REPO/code-scanning/alerts/N` rejects a `dismissed_comment` over 280 characters with HTTP 422, exactly like the Dependabot endpoint ([`dependency-management.md`](dependency-management.md)) — but the reason enum is different: `false positive`, `won't fix`, `used in tests` (with spaces, not underscores).
+
 ### Supported Languages — PHP Is NOT Supported
 
 CodeQL does **not** support PHP (as of 2026; tracked in [community discussion #158392](https://github.com/orgs/community/discussions/158392)). On a PHP/TYPO3 repo, the only languages worth scanning are:
