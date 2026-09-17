@@ -70,6 +70,14 @@ A `/blob/<tag>/…` or `/blob/<branch>/…` link is **not** a permalink. It rend
 as a bare link with no preview, and later resolves to different code, because
 both refs move. In the browser, `y` rewrites the address to the permalink form.
 
+**The preview has two limits worth knowing before you rely on it.** It renders
+only in a **comment** — issue, PR, review — never in a Markdown file in the
+repository. And it renders only where the comment lives in the **same
+repository** as the linked code; a permalink into another repository stays a
+plain URL. Cross-repo, the SHA still buys the thing that matters most — the link
+keeps pointing at the code you meant — so use it there too, and write the
+sentence so it reads without the preview.
+
 Two consequences worth stating, because both cost a correction:
 
 **Do not paste the code next to the link.** A rendered permalink already shows
@@ -83,7 +91,12 @@ exactly the question you least want — "was the file modified locally?" — and
 upstream maintainers have closed reports on that basis.
 
 ```bash
-sha=$(gh api repos/owner/repo/commits/<tag-or-branch> --jq .sha)
-gh api "repos/owner/repo/contents/<path>?ref=$sha" --jq .content \
+repo=owner/repo; ref=v1.2.3; path=src/File.php
+sha=$(gh api "repos/$repo/commits/$ref" --jq .sha)
+gh api "repos/$repo/contents/$path?ref=$sha" --jq .content \
   | base64 -d | sed -n '164,173p'     # confirm the range before linking it
 ```
+
+The placeholders are variables on purpose: written inline as `<tag-or-branch>`,
+the shell reads `<` as a redirection and the command runs without the ref
+instead of failing loudly.
