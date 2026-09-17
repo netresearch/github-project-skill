@@ -109,7 +109,7 @@ State what a change does, not how good it is.
 | No editorializing | `references/no-editorializing.md` |
 | Fork merge base | `references/pr-commit-cleanup.md` |
 | Multi-repo batch ops | `references/multi-repo-operations.md` |
-| Cross-repo references | `references/cross-repo-references.md` |
+| Cross-repo references, code permalinks | `references/cross-repo-references.md` |
 | Foreign-repo contributions | `references/upstream-contributions.md` |
 | Reusable workflow security | `references/reusable-workflow-security.md` |
 | Reusable workflow pitfalls | `references/reusable-workflow-pitfalls.md` |
