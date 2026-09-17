@@ -237,9 +237,9 @@ gh api "orgs/ORG/code-security/configurations/ID/repositories?per_page=100" --pa
 gh api repos/OWNER/REPO/code-scanning/default-setup --jq '.state'
 ```
 
-Measured on `netresearch` 2026-09-17: configuration 425 reported `enforced` for all 287 public repos, while `simple-ldap-go`, `jira-skill`, `git-workflow-skill`, `timetracker` and `claude-code-marketplace` each reported `not-configured` — correctly so, since all five run advanced setup, which requires default setup off. A repo can therefore sit in permanent, silent contradiction with its org policy.
+Measured on `netresearch` 2026-09-17: of 287 public repos, configuration 425 reported `enforced` for 278 and `failed` for 9. Among the 278 `enforced`, `simple-ldap-go`, `jira-skill`, `git-workflow-skill`, `timetracker` and `claude-code-marketplace` each reported `not-configured` at the repo endpoint — correctly so, since all five run advanced setup, which requires default setup off. A repo can therefore sit in permanent, silent contradiction with its org policy.
 
-The same listing also exposes `status: failed` — a configuration that never applied at all, so none of its settings are in force. Nine of the 287 were in that state and nothing alarmed on it.
+The `failed` status is the second thing this listing exposes: a configuration that never applied at all, so none of its settings are in force. Those 9 were in that state and nothing alarmed on it.
 
 ### A default-setup analysis with no source does not close stale alerts
 
