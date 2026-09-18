@@ -85,9 +85,11 @@ Three recurring bugs in ad-hoc watchers:
 
 `POST …/requested_reviewers` for `copilot-pull-request-reviewer[bot]` returns success, but the request can silently vanish without a review ever landing: `reviewRequests` comes back `[]` and `latestReviews` stays empty on the head. Observed after a force-push replaced the head shortly after the request. After requesting, verify (`gh pr view N --json reviewRequests,latestReviews`); if both are empty a few minutes later, re-request once — the second request reliably sticks.
 
-### `gh pr view --json merged` is not a field
+### Verify every `--json` field name before a watcher depends on it
 
-The rollup field is `mergedAt` (null while open) — or ask `state` (`MERGED`/`OPEN`/`CLOSED`). `--json merged` errors "Unknown JSON field"; GraphQL (`pullRequest.merged`) does have the boolean.
+A guessed `--json` field fails the **whole** call — `gh` exits non-zero and prints "Unknown JSON field" — so a loop that reads the empty result as state answers confidently and wrongly. Run `gh pr view <n> --json` with no value once and read the printed field list before writing the loop. Two names that are commonly guessed and do not exist: `merged` (the rollup field is `mergedAt`, null while open; or ask `state` for `MERGED`/`OPEN`/`CLOSED` — GraphQL's `pullRequest.merged` does have the boolean) and `mergeQueueEntry` (queue state is GraphQL-only: `pullRequest { mergeQueueEntry { state position } }`).
+
+Two guards that belong in any hand-rolled watcher. **An empty or failed query is a retry, never a terminal state** — see the rate-limit section below for why a 403 mid-loop is a transport answer, not a finding. And **an empty `conclusion` means unfinished, not failed**: `gh run list --json conclusion` returns `""`, not `null`, while a run is queued or in progress, so a red-check filter written as `select(.conclusion != null and .conclusion != "success")` counts every *running* job as a failure. Test `!= null and != "" and != "success" and != "skipped"`, and select with `--commit <sha>` rather than `--branch` so the set is bound to the commit under test.
 
 ### `/stats/*` answers HTTP 202 with the body `{}` — call it again
 
