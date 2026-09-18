@@ -15,6 +15,8 @@ Recurring shell-scripting gotchas that turn workflow `run:` steps into silent da
 | Dispatch payload reaches `rm -Rf`, `git clone` or a console command | `client_payload.*` interpolated into a script instead of passed as an env var | [Untrusted payload fields](#untrusted-payload-fields-in-a-run-step-or-a-remote-script) |
 | Annotations stop appearing mid-job after a rejected input | An error message echoed an untrusted value containing `\n::stop-commands::` | [Untrusted payload fields](#untrusted-payload-fields-in-a-run-step-or-a-remote-script) |
 | Expression fails to evaluate; the file "looks right" | `''` inside a single-quoted YAML scalar collapsed to one quote | [toJSON in a single-quoted scalar](#tojson-inside-a-single-quoted-yaml-scalar) |
+| `gh` fails with `fatal: not a git repository`, in a job that never checks out | `gh` infers the repository from a git remote, and there is none | [gh in a checkout-less job](#gh-in-a-job-that-does-not-check-out) |
+| A `run:` step passed every local case and still broke in CI | The stub answered regardless of the environment the step actually runs in | [Exercising a run: step locally](#exercising-a-run-step-locally) |
 
 ## `set -e` + command substitution
 
@@ -285,6 +287,66 @@ data: >-
 Expression strings are single-quoted, and inside a single-quoted YAML scalar `''` is the escape for one quote. The parser hands the runner `… || ')` and the workflow fails at expression evaluation, far from the line that caused it. A single-quoted scalar is not ruled out — it works when every quote of the expression is doubled (`format(''{0}'', x)`, an empty string as `''''`) — but the folded scalar removes that bookkeeping, and one missed doubling changes the expression silently. Check what the file actually parses to (`yq '.jobs.x.steps[0].env.data'`) rather than what it looks like.
 
 Two related points on building JSON in a workflow: `toJSON` emits the value's native type, so an id that arrives as a number is no longer a JSON string for the receiver — wrap it (`toJSON(format('{0}', …))`) when the consumer expects one. And hand-quoting the field (`"id":"${{ … }}"`) is the injection: a quote in the value appends keys to your body, which a downstream `jq -c .` then resolves in the attacker's favour.
+
+## `gh` in a job that does not check out
+
+**Bug:** a job that only downloads an artifact — a release-publishing job, an evidence collector, anything that works on `dist/` rather than on the tree — calls `gh` and gets:
+
+```
+fatal: not a git repository (or any of the parent directories): .git
+```
+
+`gh` resolves the repository from a git remote in the working directory. `GH_TOKEN` is set, the API is reachable, the permissions are right, and it still cannot tell which repository you mean.
+
+**Fix:** name it, from the context GitHub already provides.
+
+```yaml
+env:
+  GH_TOKEN: ${{ github.token }}
+  REPO: ${{ github.repository }}
+run: |
+  gh release view "$TAG" --repo "$REPO" --json assets
+```
+
+Cheap source check before shipping such a step: every `gh <command>` in it carries `--repo`.
+
+```bash
+yq -r '.jobs.<job>.steps[-1].run' .github/workflows/x.yml | grep -c 'gh release '
+yq -r '.jobs.<job>.steps[-1].run' .github/workflows/x.yml | grep -E 'gh release ' | grep -c -- '--repo'
+```
+
+The two numbers must match. This shipped to a fleet-wide reusable workflow and failed on every release until it was caught.
+
+## Exercising a `run:` step locally
+
+A `run:` step is shell, so it can be run before it reaches CI — which is worth doing for anything that gates a release, because its failure path is the part CI will not exercise on a good day.
+
+```bash
+# the step itself, verbatim, without hand-copying it out of the YAML
+yq -r '.jobs.<job>.steps[-1].run' .github/workflows/x.yml > step.sh
+
+# a stub for whatever CLI it drives, first on PATH
+mkdir -p bin && cat > bin/gh <<'SHIM'
+#!/usr/bin/env bash
+...answer per $MODE...
+SHIM
+chmod +x bin/gh
+
+# one case per invocation, with the step's own set-options and a captured status
+( cd sandbox; PATH="$PWD/../bin:$PATH" MODE=missing GITHUB_OUTPUT=out.txt bash step.sh; echo "rc=$?" )
+```
+
+One case per `bash -c`/subshell matters for the same reason it does anywhere: `set -e` behaves differently when a command's status is consumed by a pipe or a `||`, so a harness that wraps the variants in functions measures the harness.
+
+**The stub must model the environment, not only the logic.** A stub that answers every call regardless of context proves the branches and nothing about where the step runs. Four such cases passed for a step that then failed in CI on `fatal: not a git repository` — the stub had never cared which directory it was called from. Teaching it to refuse a call that omits `--repo` when the working directory is not a checkout turned that defect into a failing case:
+
+```bash
+if ! printf '%s\n' "$@" | grep -qx -- '--repo'; then
+  git rev-parse --git-dir >/dev/null 2>&1 || { echo "failed to run git: fatal: not a git repository" >&2; exit 1; }
+fi
+```
+
+Ask of any such harness: *if the real thing broke the way it actually breaks, would this stub notice?*
 
 ## Related
 
