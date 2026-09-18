@@ -87,15 +87,15 @@ Three recurring bugs in ad-hoc watchers:
 
 **Whether that silence also lets the merge through depends on the check's configuration.** If the absent check is *required* by branch protection or a ruleset, GitHub holds it at `Expected` and blocks the merge — visibly stuck, if unexplained. If it is **not** required, nothing holds it: the pull request reads green, `mergeStateStatus` reaches `CLEAN`, and a whole workflow having never run leaves no trace at all. The second case is the dangerous one, and it is the common one for a repository whose required-check list has not kept up with its workflow list.
 
-Before merging, list workflow **runs**, not just checks — and print `headSha`, so a run belonging to an earlier commit cannot be read as the current one:
+Before merging, list workflow **runs**, not just checks — bound to the commit under test, and printing `headSha` as a cross-check:
 
 ```bash
-gh run list --repo O/R --branch "$BR" --limit 20 \
+gh run list --repo O/R --commit "$SHA" --limit 20 \
   --json workflowName,headSha,status,conclusion \
   --jq '.[] | "\(.workflowName) [\(.headSha[0:8])]: \(.status)/\(.conclusion)"'
 ```
 
-`--branch` is the right selector for a pull request's runs, but it spans every commit on the branch, so the `headSha` column is what makes the listing trustworthy — without it an older green run reads exactly like a current one. `--commit <sha>` is the tighter filter and the one to use for push-triggered runs; note that it does **not** find `pull_request` runs by the branch tip, because such a run records the computed *merge* commit as its `headSha`.
+Use `--commit`, not `--branch`: the latter spans every commit on the branch, so an older green run reads exactly like a current one. This holds for `pull_request` runs as well — **a run's `headSha` is the pull request's head commit**, so the branch tip is the right value to pass. (Do not confuse that field with `GITHUB_SHA` *inside* a `pull_request` run, which is the computed merge commit — that is what the `gh run rerun` section above is about. The run's API metadata and the checkout the job sees name two different commits.) Measured on this repository: `gh run list --commit <branch tip>` returns the `pull_request` and `pull_request_target` runs for that head.
 
 Two follow-ons. A run's top-level `status` can still read `queued` while its jobs are nearly done, so report progress from `runs/<id>/jobs` rather than the run field. And a startup-failed run cannot be re-run at all (`This workflow run cannot be retried`) — it needs a fresh triggering event.
 
@@ -107,7 +107,7 @@ Two follow-ons. A run's top-level `status` can still read `queued` while its job
 
 A guessed `--json` field fails the **whole** call — `gh` exits non-zero and prints "Unknown JSON field" — so a loop that reads the empty result as state answers confidently and wrongly. Run `gh pr view <n> --json` with no value once and read the printed field list before writing the loop. Two names that are commonly guessed and do not exist: `merged` (the rollup field is `mergedAt`, null while open; or ask `state` for `MERGED`/`OPEN`/`CLOSED` — GraphQL's `pullRequest.merged` does have the boolean) and `mergeQueueEntry` (queue state is GraphQL-only: `pullRequest { mergeQueueEntry { state position } }`).
 
-Two guards that belong in any hand-rolled watcher. **An empty or failed query is a retry, never a terminal state** — see the rate-limit section below for why a 403 mid-loop is a transport answer, not a finding. And **an empty `conclusion` means unfinished, not failed**: `gh run list --json conclusion` returns `""`, not `null`, while a run is queued or in progress, so a red-check filter written as `select(.conclusion != null and .conclusion != "success")` counts every *running* job as a failure. Test `!= null and != "" and != "success" and != "skipped" and != "neutral"` — GitHub counts `neutral` alongside `success` and `skipped` as satisfying a required check, so leaving it out of the filter reports a passing run as red. Bind the set to the commit under test with `--commit <sha>` where the run is push-triggered, or keep `--branch` and read `headSha` (see the startup-failure section above for why the two differ on a pull request).
+Two guards that belong in any hand-rolled watcher. **An empty or failed query is a retry, never a terminal state** — see the rate-limit section below for why a 403 mid-loop is a transport answer, not a finding. And **an empty `conclusion` means unfinished, not failed**: `gh run list --json conclusion` returns `""`, not `null`, while a run is queued or in progress, so a red-check filter written as `select(.conclusion != null and .conclusion != "success")` counts every *running* job as a failure. Test `!= null and != "" and != "success" and != "skipped" and != "neutral"` — GitHub counts `neutral` alongside `success` and `skipped` as satisfying a required check, so leaving it out of the filter reports a passing run as red. Bind the set to the commit under test with `--commit <sha>` rather than `--branch`, which spans the whole branch.
 
 Bound the loop as well. A check that no workflow produces never reaches a terminal state, so a watcher waiting for it by name waits forever; cap the rounds and report "no applicable check" as its own outcome, distinct from pass and from fail.
 
