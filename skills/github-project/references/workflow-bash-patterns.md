@@ -10,6 +10,7 @@ Recurring shell-scripting gotchas that turn workflow `run:` steps into silent da
 | Detection works for one match but "forgets" when several match | SIGPIPE race under `set -o pipefail` with early-exiting readers | [Pipefail + early readers](#pipefail--early-readers) |
 | Binary has mangled version/ldflag; release log "looks fine" | `2>&1` merged stderr into a captured variable | [stderr merge contamination](#stderr-merge-contamination) |
 | ldflags silently drop values; no error | Expression in top-level job `with:` evaluated BEFORE reusable checkout | [Expression context availability](#expression-context-availability) |
+| Matrix cell keeps receiving an input the condition was meant to suppress; the fix looks applied and changes nothing | `''` is falsy, so `cond && '' \|\| value` always yields `value` | [The empty string is falsy](#the-empty-string-is-falsy-in-actions-expressions) |
 | Workflow runs on triggers it shouldn't, all jobs fail instantly | File failed validation — GitHub creates a failing run regardless of `on:` match | [Workflow-file validation failure](#workflow-file-validation-failure) |
 | Random startup_failure across the whole fleet after a template change | Caller job permissions < reusable job's declared permissions | [Permission propagation](#permission-propagation) |
 | Dispatch payload reaches `rm -Rf`, `git clone` or a console command | `client_payload.*` interpolated into a script instead of passed as an env var | [Untrusted payload fields](#untrusted-payload-fields-in-a-run-step-or-a-remote-script) |
@@ -119,6 +120,28 @@ Even worse: on reusable-workflow callers with no steps of their own, `hashFiles(
 **Fix:** either move the conditional into the reusable workflow's steps (post-checkout), OR accept the cost of the unconditional setup. For `setup-bun` specifically, `bun install` takes ~10s and the commands behind it can be gated with `if [ -f package.json ]` inside the script.
 
 **Rule of thumb:** the caller's `with:` block is static-ish — `github.*` context is available, `steps.*` / `hashFiles()` are not. Use `actionlint` locally before pushing.
+
+## The empty string is falsy in Actions expressions
+
+**Bug:**
+
+```yaml
+${{ matrix.prefer-lowest && '' || matrix.symfony }}   # ALWAYS yields matrix.symfony
+```
+
+GitHub-Actions expressions treat `''` as falsy, so the truthy branch is discarded and the `||` branch wins unconditionally. The cell keeps receiving the input the condition was meant to suppress, and the fix looks applied while doing nothing.
+
+**Fix:** the non-empty value belongs in the truthy branch. To suppress an input, invert the condition and put `''` behind `||`:
+
+```yaml
+${{ !matrix.prefer-lowest && matrix.symfony || '' }}  # correct
+```
+
+Ternaries with a non-empty string in both branches (`cond && 'lowest' || 'highest'`) are unaffected.
+
+**Sweep for the broken form:** `grep -rnE "&& '' \|\|" .github/workflows/`.
+
+The reason this is worth a rule rather than a footnote is how it fails: the workflow stays valid, actionlint says nothing, and the matrix cell simply stays red — which invites a diagnosis somewhere else entirely. Confirm the fix actually ran (`gh run view <id> --json headSha`) before blaming a dependency.
 
 ## Workflow-file validation failure
 
