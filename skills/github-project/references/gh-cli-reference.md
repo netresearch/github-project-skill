@@ -81,6 +81,20 @@ Three recurring bugs in ad-hoc watchers:
 - Reruns are correct only for genuinely transient infra failures where the same code state should pass: runner/network blips, registry pull flakes (e.g. `Get "https://registry-1.docker.io/v2/": context deadline exceeded`), Sigstore/Rekor 409s. Don't debug the workflow for those — just `gh run rerun --failed`.
 - **A bad Codecov report is not one of them.** Codecov keys its report by commit SHA, so a rerun against the same SHA is served the report it already has; an incomplete upload survives it unchanged. The identical number on the second attempt then reads as a reproduction and invites the wrong diagnosis — "the coverage is unstable" — when the measurement simply never ran again. Force a fresh upload with a new SHA carrying the same tree: `git commit --amend --no-edit -S && git push --force-with-lease`. (Observed on a pull request whose diff deleted one YAML file and could not affect coverage: `codecov/project` reported `-0.38%`, a workflow rerun reported `-0.38%` again, and the amended commit came back green on all 20 checks.)
 
+### A startup-failed run is invisible in `gh pr checks` and `statusCheckRollup`
+
+`conclusion: startup_failure` means GitHub rejected the workflow before any job began — invalid YAML, a missing reusable, or an action the repository's Actions allowlist forbids. Such a run creates **no check run**, and both `gh pr checks` and `statusCheckRollup` enumerate check runs, not workflow runs. A workflow that never started therefore contributes nothing to enumerate, and its absence is indistinguishable from "not applicable": the pull request reads green and `mergeStateStatus` reaches `CLEAN` while a whole workflow never ran. (The reusable-workflow causes that produce this — a dead `uses:` reference, a permission mismatch — are in `reusable-workflow-pitfalls.md`; this is the gh-CLI side of the same blind spot.)
+
+Before merging, list workflow **runs** for the head ref, not just checks:
+
+```bash
+gh run list --repo O/R --branch "$BR" --limit 20 \
+  --json workflowName,status,conclusion \
+  --jq '.[] | "\(.workflowName): \(.status)/\(.conclusion)"'
+```
+
+Two follow-ons. A run's top-level `status` can still read `queued` while its jobs are nearly done, so report progress from `runs/<id>/jobs` rather than the run field. And a startup-failed run cannot be re-run at all (`This workflow run cannot be retried`) — it needs a fresh triggering event.
+
 ### A Copilot review request can evaporate — verify after requesting
 
 `POST …/requested_reviewers` for `copilot-pull-request-reviewer[bot]` returns success, but the request can silently vanish without a review ever landing: `reviewRequests` comes back `[]` and `latestReviews` stays empty on the head. Observed after a force-push replaced the head shortly after the request. After requesting, verify (`gh pr view N --json reviewRequests,latestReviews`); if both are empty a few minutes later, re-request once — the second request reliably sticks.
