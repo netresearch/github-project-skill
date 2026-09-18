@@ -332,3 +332,35 @@ NOT count against the quota):
 ```bash
 gh api rate_limit --jq '(.resources.core? // empty) | {remaining, reset}'
 ```
+
+### REST and GraphQL are separate budgets — read both, and never score an error as a state
+
+A user token carries **5,000/hr for REST and a separate 5,000/hr for GraphQL**,
+which reset independently. `gh api` spends the first, `gh pr view` and
+`gh pr checks` spend the second, so a long watch exhausts one while the other
+still looks healthy — and the single-resource check above will not show it:
+
+```bash
+gh api rate_limit --jq '{core: .resources.core, graphql: .resources.graphql}'
+```
+
+Watch loops are what actually empties these. A 20-PR merge campaign running
+`gh pr view` every 150 s across several parallel watchers drained GraphQL first
+and REST shortly after, forcing a ~35-minute pause mid-merge: 21 pull requests
+× 2 calls × 24 rounds/hr × several watchers adds up unnoticed. Use one watcher
+for a fleet, never several against the same list, and an interval of 5–10
+minutes.
+
+**The failure mode that costs most is not the pause, it is the misreading.** A
+403 inside a loop scored as "pull request closed" makes the loop report that
+everything is finished when in truth the budget is empty. Carry the error path
+explicitly as `unknown` and stop the loop loudly; a transport failure is a
+statement about the request, never about the world.
+
+**When GraphQL is exhausted, fall back to REST** for what REST can answer:
+`gh api repos/<owner>/<repo>/pulls/N --jq .mergeable_state` for state, and
+`gh api -X POST repos/<owner>/<repo>/pulls -f title=… -f head=<branch> -f
+base=main -f body=…` to open one (it returns `.html_url`). Keep GraphQL for what
+only it does — review-thread resolution, `enqueuePullRequest`. **Merging stays
+on `gh pr merge`**: a REST `PUT /merge` bypasses local merge gating and is not a
+substitute.
