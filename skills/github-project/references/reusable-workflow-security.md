@@ -153,41 +153,63 @@ secret that does not exist yet — and nothing else. A build step can append to
 `$GITHUB_ENV` and `$GITHUB_PATH`, two ordinary writable files whose contents
 the runner applies to **every subsequent step**:
 
-- `NODE_OPTIONS=--require /tmp/x.js` written to `$GITHUB_ENV` is picked up by
-  `create-github-app-token` and `github-script`, both Node actions, both then
-  holding the token.
 - A directory prepended via `$GITHUB_PATH` intercepts the `gh` that a later
-  `run:` step calls with `GH_TOKEN` exported.
+  `run:` step calls with `GH_TOKEN` exported, and any other binary those steps
+  invoke by name.
+- Any variable a later step or action reads from the environment can be set
+  the same way through `$GITHUB_ENV`.
+
+One escalation that does **not** work is worth knowing, because it is the one
+people reach for: `NODE_OPTIONS` is on the runner's block list for this file
+(`_setEnvBlockList` in `src/Runner.Worker/FileCommandManager.cs`), so writing
+it to `$GITHUB_ENV` is skipped with a message and never reaches the Node
+actions. The route through `$GITHUB_PATH` is not blocked.
 
 Put the build and the token in **separate jobs** and pass the product between
 them as an artifact:
 
 ```yaml
 jobs:
-  build:                       # no secret in scope at all
+  build:                       # no application or publishing secret in scope
+    runs-on: ubuntu-latest
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@<sha>
+        with: { persist-credentials: false }
       - run: npm ci --ignore-scripts && npm run build
       - uses: actions/upload-artifact@<sha>
         with: { name: dist, path: dist }
 
   publish:                     # never checks out, never runs project code
     needs: build
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@<sha>
         with: { name: dist }
       - uses: actions/create-github-app-token@<sha>
         id: app-token
-        with: { app-id: "${{ secrets.APP_ID }}", private-key: "${{ secrets.APP_PRIVATE_KEY }}" }
+        with:
+          app-id: "${{ secrets.APP_ID }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+          permission-contents: write     # only what the publish needs
       - uses: actions/github-script@<sha>
         with: { github-token: "${{ steps.app-token.outputs.token }}" }
 ```
 
+Two details in that skeleton are the difference between the pattern and a
+slogan. `persist-credentials: false` on the checkout matters because the build
+job is not secret-free by default: `contents: read` still issues a
+`GITHUB_TOKEN`, and `actions/checkout` writes it into `.git/config`, where the
+dependency tree it is about to execute can read it. And
+`create-github-app-token` mints a token carrying **every** permission the
+installation grants unless `permission-*` inputs narrow it, so an unscoped
+token in the publishing job hands the whole installation to whatever that job
+runs.
+
 The artifact crosses as data: the publishing job reads its bytes and never
 executes them. Two properties make this worth the extra job — the build job
-holds no secret, so there is nothing on that runner to steal, and the token job
-runs no code from the repository under test.
+holds no secret worth taking once the checkout credential is off disk, and the
+token job runs no code from the repository under test.
 
 This matters most where the workflow exists precisely to merge without a human:
 a rebuild-and-auto-merge job for dependency bumps is the case where the runner
