@@ -308,35 +308,49 @@ run: |
   gh release view "$TAG" --repo "$REPO" --json assets
 ```
 
-Cheap source check before shipping such a step: every `gh <command>` in it carries `--repo`.
+Cheap source check before shipping such a step — per invocation, not per line, because two `gh` calls can share a line and a `gh pr`/`gh run` is just as affected as a `gh release`:
 
 ```bash
-yq -r '.jobs.<job>.steps[-1].run' .github/workflows/x.yml | grep -c 'gh release '
-yq -r '.jobs.<job>.steps[-1].run' .github/workflows/x.yml | grep -E 'gh release ' | grep -c -- '--repo'
+# extract first, then read the shell — the second grep works on the step body,
+# not on the YAML, and a `yq | grep` pipeline is the shape the data-tools hook
+# stops (rightly, for field access) even when the grep is aimed at the output.
+yq -r '.jobs.<job>.steps[-1].run' .github/workflows/x.yml > step.sh
+grep -oE 'gh [a-z-]+ [a-z-]+[^|;&]*' step.sh \
+  | grep -v -- '--repo' \
+  || echo 'every gh invocation names its repository'
 ```
 
-The two numbers must match. This shipped to a fleet-wide reusable workflow and failed on every release until it was caught.
+Anything printed is an invocation to fix. This shipped to a fleet-wide reusable workflow and failed on every release until it was caught.
 
 ## Exercising a `run:` step locally
 
 A `run:` step is shell, so it can be run before it reaches CI — which is worth doing for anything that gates a release, because its failure path is the part CI will not exercise on a good day.
 
 ```bash
+HARNESS=$(mktemp -d)
+
 # the step itself, verbatim, without hand-copying it out of the YAML
-yq -r '.jobs.<job>.steps[-1].run' .github/workflows/x.yml > step.sh
+yq -r '.jobs.<job>.steps[-1].run' .github/workflows/x.yml > "$HARNESS/step.sh"
 
 # a stub for whatever CLI it drives, first on PATH
-mkdir -p bin && cat > bin/gh <<'SHIM'
+mkdir -p "$HARNESS/bin" && cat > "$HARNESS/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 ...answer per $MODE...
 SHIM
-chmod +x bin/gh
+chmod +x "$HARNESS/bin/gh"
 
-# one case per invocation, with the step's own set-options and a captured status
-( cd sandbox; PATH="$PWD/../bin:$PATH" MODE=missing GITHUB_OUTPUT=out.txt bash step.sh; echo "rc=$?" )
+# one case per invocation, with a captured status. Absolute paths: the step
+# runs from a sandbox directory, so a relative `step.sh` would not resolve.
+mkdir -p "$HARNESS/sandbox"
+( cd "$HARNESS/sandbox"
+  PATH="$HARNESS/bin:$PATH" MODE=missing GITHUB_OUTPUT=out.txt \
+    bash -eo pipefail "$HARNESS/step.sh"
+  echo "rc=$?" )
 ```
 
-One case per `bash -c`/subshell matters for the same reason it does anywhere: `set -e` behaves differently when a command's status is consumed by a pipe or a `||`, so a harness that wraps the variants in functions measures the harness.
+`bash -eo pipefail` because the extracted body is only what was under `run:` — the runner supplies `bash -e {0}`, and `pipefail` comes from a `set -o pipefail` inside the body. A step that sets its own options makes the flags redundant, which is harmless; a step that relies on the runner's needs them, or the harness silently passes failures the job would have caught.
+
+One case per subshell matters for the same reason it does anywhere: `set -e` behaves differently when a command's status is consumed by a pipe or a `||`, so a harness that wraps the variants in functions measures the harness.
 
 **The stub must model the environment, not only the logic.** A stub that answers every call regardless of context proves the branches and nothing about where the step runs. Four such cases passed for a step that then failed in CI on `fatal: not a git repository` — the stub had never cared which directory it was called from. Teaching it to refuse a call that omits `--repo` when the working directory is not a checkout turned that defect into a failing case:
 
