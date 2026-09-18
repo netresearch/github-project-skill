@@ -81,13 +81,35 @@ Three recurring bugs in ad-hoc watchers:
 - Reruns are correct only for genuinely transient infra failures where the same code state should pass: runner/network blips, registry pull flakes (e.g. `Get "https://registry-1.docker.io/v2/": context deadline exceeded`), Sigstore/Rekor 409s. Don't debug the workflow for those — just `gh run rerun --failed`.
 - **A bad Codecov report is not one of them.** Codecov keys its report by commit SHA, so a rerun against the same SHA is served the report it already has; an incomplete upload survives it unchanged. The identical number on the second attempt then reads as a reproduction and invites the wrong diagnosis — "the coverage is unstable" — when the measurement simply never ran again. Force a fresh upload with a new SHA carrying the same tree: `git commit --amend --no-edit -S && git push --force-with-lease`. (Observed on a pull request whose diff deleted one YAML file and could not affect coverage: `codecov/project` reported `-0.38%`, a workflow rerun reported `-0.38%` again, and the amended commit came back green on all 20 checks.)
 
+### A startup-failed run is invisible in `gh pr checks` and `statusCheckRollup`
+
+`conclusion: startup_failure` means GitHub rejected the workflow before any job began — invalid YAML, a missing reusable, or an action the repository's Actions allowlist forbids. Such a run creates **no check run**, and both `gh pr checks` and `statusCheckRollup` enumerate check runs, not workflow runs. A workflow that never started therefore contributes nothing to enumerate, and its absence is indistinguishable from "not applicable". (The reusable-workflow causes that produce this — a dead `uses:` reference, a permission mismatch — are in `reusable-workflow-pitfalls.md`; this is the gh-CLI side of the same blind spot.)
+
+**Whether that silence also lets the merge through depends on the check's configuration.** If the absent check is *required* by branch protection or a ruleset, GitHub holds it at `Expected` and blocks the merge — visibly stuck, if unexplained. If it is **not** required, nothing holds it: the pull request reads green, `mergeStateStatus` reaches `CLEAN`, and a whole workflow having never run leaves no trace at all. The second case is the dangerous one, and it is the common one for a repository whose required-check list has not kept up with its workflow list.
+
+Before merging, list workflow **runs**, not just checks — bound to the commit under test, and printing `headSha` as a cross-check:
+
+```bash
+gh run list --repo O/R --commit "$SHA" --limit 20 \
+  --json workflowName,headSha,status,conclusion \
+  --jq '.[] | "\(.workflowName) [\(.headSha[0:8])]: \(.status)/\(.conclusion)"'
+```
+
+Use `--commit`, not `--branch`: the latter spans every commit on the branch, so an older green run reads exactly like a current one. This holds for `pull_request` runs as well — **a run's `headSha` is the pull request's head commit**, so the branch tip is the right value to pass. (Do not confuse that field with `GITHUB_SHA` *inside* a `pull_request` run, which is the computed merge commit — that is what the `gh run rerun` section above is about. The run's API metadata and the checkout the job sees name two different commits.) Measured on this repository: `gh run list --commit <branch tip>` returns the `pull_request` and `pull_request_target` runs for that head.
+
+Two follow-ons. A run's top-level `status` can still read `queued` while its jobs are nearly done, so report progress from `runs/<id>/jobs` rather than the run field. And a startup-failed run cannot be re-run at all (`This workflow run cannot be retried`) — it needs a fresh triggering event.
+
 ### A Copilot review request can evaporate — verify after requesting
 
 `POST …/requested_reviewers` for `copilot-pull-request-reviewer[bot]` returns success, but the request can silently vanish without a review ever landing: `reviewRequests` comes back `[]` and `latestReviews` stays empty on the head. Observed after a force-push replaced the head shortly after the request. After requesting, verify (`gh pr view N --json reviewRequests,latestReviews`); if both are empty a few minutes later, re-request once — the second request reliably sticks.
 
-### `gh pr view --json merged` is not a field
+### Verify every `--json` field name before a watcher depends on it
 
-The rollup field is `mergedAt` (null while open) — or ask `state` (`MERGED`/`OPEN`/`CLOSED`). `--json merged` errors "Unknown JSON field"; GraphQL (`pullRequest.merged`) does have the boolean.
+A guessed `--json` field fails the **whole** call — `gh` exits non-zero and prints "Unknown JSON field" — so a loop that reads the empty result as state answers confidently and wrongly. Run `gh pr view <n> --json` with no value once and read the printed field list before writing the loop. Two names that are commonly guessed and do not exist: `merged` (the rollup field is `mergedAt`, null while open; or ask `state` for `MERGED`/`OPEN`/`CLOSED` — GraphQL's `pullRequest.merged` does have the boolean) and `mergeQueueEntry` (queue state is GraphQL-only: `pullRequest { mergeQueueEntry { state position } }`).
+
+Two guards that belong in any hand-rolled watcher. **An empty or failed query is a retry, never a terminal state** — see the rate-limit section below for why a 403 mid-loop is a transport answer, not a finding. And **an empty `conclusion` means unfinished, not failed**: `gh run list --json conclusion` returns `""`, not `null`, while a run is queued or in progress, so a red-check filter written as `select(.conclusion != null and .conclusion != "success")` counts every *running* job as a failure. Test `!= null and != "" and != "success" and != "skipped" and != "neutral"` — GitHub counts `neutral` alongside `success` and `skipped` as satisfying a required check, so leaving it out of the filter reports a passing run as red. Bind the set to the commit under test with `--commit <sha>` rather than `--branch`, which spans the whole branch.
+
+Bound the loop as well. A check that no workflow produces never reaches a terminal state, so a watcher waiting for it by name waits forever; cap the rounds and report "no applicable check" as its own outcome, distinct from pass and from fail.
 
 ### `/stats/*` answers HTTP 202 with the body `{}` — call it again
 
@@ -316,3 +338,43 @@ NOT count against the quota):
 ```bash
 gh api rate_limit --jq '(.resources.core? // empty) | {remaining, reset}'
 ```
+
+### REST and GraphQL are separate budgets — read both, and never score an error as a state
+
+A user token carries two budgets that reset independently, **and they are not
+counted in the same unit**: REST allows **5,000 requests per hour**, GraphQL
+**5,000 points per hour**, where a query's point cost rises with the connections
+and node depth it requests. `gh api` spends the first; `gh pr view` and
+`gh pr checks` spend the second. A long watch therefore exhausts one while the
+other still looks healthy — and the single-resource check above will not show
+it:
+
+```bash
+gh api rate_limit --jq '{core: .resources.core, graphql: .resources.graphql}'
+```
+
+**Pace from the reported `graphql.remaining`, never from a call count.** Because
+points are not requests, arithmetic over the number of `gh pr view` invocations
+misstates how much GraphQL headroom is left — the same loop costs more against a
+PR with many checks and review threads than against a quiet one.
+
+Watch loops are what actually empties these. A 20-PR merge campaign running
+`gh pr view` every 150 s across several parallel watchers drained GraphQL first
+and REST shortly after, forcing a ~35-minute pause mid-merge; the campaign's
+sheer round count — 21 pull requests, every 150 s, several watchers in
+parallel — made it invisible until both budgets were gone. Use one watcher for a
+fleet, never several against the same list, and an interval of 5–10 minutes.
+
+**The failure mode that costs most is not the pause, it is the misreading.** A
+403 inside a loop scored as "pull request closed" makes the loop report that
+everything is finished when in truth the budget is empty. Carry the error path
+explicitly as `unknown` and stop the loop loudly; a transport failure is a
+statement about the request, never about the world.
+
+**When GraphQL is exhausted, fall back to REST** for what REST can answer:
+`gh api repos/<owner>/<repo>/pulls/N --jq .mergeable_state` for state, and
+`gh api -X POST repos/<owner>/<repo>/pulls -f title=… -f head=<branch> -f
+base=main -f body=…` to open one (it returns `.html_url`). Keep GraphQL for what
+only it does — review-thread resolution, `enqueuePullRequest`. **Merging stays
+on `gh pr merge`**: a REST `PUT /merge` bypasses local merge gating and is not a
+substitute.
