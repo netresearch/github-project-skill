@@ -47,6 +47,18 @@ gh api "repos/$R/actions/runs/$RUN/jobs?per_page=100" --jq '
     n: .name } | "queue=\(.q|floor)m run=\(.r|floor)m \(.n)"'
 ```
 
+**Count jobs, never runs.** A workflow *run* reports `status: queued` while its own jobs are already executing, so `actions/runs?status=in_progress` systematically under-reports throughput and `status=queued` over-reports the backlog. Measured 2026-09-18: a run-level sweep across 21 repositories returned "0 in progress, 37 queued" and read as a total stall; the job-level count over the same runs was **624 completed, 15 in progress, 237 queued** — the pipeline was working the whole time. Diagnosing a stall off the run-level filter sends you looking for an outage that is not there.
+
+```bash
+# Backlog at the level that actually moves
+for R in $REPOS; do
+  gh api "repos/$R/actions/runs?per_page=15" --jq '.workflow_runs[] | select(.status=="queued" or .status=="in_progress") | .id' |
+  while read -r id; do
+    gh api "repos/$R/actions/runs/$id/jobs?per_page=100" --paginate --jq '.jobs[].status'
+  done
+done | sort | uniq -c
+```
+
 Then compute two totals and the peak:
 
 - **Σ queue job-min vs Σ run job-min.** If queue ≫ run (e.g. 415 vs 50), the

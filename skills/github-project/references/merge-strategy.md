@@ -203,7 +203,7 @@ Parameters and gotchas:
 
 - `merge_method`: `SQUASH` | `MERGE` | `REBASE`. The queue owns the merge method for every entry, so per-PR choice disappears. `SQUASH`/`MERGE` stay GitHub-signed; `REBASE` re-creates commits **unsigned** — on a signed-commits branch, prefer `SQUASH`/`MERGE`.
 - `grouping_strategy`: `ALLGREEN` (every queued entry must pass) or `HEADGREEN` (only the group's head commit — all changes combined — must pass). `ALLGREEN` is the safe default; `HEADGREEN` only saves CI under contention.
-- `check_response_timeout_minutes`: a required check that has not reported by then is treated as **failed** and the entry is ejected. Size it above one CI cycle.
+- `check_response_timeout_minutes`: a required check that has not reported by then is treated as **failed** and the entry is ejected. Size it above one CI cycle — and see *A bulk operation of your own can eject queue entries* below, because "one CI cycle" is an assumption about normal load that your own fan-out can break.
 - `min_entries_to_merge` + `min_entries_to_merge_wait_minutes`: the wait only holds a smaller-than-minimum group. With `min_entries_to_merge: 1` **the wait value is inert** — a single entry already meets the minimum, so it never batches. Only raise the minimum (and the wait) if you actually want to batch, e.g. a Dependabot burst.
 - `required_status_checks[].integration_id: 15368` pins each required context to the **GitHub Actions app**, so another app cannot satisfy (spoof) the context. Every required-check workflow must also carry an `on: merge_group:` trigger, or its checks never report on the queue and every group times out.
 - Enable the queue in **one surface only**. If a classic branch-protection rule already gates the branch, leave reviews/conversation-resolution there and put the queue + required checks in the ruleset — then set the classic `strict` ("require branches up to date") flag to **false**: the queue makes it redundant and it otherwise forces author-side update-branch churn.
@@ -489,6 +489,28 @@ gh pr merge <PR> --repo OWNER/REPO --merge --admin
 ```
 
 > **Scope of this escape hatch:** only in repos whose governance is ours, only for this stuck-queue failure mode, and only with the operator's explicit go for that PR. `--admin` bypasses required reviews and status checks wholesale — on upstream/community repos (or to merge your own unreviewed PR anywhere) it is never appropriate, no matter how trivial the fix or how red the main branch. Holding admin permission is a trust grant, not a merge mandate.
+
+### A bulk operation of your own can eject queue entries
+
+`check_response_timeout_minutes` ejects an entry whose required checks have not *reported* in time. The sizing advice above — "above one CI cycle" — assumes normal load. A fan-out you initiate breaks that assumption, and the failure looks nothing like a timeout.
+
+The signature is a PR that is **green and ejected**: `state: OPEN`, `mergeStateStatus: CLEAN`, `reviewDecision: APPROVED`, the merge queue empty, `isInMergeQueue: false`, **every `merge_group` run green**, and no red check anywhere. `pr-status.sh` reports `NEXT: merge — clean`, because from its side nothing is wrong; the entry is simply gone. Nothing names the timeout — you have to compare elapsed time against it yourself.
+
+Measured 2026-09-18: a 21-repository template sync produced 237 queued jobs org-wide. Two consumers with merge queues (`check_response_timeout_minutes: 60`, 40 and 16 required contexts on `merge_group`) each had their PR ejected **twice**. At the point of diagnosis one entry's `CI` run had been executing for 65 minutes against a 60-minute budget. Neither PR had a failing check at any point.
+
+```bash
+# Is this an ejection-by-timeout rather than a failure?
+gh api "repos/$R/rulesets" --jq '.[].id' | while read -r id; do
+  gh api "repos/$R/rulesets/$id" --jq '.rules[]? | select(.type=="merge_queue") | .parameters'
+done                                   # read check_response_timeout_minutes
+gh api "repos/$R/actions/runs?event=merge_group&per_page=20" \
+  --jq '.workflow_runs[] | [.created_at, .name, .status, (.conclusion // "-")] | @tsv'
+# a run still `in_progress` older than the timeout IS the cause
+```
+
+**The ordering rule:** let the backlog drain before enqueueing into a merge-queue repo. Re-enqueueing into the same congestion restarts the entry's checks and buys another ejection. Where a batch touches both plain and merge-queue repos, merge the plain ones first and hold the queued ones until the org's job backlog is near zero — measure it per [`ci-runner-capacity.md`](ci-runner-capacity.md), at the **job** level.
+
+Do not reach for `--admin` here. The escape hatch above is for a queue that never builds; this queue built, passed, and ran out of clock. Waiting is the fix.
 
 ### Arming a merge queue PR: `--auto` with no strategy flag
 
