@@ -160,7 +160,7 @@ Rapid sequences of `gh api` calls (REST + GraphQL) sometimes return `401 "Requir
   ```bash
   gh run view --job="$JOB" --log > job.log
   grep -c 'Client Error: Forbidden' job.log                  # not: grep -c 403
-  grep -cP '^check-stars\tCheck for new stars\t.*403' job.log  # scoped to the step
+  grep -cP '^build\tRun tests\t.*Client Error: Forbidden' job.log  # + scoped to <job>\t<step>
   ```
 - **Count what failed, not what succeeded.** A step can print `Found: 0 items` because there is nothing new *or* because every fetch failed. Those are the same line. Assert on the failure count (`grep -c 'Failed to get'`) before reading a zero as good news.
 - **`gh api …/actions/jobs/<id>/logs` refuses a colourised log.** When the job output carries ANSI colour codes (Composer, PHPUnit and Rector all emit them), `gh` prints `the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway` and exits 1. Redirected to a file, that is a one-line file and exit code 1 — easy to read as "the log is empty" or "the job has no log". Pass the flag and strip the codes before grepping:
