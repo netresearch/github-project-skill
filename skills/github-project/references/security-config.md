@@ -253,6 +253,72 @@ gh api "repos/OWNER/REPO/code-scanning/analyses?tool_name=CodeQL&ref=refs/heads/
 
 Seen on `netresearch/claude-code-marketplace`: a `/language:python` analysis ran *after* the commit that deleted the only Python file, but the repo held 0 `.py` files at that commit, so the analysis errored empty and a `py/clear-text-storage-sensitive-data` alert stayed open for eight months. It closed only once a scanner ran against a tree that actually contained Python.
 
+### An alert whose `analysis_key` names a renamed workflow never closes on its own
+
+GitHub supersedes alerts per `analysis_key` — the workflow path plus job id,
+e.g. `.github/workflows/ci.yml:gosec` (exposed separately from `category`,
+though the two often carry the same string). Rename the workflow file and new
+uploads land under a *new* key; the old alerts keep theirs, nothing ever
+supersedes them, and they stay open while the tool itself reports clean.
+Automatic closure is what is lost — closing them by hand still works, and is
+the only thing that will.
+
+The tell is an alert whose line number no longer matches what is there, on a
+tool that currently passes locally. Ask the alert directly, and compare against
+**every** key the tool writes under today, not the newest one — a tool with a
+matrix uploads several (`/language:go`, `/language:actions`, …) and the first
+row is frequently a different job:
+
+```bash
+# the one alert, by number — not a rule filter over page 1
+gh api "repos/OWNER/REPO/code-scanning/alerts/N" \
+  --jq '.most_recent_instance.analysis_key'
+
+# every key this tool currently uploads under.
+# Real jq, not --jq: gh applies its built-in filter PER PAGE, so a
+# `| unique` inside --jq de-duplicates each page on its own and prints the
+# same key once per page. (`--slurp` does not rescue it — gh refuses to
+# combine it with --jq.)
+gh api "repos/OWNER/REPO/code-scanning/analyses?ref=refs/heads/main&per_page=100" --paginate \
+  | jq -s '[.[][] | select(.tool.name=="TOOL") | .analysis_key] | unique[]'
+```
+
+The alert is orphaned only when its key is **absent from that whole set**. A
+key that is merely not the newest says nothing — treating it as orphaned would
+close a live finding, which is the expensive direction of this mistake. Once
+absent is established, close it by hand and put the reason in the comment.
+
+Seen on `netresearch/ldap-selfservice-password-changer`: four `gosec` G115
+alerts sat under `.github/workflows/check.yml:gosec` while every run since the
+rename uploaded to `.github/workflows/ci.yml:gosec`. `gosec ./...` had exited 0
+for months, and the code carried reviewed `#nosec` justifications.
+
+### A repository that only PUBLISHES the reusable CodeQL workflow is scanned by default setup
+
+The rule above — default setup off, custom workflow on — applies to
+*consumers*. The repository that **hosts** the reusable workflow often calls it
+nowhere, so it has no advanced setup of its own and default setup stays on:
+`code-scanning/default-setup` reads `state: configured`.
+
+That matters the moment the reusable workflow carries analysis configuration,
+because **default setup reads none of it**. A `config:` block, `query-filters`,
+`paths-ignore` — all of it reaches consumers and none of it reaches the hosting
+repository's own alerts.
+
+```bash
+# In the repo that publishes the reusable workflow, ask BOTH:
+gh api repos/ORG/.github/code-scanning/default-setup --jq '.state'
+
+# does it run CodeQL on itself at all — via the reusable OR directly?
+grep -rnE 'uses:[[:space:]]*[^[:space:]]*/codeql\.yml@|uses:[[:space:]]*github/codeql-action/' \
+  .github/workflows/
+```
+
+Measured on `netresearch/.github` 2026-09-20: adding a `query-filters` exclusion
+to the reusable `codeql.yml` took a consumer repository from 14 open
+`actions/unpinned-tag` alerts to 0, while the publishing repository stayed at 24
+— it scans itself through default setup, which ignored the filter entirely.
+
 ### Dismissal comments are capped at 280 characters here too
 
 `PATCH /repos/OWNER/REPO/code-scanning/alerts/N` rejects a `dismissed_comment` over 280 characters with HTTP 422, exactly like the Dependabot endpoint ([`dependency-management.md`](dependency-management.md)) — but the reason enum is different: `false positive`, `won't fix`, `used in tests`, `mitigated` (with spaces, not underscores). The membership is not guesswork: sending an invalid value returns a 422 that lists all four, which is the cheapest way to check an enum you are unsure about.
