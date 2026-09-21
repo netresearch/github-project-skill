@@ -253,6 +253,60 @@ gh api "repos/OWNER/REPO/code-scanning/analyses?tool_name=CodeQL&ref=refs/heads/
 
 Seen on `netresearch/claude-code-marketplace`: a `/language:python` analysis ran *after* the commit that deleted the only Python file, but the repo held 0 `.py` files at that commit, so the analysis errored empty and a `py/clear-text-storage-sensitive-data` alert stayed open for eight months. It closed only once a scanner ran against a tree that actually contained Python.
 
+### An alert whose category names a renamed workflow can never close
+
+GitHub supersedes alerts per `analysis_key` — the workflow path plus job id, e.g.
+`.github/workflows/ci.yml:gosec`. Rename the workflow file and the new uploads
+land under a *new* key; the old alerts keep their old key, nothing ever
+supersedes them, and they stay open forever while the tool itself reports
+clean. Nothing in the alert says so: it still points at a line of code, and the
+line still exists.
+
+The tell is an alert whose line number no longer matches what is there, on a
+tool that currently passes locally. One call settles it — compare the alert's
+key with the key the tool uploads under today:
+
+```bash
+# what the stale alert was filed under
+gh api "repos/OWNER/REPO/code-scanning/alerts?state=open&per_page=100" \
+  --jq '.[] | select(.rule.id=="RULE") | .most_recent_instance.analysis_key'
+
+# what the tool writes under now
+gh api "repos/OWNER/REPO/code-scanning/analyses?ref=refs/heads/main&per_page=30" \
+  --jq '.[] | select(.tool.name=="TOOL") | .analysis_key' | head -1
+```
+
+Different keys mean the alert is orphaned, not outstanding. Close it by hand
+and say so in the comment — nothing else will.
+
+Seen on `netresearch/ldap-selfservice-password-changer`: four `gosec` G115
+alerts sat under `.github/workflows/check.yml:gosec` while every run since the
+rename uploaded to `.github/workflows/ci.yml:gosec`. `gosec ./...` had exited 0
+for months, and the code carried reviewed `#nosec` justifications.
+
+### A repository that only PUBLISHES the reusable CodeQL workflow is scanned by default setup
+
+The rule above — default setup off, custom workflow on — applies to
+*consumers*. The repository that **hosts** the reusable workflow often calls it
+nowhere, so it has no advanced setup of its own and default setup stays on:
+`code-scanning/default-setup` reads `state: configured`.
+
+That matters the moment the reusable workflow carries analysis configuration,
+because **default setup reads none of it**. A `config:` block, `query-filters`,
+`paths-ignore` — all of it reaches consumers and none of it reaches the hosting
+repository's own alerts.
+
+```bash
+# In the repo that publishes the reusable workflow, ask BOTH:
+gh api repos/ORG/.github/code-scanning/default-setup --jq '.state'
+grep -rn 'uses:.*/codeql.yml@' .github/workflows/   # does it call its own reusable?
+```
+
+Measured on `netresearch/.github` 2026-09-20: adding a `query-filters` exclusion
+to the reusable `codeql.yml` took a consumer repository from 14 open
+`actions/unpinned-tag` alerts to 0, while the publishing repository stayed at 24
+— it scans itself through default setup, which ignored the filter entirely.
+
 ### Dismissal comments are capped at 280 characters here too
 
 `PATCH /repos/OWNER/REPO/code-scanning/alerts/N` rejects a `dismissed_comment` over 280 characters with HTTP 422, exactly like the Dependabot endpoint ([`dependency-management.md`](dependency-management.md)) — but the reason enum is different: `false positive`, `won't fix`, `used in tests`, `mitigated` (with spaces, not underscores). The membership is not guesswork: sending an invalid value returns a 422 that lists all four, which is the cheapest way to check an enum you are unsure about.
