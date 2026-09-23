@@ -6,9 +6,9 @@ Recurring shell-scripting gotchas that turn workflow `run:` steps into silent da
 
 | Symptom | Cause | See |
 |---|---|---|
-| Custom `::error::` never fires; step just exits non-zero with a one-line `exit` | `set -e` aborts on `VAR=$(failing-cmd)` BEFORE your diagnostic runs | [set -e + command substitution](#set--e--command-substitution) |
-| Detection works for one match but "forgets" when several match | SIGPIPE race under `set -o pipefail` with early-exiting readers | [Pipefail + early readers](#pipefail--early-readers) |
-| Binary has mangled version/ldflag; release log "looks fine" | `2>&1` merged stderr into a captured variable | [stderr merge contamination](#stderr-merge-contamination) |
+| Custom `::error::` never fires; step just exits non-zero with a one-line `exit` | `set -e` aborts on `VAR=$(failing-cmd)` BEFORE your diagnostic runs | [Generic shell pitfalls](#generic-shell-pitfalls) |
+| Detection works for one match but "forgets" when several match | SIGPIPE race under `set -o pipefail` with early-exiting readers | [Generic shell pitfalls](#generic-shell-pitfalls) |
+| Binary has mangled version/ldflag; release log "looks fine" | `2>&1` merged stderr into a captured variable | [Generic shell pitfalls](#generic-shell-pitfalls) |
 | ldflags silently drop values; no error | Expression in top-level job `with:` evaluated BEFORE reusable checkout | [Expression context availability](#expression-context-availability) |
 | Matrix cell keeps receiving an input the condition was meant to suppress; the fix looks applied and changes nothing | `''` is falsy, so `cond && '' \|\| value` always yields `value` | [The empty string is falsy](#the-empty-string-is-falsy-in-actions-expressions) |
 | Workflow runs on triggers it shouldn't, all jobs fail instantly | File failed validation — GitHub creates a failing run regardless of `on:` match | [Workflow-file validation failure](#workflow-file-validation-failure) |
@@ -19,86 +19,12 @@ Recurring shell-scripting gotchas that turn workflow `run:` steps into silent da
 | `gh` fails with `fatal: not a git repository`, in a job that never checks out | `gh` infers the repository from a git remote, and there is none | [gh in a checkout-less job](#gh-in-a-job-that-does-not-check-out) |
 | A `run:` step passed every local case and still broke in CI | The stub answered regardless of the environment the step actually runs in | [Exercising a run: step locally](#exercising-a-run-step-locally) |
 
-## `set -e` + command substitution
+## Generic shell pitfalls
 
-**Bug:**
+`set -e` with `$(…)`, SIGPIPE under `pipefail` with an early reader, and `2>&1` inside a capture are not specific to Actions `run:` steps. The cli-tools skill's [shell pitfalls reference](https://github.com/netresearch/coding_agent_cli_toolset/blob/main/skills/cli-tools/references/shell-pitfalls.md) covers them, measured and under test, together with the other shell constructs that report success or emptiness that is not real. Two details matter most in a workflow step:
 
-```bash
-set -euo pipefail
-
-BUILD_TS=$(git show -s --format=%cI HEAD)  # fails if HEAD bad
-if [[ -z "$BUILD_TS" ]]; then
-  echo "::error::buildTime empty"          # never reached
-  exit 1
-fi
-```
-
-With `set -e`, a non-zero exit from the subshell in `$(…)` aborts the script immediately. Your custom diagnostic never runs; the user sees `Process exited with code 128` from git and is left to reverse-engineer what that means.
-
-**Fix:** wrap in `if ! VAR=$(cmd); then`. `if` contexts are explicitly exempted from `set -e`:
-
-```bash
-if ! BUILD_TS=$(git show -s --format=%cI HEAD); then
-  echo "::error::auto-build-timestamp=true but git show failed. See log."
-  exit 1
-fi
-if [[ -z "$BUILD_TS" ]]; then
-  echo "::error::git show returned exit 0 but empty output."
-  exit 1
-fi
-```
-
-Keep the empty-string check separately — `git show` can exit 0 and print nothing in edge cases (e.g. shallow clone with `fetch-depth: 1` on a freshly-init'd repo; note that `fetch-depth: 0` in `actions/checkout` means full history, not shallow).
-
-## Pipefail + early readers
-
-**Bug:**
-
-```bash
-set -euo pipefail
-
-# intent: "does any .go file declare `package main`?"
-find . -maxdepth 1 -name '*.go' -exec grep -l '^package main' {} \; -print | grep -q .
-```
-
-When multiple files match, `find` keeps writing to the pipe while `grep -q .` exits on the first line. `find` gets SIGPIPE, so the pipeline returns 141 under `pipefail` and the step fails — even though there ARE matching files. Wrapping the pipeline in `if pipeline; then …` has the same effect (the `if` branch evaluates as false).
-
-**Fix 1 — capture into a variable (no reader):**
-
-```bash
-matches=$(find . -maxdepth 1 -name '*.go' -exec grep -l '^package main' {} +)
-[[ -n "$matches" ]]
-```
-
-**Fix 2 — tell `find` to stop after first match (best for existence tests):**
-
-```bash
-match=$(find . -maxdepth 1 -name '*.go' \
-  -exec grep -q '^package main' {} \; -print -quit)
-[[ -n "$match" ]]
-```
-
-`-print -quit` exits find after the first match prints; no pipe pressure, no SIGPIPE.
-
-## stderr merge contamination
-
-**Bug:**
-
-```bash
-BUILD_TS=$(git show -s --format=%cI HEAD 2>&1)  # merge stderr into value
-```
-
-If `git show` exits 0 but writes a warning to stderr (e.g. `warning: CRLF will be replaced by LF` on Windows-line-ending repos), `BUILD_TS` now contains the warning text. Downstream code appends it to `-ldflags "-X main.buildTime=${BUILD_TS}"`, producing either a build failure or — worse — a successfully-shipped binary with a corrupted version string.
-
-**Fix:** don't merge stderr. GitHub Actions shows stderr in the log naturally. If you need stderr for a diagnostic, capture it to a separate variable:
-
-```bash
-if ! BUILD_TS=$(git show -s --format=%cI HEAD 2>/tmp/err); then
-  echo "::error::git show failed: $(cat /tmp/err)"
-  exit 1
-fi
-# BUILD_TS is stdout only, safe to use in ldflags.
-```
+- An `::error::` line placed after a failing `VAR=$(cmd)` is never reached under `set -e`, so the log shows only the bare exit code. Put the assignment in the condition: `if ! VAR=$(cmd); then echo "::error::…"; exit 1; fi`, and check for empty output separately.
+- For "does any file match", `find … -exec grep -q PATTERN {} \; -print -quit` stops after the first hit without a pipe, so there is no reader for SIGPIPE to race.
 
 ## Expression context availability
 
