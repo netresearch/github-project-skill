@@ -245,14 +245,24 @@ Renovate replaces Dependabot only where Renovate **runs**. A `renovate.json` in 
 
    Query per repository. The search API (`search/issues?q=org:ORG+author:app/renovate`) stops at 1,000 results, so an org-wide tally of an active bot is truncated. Treat "no PR in ~3 months" as unproven, not as quiet: keep Dependabot there until Renovate is shown to work.
 
-2. **Security updates** are usually held on by an enforced org code-security configuration, so the per-repo `DELETE …/automated-security-fixes` answers 422. Attach a variant configuration with `dependabot_security_updates: disabled` to the proven repositories only — see `security-config.md`, "An `enforced` configuration blocks per-repo changes". Keep `dependabot_alerts` enabled: Renovate's `vulnerabilityAlerts` reads them to open its security PRs.
+2. **Security updates** are usually held on by an enforced org code-security configuration, so the per-repo `DELETE …/automated-security-fixes` answers 422. Attach a variant configuration with `dependabot_security_updates: disabled` to the proven repositories only — see `security-config.md`, "An `enforced` configuration blocks per-repo changes". Keep `dependabot_alerts` enabled: Renovate's `vulnerabilityAlerts` reads them to open its security PRs. Recent version-update PRs do not prove that path, so check both halves before disabling:
+
+   ```bash
+   # The Renovate app may read the alerts (expect "read")
+   gh api orgs/ORG/installations \
+     --jq '.installations[] | select(.app_slug=="renovate") | .permissions.vulnerability_alerts'
+   # The effective config enables vulnerabilityAlerts — the org preset, or
+   # a repo renovate.json that overrides it
+   gh api repos/ORG/renovate-config/contents/default.json --jq .content | base64 -d \
+     | jq '.vulnerabilityAlerts'
+   ```
 
 3. **Version updates** (`.github/dependabot.yml`): the file often carries decisions, not just a schedule. Port each into `renovate.json` before deleting the file:
 
    | In `dependabot.yml` | In `renovate.json` |
    |---|---|
    | `ignore: dependency-name: X, versions: [">= 6.1"]` | `packageRules: [{matchPackageNames: ["X"], allowedVersions: "< 6.1"}]` |
-   | `ignore: update-types: [semver-major, semver-minor]` on one ecosystem | `packageRules: [{matchManagers: ["docker-compose"], matchUpdateTypes: ["major","minor"], enabled: false}]` |
+   | `ignore: update-types: [version-update:semver-major, version-update:semver-minor]` on one ecosystem | `packageRules: [{matchManagers: ["docker-compose"], matchUpdateTypes: ["major","minor"], enabled: false}]` |
    | ecosystem owned by Dependabot on purpose (a split between the bots) | remove the matching `enabled: false` rule from `renovate.json` |
 
    Read the history of both files first (`gh api "repos/ORG/REPO/commits?path=.github/dependabot.yml"`): a split between the bots usually has an issue behind it, and the PR should name the decision it reverses.
