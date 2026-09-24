@@ -232,6 +232,15 @@ gh api "repos/ORG/REPO" --jq .fork
 
 `repository_selection: all` plus `fork: true` plus no dashboard is the signature.
 
+### A push by anyone else takes the PR out of Renovate's hands
+
+Renovate treats a PR as modified as soon as another Git author adds a commit to its branch — a lockfile repair, a fixed test, a formatting commit. From then on it makes no further commits to that branch: it does not rebase it on conflicts and does not update it to a newer version. When the dependency later reaches the target version some other way, Renovate also does not delete the stale branch or autoclose the PR: it renames the PR to `<title> - abandoned` and comments that autoclosing is skipped. The PR stays open until someone closes it.
+
+Whoever pushed to the branch owns the PR from then on: track it to merge, or close it with a comment naming what superseded it (`gh pr close <n> --delete-branch --comment "Superseded by #<m>"`). Two ways to hand a branch back instead:
+
+- Apply the rebase label (`rebaseLabel`, default `rebase`): Renovate then regenerates its commit even on a modified branch, which discards the foreign commit.
+- For another bot that routinely commits on top of Renovate PRs, list its commit-author email (or a glob or regex matching it) in `gitIgnoredAuthors`, so its pushes do not count as a modification.
+
 ### Migrating from Dependabot to Renovate
 
 Renovate replaces Dependabot only where Renovate **runs**. A `renovate.json` in the tree is a declaration, not a run: on `netresearch` (2026-09-24), 27 of 137 repositories with a Renovate config had no Renovate PR in three months, most none since the onboarding wave of February 2025 — one had lost its onboarding merge in a history rewrite. Switching Dependabot off there leaves the repository with no update bot at all.
@@ -648,7 +657,7 @@ if: github.event.pull_request.user.login == 'dependabot[bot]'
 ```yaml
 jobs:
   gitleaks:
-    uses: netresearch/.github/.github/workflows/gitleaks.yml@main
+    uses: netresearch/.github/.github/workflows/betterleaks.yml@main
 ```
 
 Do not skip the scan for bot PRs: a dependency update can carry a secret like any other change. For known false positives, add a `.gitleaks.toml` allowlist — the repo's own file is honoured, so tune it there rather than disabling the job.
@@ -664,6 +673,7 @@ Do not skip the scan for bot PRs: a dependency update can carry a secret like an
 - Check before pushing with the scanner version the reusable pins, over the branch's own commits only: `betterleaks git . --log-opts="origin/main..HEAD" --redact`. Scanning the old and the new wording as two files (`betterleaks dir`) confirms the rewording actually clears the rule.
 - Re-run the red scans on the other PRs **after** each run has finished: `gh run rerun --job <job-database-id>` answers `cannot be rerun` while its run is still in progress (the database ID, not the number in the Actions URL: `gh run view <run-id> --json jobs --jq '.jobs[] | {name, databaseId}'`). Once it has finished, `gh run rerun <run-id> --failed` also re-runs the aggregate job ("All security checks") that went red only because the scan did.
 - Prefer rewording over an allowlist entry: a path allowlist on `SECURITY.md` or a regex for the phrase would also hide a real key pasted into that file later.
+- Where the commit cannot be replaced — it is already on `main` — ignore that one finding by fingerprint in `.gitleaksignore` at the repository root (betterleaks reads `.betterleaksignore` if it exists and `.gitleaksignore` only otherwise, so a repository keeps one of the two). Unlike a `.gitleaks.toml` allowlist, which suppresses a rule or path everywhere, a fingerprint names one finding in one commit: `<commit-sha>:<file-path>:<rule-id>:<line>`, one per line, for example `e3f7fe2451e80ba75af6b02f8fe843f76dfe82c6:docs/sonarcloud.md:curl-auth-user:228`. The ignore file is committed like any other file, so the history scan reads it too: keep it to bare fingerprint lines, with no comment that quotes or paraphrases the flagged text.
 
 ### Pre-existing PRs Don't Auto-merge
 
@@ -776,3 +786,9 @@ A transitive package can be pinned below its fixed version by a direct dependenc
 ## `pnpm/action-setup` must run BEFORE `actions/setup-node` with `cache: "pnpm"`
 
 `actions/setup-node` with pnpm caching resolves the pnpm executable at setup time — if `pnpm/action-setup` hasn't run yet, it fails with `Unable to locate executable: pnpm`. Order the steps pnpm-first in any workflow using both.
+
+## Migrating to bun: the reusable audit still runs `npm audit`
+
+`netresearch/.github/.github/workflows/node-audit.yml` accepts `package-manager: bun`, but its bun path only installs with bun: it then synthesizes a lockfile with `npm i --package-lock-only --ignore-scripts` and gates on `npm audit --audit-level=…`. npm's resolver is stricter than bun's, so a peer-dependency conflict that `bun install` resolves can fail that step with `ERESOLVE`, and `npm audit` and `bun audit` can report different findings or severities. A green `bun audit` locally therefore does not predict the gate — reproduce it with the same two npm commands. Such a failure can predate the migration: check whether the npm path is already red on `main` before blaming the switch.
+
+Pin the third-party actions the migration adds (`oven-sh/setup-bun` and the like) by commit SHA in the first commit that adds them. SonarCloud's `githubactions:S7637` ("External GitHub Actions and workflows should be pinned to a commit hash") flags a tag-pinned line, and SonarCloud also reports it to GitHub code scanning (tool `SonarCloud`), where the alert stays until a new analysis clears it. The org's own reusables stay `@main` (see `reusable-workflow-pitfalls.md`, "Own reusables stay `@main`").

@@ -143,6 +143,27 @@ EOF
 | `patterns_allowed` | List of glob patterns for additional allowed actions |
 
 > **Important:** Composite actions' internal sub-actions must also be in the allow-list. See [`security-config.md`](./security-config.md#composite-action-sub-action-allow-list-gotcha) for the Composite Action Sub-Action Allow-List Gotcha.
+
+## Organization secrets with `visibility: selected`
+
+An organization secret whose visibility is `selected` exists only for the repositories on its list. In any other repository `${{ secrets.NAME }}` resolves to an empty string — no error, no warning. A caller that passes it on to a reusable workflow hands over `""`, and a publish step that needs it either fails deep inside the reusable or skips its work while the run reports success.
+
+`gh secret list` without `--org` lists repository secrets only, so an empty listing in the repository proves nothing. Check from the repository side (the secret's name must appear; both list endpoints are paginated, so fetch every page):
+
+```bash
+gh api --paginate "repos/ORG/REPO/actions/organization-secrets?per_page=100" --jq '.secrets[].name'
+```
+
+And from the organization side, with an org admin token:
+
+```bash
+gh api orgs/ORG/actions/secrets/NAME --jq .visibility                                                    # selected?
+gh api --paginate "orgs/ORG/actions/secrets/NAME/repositories?per_page=100" --jq '.repositories[].name'  # the list
+gh api -X PUT orgs/ORG/actions/secrets/NAME/repositories/REPO_ID                                         # grant one repo
+```
+
+`REPO_ID` is the numeric ID (`gh api repos/ORG/REPO --jq .id`). Check this whenever a new repository starts using a shared publishing secret, before its first release.
+
 ## Push protection vs. secret-shaped test fixtures
 
 With push protection enabled, a complete secret-shaped literal in any committed file rejects the whole push (`GH013 … Push cannot contain secrets`) — even an obvious fixture in a redaction test. The scanner matches one contiguous literal, so build fixtures by concatenation instead: `'sk_live_' . str_repeat('9', 24)` passes, while the same value written out as one contiguous literal is blocked. (This document cannot even *show* the blocked form — writing it here rejected the push of this very section.) Never "fix" this by weakening push protection or using a real-looking key with one character changed (still matches some patterns) — concatenate.
