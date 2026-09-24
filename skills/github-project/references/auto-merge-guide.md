@@ -316,18 +316,23 @@ gh api --paginate "repos/OWNER/REPO/rules/branches/main?per_page=100" \
   | jq -c '.[] | {type, ruleset_id, parameters}'
 
 # 1b. Classic branch protection on the same branch. On an error gh prints the
-#     error body to stdout, and jq turns it into an all-null object that looks
-#     like "nothing set" — so test the exit status first and read stderr:
-#     "Branch not protected (HTTP 404)" means none; any other error, including
-#     "Not Found (HTTP 404)" for a caller without admin rights, means not read.
-gh api repos/OWNER/REPO/branches/main/protection > prot.json 2> prot.err \
-  || { cat prot.err; echo "classic protection NOT read"; }
-jq '{
-  reviews: (.required_pull_request_reviews // null | if . then del(.url, .bypass_pull_request_allowances) else . end),
-  checks: .required_status_checks,
-  conversation_resolution: .required_conversation_resolution.enabled,
-  signatures: .required_signatures.enabled,
-  enforce_admins: .enforce_admins.enabled}' prot.json
+#     error body to stdout, and jq would turn it into an all-null object that
+#     looks like "nothing set" — so branch on the exit status and on stderr:
+#     "Branch not protected (HTTP 404)" means there is none; any other error,
+#     including "Not Found (HTTP 404)" for a caller without admin rights, means
+#     the protection was not read.
+if gh api repos/OWNER/REPO/branches/main/protection > prot.json 2> prot.err; then
+  jq '{
+    reviews: (.required_pull_request_reviews // null | if . then del(.url, .bypass_pull_request_allowances) else . end),
+    checks: .required_status_checks,
+    conversation_resolution: .required_conversation_resolution.enabled,
+    signatures: .required_signatures.enabled,
+    enforce_admins: .enforce_admins.enabled}' prot.json
+elif grep -q "Branch not protected" prot.err; then
+  echo "no classic branch protection"
+else
+  cat prot.err; echo "classic protection NOT read"
+fi
 
 # 2. If either source sets a strict policy (strict_required_status_checks_policy
 #    in a ruleset, required_status_checks.strict in classic protection), the head

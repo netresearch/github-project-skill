@@ -467,8 +467,11 @@ llm_reviews:
          required_conversation_resolution. Surface this as an advisory trade-off,
          not a blocking failure, since it matches the documented org default.
       4. If using rulesets instead of branch protection, check the equivalent:
-         gh api repos/OWNER/REPO/rules/branches/BRANCH --jq '.[] | select(.type=="pull_request") | .parameters'
-         Look for required_review_thread_resolution: true and bypass_actors being empty.
+         gh api repos/OWNER/REPO/rules/branches/BRANCH --jq '.[] | select(.type=="pull_request") | {ruleset_id, parameters}'
+         Look for required_review_thread_resolution: true. The bypass actors are not
+         in that output; read them per ruleset_id from the line above:
+         gh api repos/OWNER/REPO/rulesets/RULESET_ID --jq '.bypass_actors'
+         and look for an empty list.
       Report required_conversation_resolution gaps as errors; report
       enforce_admins gaps as info (advisory).
     severity: error
