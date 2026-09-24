@@ -232,6 +232,35 @@ gh api "repos/ORG/REPO" --jq .fork
 
 `repository_selection: all` plus `fork: true` plus no dashboard is the signature.
 
+### Migrating from Dependabot to Renovate
+
+Renovate replaces Dependabot only where Renovate **runs**. A `renovate.json` in the tree is a declaration, not a run: on `netresearch` (2026-09-24), 27 of 137 repositories with a Renovate config had no Renovate PR in three months, most none since the onboarding wave of February 2025 — one had lost its onboarding merge in a history rewrite. Switching Dependabot off there leaves the repository with no update bot at all.
+
+1. **Measure activity per repository, not config presence.**
+
+   ```bash
+   gh pr list -R ORG/REPO --author app/renovate --state all --limit 1 \
+     --json createdAt --jq '.[0].createdAt // "never"'
+   ```
+
+   Query per repository. The search API (`search/issues?q=org:ORG+author:app/renovate`) stops at 1,000 results, so an org-wide tally of an active bot is truncated. Treat "no PR in ~3 months" as unproven, not as quiet: keep Dependabot there until Renovate is shown to work.
+
+2. **Security updates** are usually held on by an enforced org code-security configuration, so the per-repo `DELETE …/automated-security-fixes` answers 422. Attach a variant configuration with `dependabot_security_updates: disabled` to the proven repositories only — see `security-config.md`, "An `enforced` configuration blocks per-repo changes". Keep `dependabot_alerts` enabled: Renovate's `vulnerabilityAlerts` reads them to open its security PRs.
+
+3. **Version updates** (`.github/dependabot.yml`): the file often carries decisions, not just a schedule. Port each into `renovate.json` before deleting the file:
+
+   | In `dependabot.yml` | In `renovate.json` |
+   |---|---|
+   | `ignore: dependency-name: X, versions: [">= 6.1"]` | `packageRules: [{matchPackageNames: ["X"], allowedVersions: "< 6.1"}]` |
+   | `ignore: update-types: [semver-major, semver-minor]` on one ecosystem | `packageRules: [{matchManagers: ["docker-compose"], matchUpdateTypes: ["major","minor"], enabled: false}]` |
+   | ecosystem owned by Dependabot on purpose (a split between the bots) | remove the matching `enabled: false` rule from `renovate.json` |
+
+   Read the history of both files first (`gh api "repos/ORG/REPO/commits?path=.github/dependabot.yml"`): a split between the bots usually has an issue behind it, and the PR should name the decision it reverses.
+
+4. **Template-managed repositories:** a `dependabot.yml` kept on purpose is listed under `intentional-drift` in `.github/template.yaml`; remove that entry together with the file. Check that no `netresearch/.github` template ships a `dependabot.yml`, or the drift check re-adds it.
+
+5. **Prose:** grep the repository for "Dependabot" — Dockerfile comments, lint-config rationales and OpenSSF badge evidence name the updater and turn false with the file.
+
 ### Auto-merge Configuration (Recommended)
 
 **IMPORTANT:** Use `platformAutomerge: true` to leverage Renovate's bypass permissions:
