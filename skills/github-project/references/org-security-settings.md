@@ -148,18 +148,18 @@ EOF
 
 An organization secret whose visibility is `selected` exists only for the repositories on its list. In any other repository `${{ secrets.NAME }}` resolves to an empty string — no error, no warning. A caller that passes it on to a reusable workflow hands over `""`, and a publish step that needs it either fails deep inside the reusable or skips its work while the run reports success.
 
-`gh secret list` without `--org` lists repository secrets only, so an empty listing in the repository proves nothing. Check from the repository side (the secret's name must appear; both list endpoints return 30 entries per page by default):
+`gh secret list` without `--org` lists repository secrets only, so an empty listing in the repository proves nothing. Check from the repository side (the secret's name must appear; both list endpoints are paginated, so fetch every page):
 
 ```bash
-gh api "repos/ORG/REPO/actions/organization-secrets?per_page=100" --jq '[.secrets[].name]'
+gh api --paginate "repos/ORG/REPO/actions/organization-secrets?per_page=100" --jq '.secrets[].name'
 ```
 
 And from the organization side, with an org admin token:
 
 ```bash
-gh api orgs/ORG/actions/secrets/NAME --jq .visibility                                             # selected?
-gh api "orgs/ORG/actions/secrets/NAME/repositories?per_page=100" --jq '[.repositories[].name]'    # the list
-gh api -X PUT orgs/ORG/actions/secrets/NAME/repositories/REPO_ID                                  # grant one repo
+gh api orgs/ORG/actions/secrets/NAME --jq .visibility                                                    # selected?
+gh api --paginate "orgs/ORG/actions/secrets/NAME/repositories?per_page=100" --jq '.repositories[].name'  # the list
+gh api -X PUT orgs/ORG/actions/secrets/NAME/repositories/REPO_ID                                         # grant one repo
 ```
 
 `REPO_ID` is the numeric ID (`gh api repos/ORG/REPO --jq .id`). Check this whenever a new repository starts using a shared publishing secret, before its first release.

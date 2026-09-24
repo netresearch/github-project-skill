@@ -239,7 +239,7 @@ Renovate treats a PR as modified as soon as another Git author adds a commit to 
 Whoever pushed to the branch owns the PR from then on: track it to merge, or close it with a comment naming what superseded it (`gh pr close <n> --delete-branch --comment "Superseded by #<m>"`). Two ways to hand a branch back instead:
 
 - Apply the rebase label (`rebaseLabel`, default `rebase`): Renovate then regenerates its commit even on a modified branch, which discards the foreign commit.
-- For another bot that routinely commits on top of Renovate PRs, list its Git author in `gitIgnoredAuthors`, so its pushes do not count as a modification.
+- For another bot that routinely commits on top of Renovate PRs, list its commit-author email (or a glob or regex matching it) in `gitIgnoredAuthors`, so its pushes do not count as a modification.
 
 ### Migrating from Dependabot to Renovate
 
