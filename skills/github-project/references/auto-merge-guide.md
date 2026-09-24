@@ -289,7 +289,11 @@ Real case (2026-07-18): two bump PRs showed `mergeStateStatus: BLOCKED` with `co
 This holds even when a `copilot_code_review` rule is active on the branch — that rule requests a review, it does not gate the merge. See "A quota-limited Copilot review does not block the merge" in `merge-strategy.md`.
 
 ```bash
-# The required set (the ONLY checks that can BLOCK):
+# The required set (the ONLY checks that can BLOCK), from rulesets and
+# classic protection alike:
+gh api "repos/OWNER/REPO/rules/branches/main?per_page=100" \
+  --jq '.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
+# Classic branch protection only (misses every ruleset):
 gh api repos/OWNER/REPO/branches/main/protection \
   --jq '.required_status_checks.contexts'
 
@@ -298,6 +302,36 @@ gh api repos/OWNER/REPO/branches/main/protection \
 ```
 
 Corollary: a quota-exhausted Copilot review returns `conclusion: failure`, not `neutral` — treat "failure" on an advisory reviewer check as noise, not a code problem. Never reach for `--admin` to "unblock" it.
+
+### BLOCKED with every visible gate satisfied
+
+When the required checks are green, no thread is open and `reviewDecision` is `APPROVED`, but `mergeStateStatus` stays `BLOCKED`, the cause is not yet known. Report it that way — "cause unknown, ruled out: …" — and do not name a candidate until a comparison with a PR whose gate opened under the same rules shows a difference.
+
+The `branches/main/protection` query above reads classic branch protection only. Rulesets are invisible to it, and on a repository that uses rulesets it can return an error instead of a list. Collect the evidence in this order:
+
+```bash
+# 1. Every effective rule on the base branch, from all rulesets and all sources:
+gh api "repos/OWNER/REPO/rules/branches/main?per_page=100" \
+  | jq -c '.[] | {type, ruleset_id, parameters}'
+
+# 2. If a required_status_checks rule has strict_required_status_checks_policy: true,
+#    the branch must be up to date with the base:
+gh api repos/OWNER/REPO/compare/main...HEAD_BRANCH --jq '{behind_by, ahead_by}'
+
+# 3. Every run on the head, including superseded ones, with the app that reported it
+#    (a required context can name an integration_id; a run from another app does not count):
+gh api --paginate "repos/OWNER/REPO/commits/SHA/check-runs?per_page=100&filter=all" \
+  --jq '.check_runs[] | "\(.name) \(.status)/\(.conclusion) app=\(.app.id)"'
+
+# 4. Check suites on the head — a dynamic run (the Copilot review) appears here
+#    but not in the GraphQL statusCheckRollup:
+gh api "repos/OWNER/REPO/commits/SHA/check-suites?per_page=100" \
+  --jq '.check_suites[] | "\(.id) \(.app.slug) \(.status)/\(.conclusion)"'
+```
+
+`gh api repos/OWNER/REPO/rulesets` and `rules/branches/main` answer different questions: the first lists the rulesets defined on the repository, the second the rules that apply to the branch after every source is merged. Read the second for a merge question.
+
+A `pull_request` rule can carry parameters the review decision does not reflect, such as `require_extra_approval_for_unattributed_changes`. Name such a parameter as set and not evaluated, never as the cause. Real case (2026-09-24, netresearch/t3x-nr-image-optimize#201): every step above came back clean, `pr-status.sh` answered `investigate`, and the operator reported "needs a second approval" from that parameter. It was not the cause, and the GitHub page showed a required check as "Expected — waiting" that the API reported as successful.
 
 ## Migrating Inline Jobs to Reusable Workflows Renames Every Required Check
 
