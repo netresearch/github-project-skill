@@ -241,6 +241,47 @@ Measured on `netresearch` 2026-09-17: of 287 public repos, configuration 425 rep
 
 The `failed` status is the second thing this listing exposes: a configuration that never applied at all, so none of its settings are in force. Those 9 were in that state and nothing alarmed on it.
 
+### An `enforced` configuration blocks per-repo changes — change a subset through a variant configuration
+
+The reverse also holds: a setting that an `enforced` configuration declares cannot be changed at the repository. The per-repo endpoint refuses:
+
+```text
+DELETE repos/OWNER/REPO/automated-security-fixes
+→ 422 An enforced security configuration prevented modifying dependabot
+  security updates enablement. Contact your organization owner for details.
+```
+
+Editing the configuration itself changes every attached repository. To change one setting for a **subset**, create a variant of the configuration and attach it to that subset only:
+
+```bash
+# 1. Copy the configuration, drop the server fields, change ONE field
+gh api orgs/ORG/code-security/configurations/ID > cfg.json
+jq '{name: "Variant name", description: "Why it differs"}
+    + (del(.id,.url,.html_url,.created_at,.updated_at,.target_type,.name,.description,.enforcement)
+       | with_entries(select(.value != null)))
+    | .dependabot_security_updates = "disabled"' cfg.json > cfg-new.json
+NEW=$(gh api -X POST orgs/ORG/code-security/configurations --input cfg-new.json --jq .id)
+
+# 2. Diff the created configuration against the original — GitHub fills defaults
+diff <(jq -S 'del(.id,.url,.html_url,.created_at,.updated_at,.name,.description)' cfg.json) \
+     <(gh api orgs/ORG/code-security/configurations/$NEW \
+       | jq -S 'del(.id,.url,.html_url,.created_at,.updated_at,.name,.description)')
+
+# 3. Canary: attach one repository, read the repository back
+gh api -X POST orgs/ORG/code-security/configurations/$NEW/attach \
+  --input - <<<'{"scope":"selected","selected_repository_ids":[REPO_ID]}'
+gh api repos/ORG/REPO --jq .security_and_analysis.dependabot_security_updates.status
+
+# 4. Attach the rest (repository IDs from `orgs/ORG/repos`, not `gh repo list`)
+```
+
+Four things the steps above exist for:
+
+- The diff is not optional. Measured on `netresearch` 2026-09-24: the variant showed `dependabot_delegated_alert_dismissal` changed from `null` to `"disabled"` although the request never named it — GitHub fills its default.
+- `attach` answers `{}` immediately and applies **asynchronously**. `…/configurations/$NEW/repositories` lists each repository as `attaching` and then `enforced`; 29 of 137 were listed a minute after the call. Wait until every repository reports `enforced`, then read the **repository** endpoint — the configuration status is a claim (see the section above).
+- The rollback is one call: attach the original configuration to the same IDs.
+- `gh repo list --json` has no numeric repository ID field; take `id` from `gh api --paginate "orgs/ORG/repos?per_page=100&type=all"`.
+
 ### A default-setup analysis with no source does not close stale alerts
 
 When default setup runs a language for which the repository contains **no source files**, the analysis completes but records `error: "unsuccessful execution"` with `results_count: 0` and `rules_count: 0`. Such an analysis does **not** count as having re-observed the code, so existing alerts for that language are not closed — deleting the offending file does not retire the alert, and if the scanner is disabled afterwards, nothing will ever close it automatically. The honest manual close in that case is `mitigated`: removing the code is a mitigation, whereas `false positive`, `won't fix` and `used in tests` all assert something untrue about code that no longer exists.
