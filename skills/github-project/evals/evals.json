@@ -381,5 +381,54 @@
                 "Check the downloads, then archive the repository in the GitHub UI."
             ]
         }
+    },
+    {
+        "name": "enforced_security_config_blocks_repo_toggle",
+        "prompt": "Disabling Dependabot security updates on one of our repos fails with 422 'An enforced security configuration prevented modifying'. How do I turn it off for just some repos?",
+        "assertions": [
+            {
+                "type": "content",
+                "pattern": "code-security/configurations"
+            },
+            {
+                "type": "content",
+                "pattern": "/attach"
+            },
+            {
+                "type": "content",
+                "pattern": "(selected_repository_ids|\"selected\")"
+            }
+        ],
+        "samples": {
+            "passing": "The enforced org configuration owns that setting. Copy it via gh api orgs/ORG/code-security/configurations/ID, set dependabot_security_updates to disabled, create it, and POST .../configurations/NEW/attach with {\"scope\":\"selected\",\"selected_repository_ids\":[...]} for the subset. Attach runs asynchronously.",
+            "failing": [
+                "Retry with admin rights: gh api -X DELETE repos/ORG/REPO/automated-security-fixes, or disable it in the repository settings page.",
+                "Edit the org configuration via gh api orgs/ORG/code-security/configurations/ID and set dependabot_security_updates to disabled."
+            ]
+        }
+    },
+    {
+        "name": "migrate_dependabot_to_renovate",
+        "prompt": "We want Renovate only. Every repo has a renovate.json, so can we just switch Dependabot off everywhere?",
+        "assertions": [
+            {
+                "type": "content",
+                "pattern": "(--author app/renovate|last Renovate PR|Renovate activity)"
+            },
+            {
+                "type": "content",
+                "pattern": "(allowedVersions|packageRules)"
+            },
+            {
+                "type": "content",
+                "pattern": "dependabot_alerts"
+            }
+        ],
+        "samples": {
+            "passing": "Not on config presence. Check Renovate activity per repo (gh pr list --author app/renovate --limit 1) and keep Dependabot where Renovate has not run. Port dependabot.yml ignores into packageRules (allowedVersions), then disable security updates via a variant org configuration while dependabot_alerts stays enabled for vulnerabilityAlerts.",
+            "failing": [
+                "Yes. Delete .github/dependabot.yml in every repo and disable Dependabot security updates and dependabot_alerts org-wide, since renovate.json is present everywhere."
+            ]
+        }
     }
 ]
