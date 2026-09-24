@@ -290,13 +290,20 @@ This holds even when a `copilot_code_review` rule is active on the branch — th
 
 ```bash
 # The required set (the ONLY checks that can BLOCK) comes from two sources that
-# no single endpoint merges — read both:
+# no single endpoint merges — read both, on the PR's base branch:
+BASE=$(gh pr view PR --repo OWNER/REPO --json baseRefName --jq .baseRefName)
 # rulesets (repository and organisation):
-gh api "repos/OWNER/REPO/rules/branches/main?per_page=100" \
+gh api --paginate "repos/OWNER/REPO/rules/branches/$BASE?per_page=100" \
   --jq '.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
-# classic branch protection (404 "Branch not protected" when there is none):
-gh api repos/OWNER/REPO/branches/main/protection \
-  --jq '.required_status_checks.contexts'
+# classic branch protection — classify a check as advisory only once this read
+# succeeded or reported "Branch not protected":
+if gh api "repos/OWNER/REPO/branches/$BASE/protection" > prot.json 2> prot.err; then
+  jq -r '.required_status_checks.contexts[]?' prot.json
+elif grep -q "Branch not protected" prot.err; then
+  echo "no classic branch protection"
+else
+  cat prot.err; echo "classic protection NOT read — the required set is incomplete"
+fi
 
 # A failing check in NEITHER list is advisory — it does not gate merge.
 # BLOCKED + all required checks green/pending → wait, don't intervene.
@@ -311,8 +318,11 @@ When the required checks are green, no thread is open and `reviewDecision` is `A
 Branch protection comes from two sources, and each endpoint reads only one of them: `rules/branches/<base>` returns the rules of every ruleset (repository and organisation) and none of the classic branch protection; `branches/<base>/protection` returns the classic protection and none of the rulesets. On netresearch/git-workflow-skill the classic protection holds eight required contexts that `rules/branches/main` does not list. Before collecting anything, read the head SHA and the state again a few minutes later: `mergeStateStatus` can lag behind the condition that set it (see "When every gate checks out, re-query before diagnosing further" in `merge-strategy.md`). If a second read on the same SHA still says `BLOCKED`, collect the evidence in this order:
 
 ```bash
+# The PR's base branch and head SHA, used by every step below:
+read -r BASE SHA < <(gh pr view PR --repo OWNER/REPO --json baseRefName,headRefOid --jq '"\(.baseRefName) \(.headRefOid)"')
+
 # 1a. Rules from all rulesets on the base branch:
-gh api --paginate "repos/OWNER/REPO/rules/branches/main?per_page=100" \
+gh api --paginate "repos/OWNER/REPO/rules/branches/$BASE?per_page=100" \
   | jq -c '.[] | {type, ruleset_id, parameters}'
 
 # 1b. Classic branch protection on the same branch. On an error gh prints the
@@ -321,7 +331,7 @@ gh api --paginate "repos/OWNER/REPO/rules/branches/main?per_page=100" \
 #     "Branch not protected (HTTP 404)" means there is none; any other error,
 #     including "Not Found (HTTP 404)" for a caller without admin rights, means
 #     the protection was not read.
-if gh api repos/OWNER/REPO/branches/main/protection > prot.json 2> prot.err; then
+if gh api "repos/OWNER/REPO/branches/$BASE/protection" > prot.json 2> prot.err; then
   jq '{
     reviews: (.required_pull_request_reviews // null | if . then del(.url, .bypass_pull_request_allowances) else . end),
     checks: .required_status_checks,
@@ -338,20 +348,20 @@ fi
 #    in a ruleset, required_status_checks.strict in classic protection), the head
 #    must contain the base. Compare by SHA, which also works for a fork PR, whose
 #    branch does not exist in the base repository:
-gh api repos/OWNER/REPO/compare/main...SHA --jq '{behind_by, ahead_by}'
+gh api "repos/OWNER/REPO/compare/$BASE...$SHA" --jq '{behind_by, ahead_by}'
 
 # 3. Every run on the head, including superseded ones, with the app that reported it
 #    (a required context can name an integration_id; a run from another app does not count):
-gh api --paginate "repos/OWNER/REPO/commits/SHA/check-runs?per_page=100&filter=all" \
+gh api --paginate "repos/OWNER/REPO/commits/$SHA/check-runs?per_page=100&filter=all" \
   --jq '.check_runs[] | "\(.name) \(.status)/\(.conclusion) app=\(.app.id)"'
 
 # 4. Check suites on the head — a dynamic run (the Copilot review) appears here
 #    but not in the GraphQL statusCheckRollup:
-gh api --paginate "repos/OWNER/REPO/commits/SHA/check-suites?per_page=100" \
+gh api --paginate "repos/OWNER/REPO/commits/$SHA/check-suites?per_page=100" \
   --jq '.check_suites[] | "\(.id) \(.app.slug) \(.status)/\(.conclusion)"'
 ```
 
-`gh api repos/OWNER/REPO/rulesets` and `rules/branches/main` answer different questions: the first lists the rulesets defined on the repository, the second the ruleset rules that apply to the branch. Read the second, plus the classic protection, for a merge question.
+`gh api repos/OWNER/REPO/rulesets` and `rules/branches/<base>` answer different questions: the first lists the rulesets defined on the repository, the second the ruleset rules that apply to the branch. Read the second, plus the classic protection, for a merge question.
 
 A `pull_request` rule can carry parameters the review decision does not reflect, such as `require_extra_approval_for_unattributed_changes`. List such a parameter as a candidate that the API does not let you evaluate, never as the cause. Real case (2026-09-24, netresearch/t3x-nr-image-optimize#201): every required context from both sources was satisfied (success, or skipped for `scorecard`) and reported by the required app, the head was not behind, no thread was open, the review decision was `APPROVED` and both commits carried valid signatures, yet the PR stayed `BLOCKED` on every read at the same head over several hours, so the re-query did not clear it. A failed Copilot review suite (quota) sat outside the rollup; `merge-strategy.md` rules a quota-limited Copilot review out as a merge blocker, which leaves that parameter as the only named candidate. The operator reported the parameter as the cause ("needs a second approval"), which nothing had shown. The GitHub page meanwhile showed a required check as "Expected — waiting" that the API reported as successful. The cause was not determined when this was written.
 
