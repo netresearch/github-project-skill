@@ -58,6 +58,7 @@ This skill covers **GitHub platform configuration only**:
 - `skills/github-project/references/merge-strategy.md` — Merge method alignment
 - `skills/github-project/references/sub-issues.md` — Sub-issues GraphQL API
 - `skills/github-project/references/branch-migration.md` — Master to main migration
+- `skills/github-project/references/repo-retirement.md` — Retiring a repository (consumers, Packagist abandon, archive)
 - `skills/github-project/references/repository-structure.md` — Standard repo layout
 - `skills/github-project/references/dependency-management.md` — Dependabot/Renovate config
 - `skills/github-project/references/gh-cli-reference.md` — GitHub CLI patterns
