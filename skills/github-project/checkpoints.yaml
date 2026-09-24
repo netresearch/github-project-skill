@@ -401,7 +401,7 @@ llm_reviews:
 
       Check via both sources, because init-branch-protection.sh writes classic
       branch protection, which the rulesets endpoint does not return:
-        gh api repos/OWNER/REPO/rulesets --jq '.[].rules[]'
+        gh api repos/OWNER/REPO/rules/branches/BRANCH --jq '.[]'
         gh api repos/OWNER/REPO/branches/BRANCH/protection \
           --jq '{approvals: .required_pull_request_reviews.required_approving_review_count, conversation_resolution: .required_conversation_resolution.enabled}'
       A 404 "Branch not protected" from the second call means no classic
@@ -467,7 +467,7 @@ llm_reviews:
          required_conversation_resolution. Surface this as an advisory trade-off,
          not a blocking failure, since it matches the documented org default.
       4. If using rulesets instead of branch protection, check the equivalent:
-         gh api repos/OWNER/REPO/rulesets --jq '.[].rules[] | select(.type=="pull_request") | .parameters'
+         gh api repos/OWNER/REPO/rules/branches/BRANCH --jq '.[] | select(.type=="pull_request") | .parameters'
          Look for required_review_thread_resolution: true and bypass_actors being empty.
       Report required_conversation_resolution gaps as errors; report
       enforce_admins gaps as info (advisory).

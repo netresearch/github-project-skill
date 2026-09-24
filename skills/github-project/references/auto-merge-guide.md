@@ -308,21 +308,26 @@ Corollary: a quota-exhausted Copilot review returns `conclusion: failure`, not `
 
 When the required checks are green, no thread is open and `reviewDecision` is `APPROVED`, but `mergeStateStatus` stays `BLOCKED`, the cause is not yet known. Report it that way — "cause unknown, ruled out: …" — followed by what is left as candidates. A candidate is not a cause: name something as the cause only after a comparison with a PR whose gate opened under the same rules shows a difference.
 
-Branch protection comes from two sources, and each endpoint reads only one of them: `rules/branches/<base>` returns the rules of every ruleset (repository and organisation) and none of the classic branch protection; `branches/<base>/protection` returns the classic protection and none of the rulesets. On netresearch/git-workflow-skill the classic protection holds eight required contexts that `rules/branches/main` does not list. Collect the evidence in this order:
+Branch protection comes from two sources, and each endpoint reads only one of them: `rules/branches/<base>` returns the rules of every ruleset (repository and organisation) and none of the classic branch protection; `branches/<base>/protection` returns the classic protection and none of the rulesets. On netresearch/git-workflow-skill the classic protection holds eight required contexts that `rules/branches/main` does not list. Before collecting anything, read the head SHA and the state again a few minutes later: `mergeStateStatus` can lag behind the condition that set it (see "When every gate checks out, re-query before diagnosing further" in `merge-strategy.md`). If a second read on the same SHA still says `BLOCKED`, collect the evidence in this order:
 
 ```bash
 # 1a. Rules from all rulesets on the base branch:
-gh api "repos/OWNER/REPO/rules/branches/main?per_page=100" \
+gh api --paginate "repos/OWNER/REPO/rules/branches/main?per_page=100" \
   | jq -c '.[] | {type, ruleset_id, parameters}'
 
-# 1b. Classic branch protection on the same branch (404 "Branch not protected"
-#     when there is none — any other error means it was not read):
-gh api repos/OWNER/REPO/branches/main/protection | jq '{
+# 1b. Classic branch protection on the same branch. On an error gh prints the
+#     error body to stdout, and jq turns it into an all-null object that looks
+#     like "nothing set" — so test the exit status first and read stderr:
+#     "Branch not protected (HTTP 404)" means none; any other error, including
+#     "Not Found (HTTP 404)" for a caller without admin rights, means not read.
+gh api repos/OWNER/REPO/branches/main/protection > prot.json 2> prot.err \
+  || { cat prot.err; echo "classic protection NOT read"; }
+jq '{
   reviews: (.required_pull_request_reviews // null | if . then del(.url, .bypass_pull_request_allowances) else . end),
   checks: .required_status_checks,
   conversation_resolution: .required_conversation_resolution.enabled,
   signatures: .required_signatures.enabled,
-  enforce_admins: .enforce_admins.enabled}'
+  enforce_admins: .enforce_admins.enabled}' prot.json
 
 # 2. If either source sets a strict policy (strict_required_status_checks_policy
 #    in a ruleset, required_status_checks.strict in classic protection), the head
@@ -343,7 +348,7 @@ gh api --paginate "repos/OWNER/REPO/commits/SHA/check-suites?per_page=100" \
 
 `gh api repos/OWNER/REPO/rulesets` and `rules/branches/main` answer different questions: the first lists the rulesets defined on the repository, the second the ruleset rules that apply to the branch. Read the second, plus the classic protection, for a merge question.
 
-A `pull_request` rule can carry parameters the review decision does not reflect, such as `require_extra_approval_for_unattributed_changes`. List such a parameter as a candidate that the API does not let you evaluate, never as the cause. Real case (2026-09-24, netresearch/t3x-nr-image-optimize#201): all required contexts from both sources had succeeded from the required app, the head was not behind, no thread was open, the review decision was `APPROVED` and both commits carried valid signatures, yet the PR stayed `BLOCKED`. Left as candidates were a failed Copilot review suite outside the rollup and that parameter. The operator reported the parameter as the cause ("needs a second approval"), which nothing had shown. The GitHub page meanwhile showed a required check as "Expected — waiting" that the API reported as successful. The cause was not determined when this was written.
+A `pull_request` rule can carry parameters the review decision does not reflect, such as `require_extra_approval_for_unattributed_changes`. List such a parameter as a candidate that the API does not let you evaluate, never as the cause. Real case (2026-09-24, netresearch/t3x-nr-image-optimize#201): every required context from both sources was satisfied (success, or skipped for `scorecard`) and reported by the required app, the head was not behind, no thread was open, the review decision was `APPROVED` and both commits carried valid signatures, yet the PR stayed `BLOCKED` on every read at the same head over several hours, so the re-query did not clear it. A failed Copilot review suite (quota) sat outside the rollup; `merge-strategy.md` rules a quota-limited Copilot review out as a merge blocker, which leaves that parameter as the only named candidate. The operator reported the parameter as the cause ("needs a second approval"), which nothing had shown. The GitHub page meanwhile showed a required check as "Expected — waiting" that the API reported as successful. The cause was not determined when this was written.
 
 ## Migrating Inline Jobs to Reusable Workflows Renames Every Required Check
 
