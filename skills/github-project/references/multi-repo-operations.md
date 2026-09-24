@@ -375,6 +375,27 @@ When a consumer repo's template-drift check fails and the fix is "remove a thing
 
 **Rule of thumb for template scope:** the template should carry only what EVERY consumer of that class actually needs. A `go-lib` template with an `npm` dependabot entry is wrong because most Go libraries don't ship `package.json`. A `go-app` template with an `npm` entry is defensible — some go-apps DO ship frontend assets — but the class is loose enough that per-consumer overrides become common. When you see carve-outs accumulating in `intentional-drift:` lists, that's a signal the template is too broad for its consumer base and the classes should be split (e.g. `go-app` vs `go-app-headless`).
 
+### Applying a template to one repository by hand
+
+`netresearch/.github/scripts/sync-template.sh <template> <owner/repo>` clones
+the target, copies `templates/<template>/.github/`, commits with a fixed
+message and opens a **ready** PR. Where the commit must carry the operator's
+disclosure trailers or the PR must start as a draft, make the same copy in
+your own worktree:
+
+```bash
+# From a local netresearch/.github clone, fetched first
+git -C <dotgithub>/.bare archive origin/main "templates/<template>/.github" \
+  | tar -x -C "$TMP"
+cp -a "$TMP/templates/<template>/.github/." <worktree>/.github/
+git -C <worktree> status --porcelain     # add exactly these paths, never -A
+```
+
+Name the template commit in the commit message
+(`git -C <dotgithub>/.bare rev-parse --short origin/main`), so the drift
+baseline is traceable. The script never overwrites an existing
+`.github/template.yaml`; when re-syncing by hand, restore it after the copy.
+
 See [dependency-management.md](./dependency-management.md) for which Dependabot ecosystems hard-fail when their manifest is missing (the common source of template drift on Go repos).
 
 ## Common Anti-Patterns

@@ -94,6 +94,7 @@ State what a change does, not how good it is.
 | Repo bootstrap | `references/repo-bootstrap.md` |
 | Repository file layout | `references/repository-structure.md` |
 | Branch migration | `references/branch-migration.md` |
+| Repository retirement, Packagist abandon | `references/repo-retirement.md` |
 | Dependabot/Renovate | `references/dependency-management.md` |
 | Auto-approve + auto-merge | `references/auto-merge-guide.md` |
 | Merge strategy | `references/merge-strategy.md` |

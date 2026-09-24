@@ -332,5 +332,54 @@
         "pattern": "(permission|not transient|Resource not accessible)"
       }
     ]
-  }
+  },
+    {
+        "name": "rename_master_and_block_recreation",
+        "prompt": "Switch our repo's default branch from master to main and make sure nobody can recreate master.",
+        "assertions": [
+            {
+                "type": "content",
+                "pattern": "branches/master/rename"
+            },
+            {
+                "type": "content",
+                "pattern": "rulesets"
+            },
+            {
+                "type": "content",
+                "pattern": "\"type\": ?\"creation\""
+            }
+        ],
+        "samples": {
+            "passing": "Rename on GitHub, which moves protection and default_branch:\n\ngh api -X POST repos/O/R/branches/master/rename -f new_name=main\n\nThen block the name with a ruleset:\n\ngh api -X POST repos/O/R/rulesets --input - <<'EOF'\n{\"name\": \"Block master branch recreation\", \"target\": \"branch\", \"enforcement\": \"active\",\n \"conditions\": {\"ref_name\": {\"include\": [\"refs/heads/master\"], \"exclude\": []}},\n \"rules\": [{\"type\": \"creation\"}]}\nEOF",
+            "failing": [
+                "git branch -m master main\ngit push -u origin main\ngh repo edit --default-branch main\ngit push origin --delete master\n\nThen add branch protection on master with 6 required approvals so nobody can push the recreation."
+            ]
+        }
+    },
+    {
+        "name": "retire_unused_composer_package",
+        "prompt": "Nobody seems to use our old Composer package anymore. How do we retire the repository properly?",
+        "assertions": [
+            {
+                "type": "content",
+                "pattern": "(downloads|dependents)"
+            },
+            {
+                "type": "content",
+                "pattern": "\"abandoned\": ?true"
+            },
+            {
+                "type": "content",
+                "pattern": "gh repo archive"
+            }
+        ],
+        "samples": {
+            "passing": "First check the Packagist downloads and dependents. Then add \"abandoned\": true to composer.json on the default branch, merge, wait for CI on the merge commit, and run gh repo archive OWNER/REPO --yes.",
+            "failing": [
+                "Delete the repository in the GitHub settings and remove the package from Packagist.",
+                "Check the downloads, then archive the repository in the GitHub UI."
+            ]
+        }
+    }
 ]
