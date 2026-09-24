@@ -401,7 +401,7 @@ llm_reviews:
 
       Check via both sources, because init-branch-protection.sh writes classic
       branch protection, which the rulesets endpoint does not return:
-        gh api repos/OWNER/REPO/rulesets --jq '.[].rules[]'
+        gh api --paginate repos/OWNER/REPO/rules/branches/BRANCH --jq '.[]'
         gh api repos/OWNER/REPO/branches/BRANCH/protection \
           --jq '{approvals: .required_pull_request_reviews.required_approving_review_count, conversation_resolution: .required_conversation_resolution.enabled}'
       A 404 "Branch not protected" from the second call means no classic
@@ -459,7 +459,7 @@ llm_reviews:
          report this as an error on its own — flag it as info/advisory.
       2. Run BOTH, because a ruleset is invisible to the classic endpoint:
            gh api repos/OWNER/REPO/branches/BRANCH/protection --jq '.required_conversation_resolution.enabled'
-           gh api repos/OWNER/REPO/rules/branches/BRANCH --jq 'any(.[]?; .type=="pull_request" and .parameters.required_review_thread_resolution == true)'
+           gh api --paginate repos/OWNER/REPO/rules/branches/BRANCH | jq -s 'add | any(.[]?; .type=="pull_request" and .parameters.required_review_thread_resolution == true)'
          Either being true is enough. Without both being false, unresolved
          review threads do not block merges.
          This is the primary error-level enforcement check (paired with GH-31).
@@ -467,8 +467,11 @@ llm_reviews:
          required_conversation_resolution. Surface this as an advisory trade-off,
          not a blocking failure, since it matches the documented org default.
       4. If using rulesets instead of branch protection, check the equivalent:
-         gh api repos/OWNER/REPO/rulesets --jq '.[].rules[] | select(.type=="pull_request") | .parameters'
-         Look for required_review_thread_resolution: true and bypass_actors being empty.
+         gh api --paginate repos/OWNER/REPO/rules/branches/BRANCH --jq '.[] | select(.type=="pull_request") | {ruleset_id, parameters}'
+         Look for required_review_thread_resolution: true. The bypass actors are not
+         in that output; read them per ruleset_id from the line above:
+         gh api repos/OWNER/REPO/rulesets/RULESET_ID --jq '.bypass_actors'
+         and look for an empty list.
       Report required_conversation_resolution gaps as errors; report
       enforce_admins gaps as info (advisory).
     severity: error
