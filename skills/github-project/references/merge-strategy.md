@@ -446,6 +446,25 @@ gh api -X PATCH "repos/$REPO/branches/main/protection/required_status_checks" --
 
 Verify the contexts match the jobs the workflow now emits. The context string is the **check-run name** from `repos/$REPO/commits/$SHA/check-runs[].name`, which for reusable-/multi-job workflows includes the `workflow / job (matrix)` prefix (e.g. `ci / PHPStan (8.2, ^14.3)`) — not the bare job name. (This is the same source `init-branch-protection.sh` uses; the `/actions/runs/{id}/jobs` endpoint returns the bare job name and is wrong for context matching.)
 
+### A job skipped on one event orphans its required check → draft PRs stuck "Expected"
+
+**Require a workflow's aggregate check, not the individual jobs of a workflow that skips jobs per event.** The `checks.yml` in netresearch TYPO3 extensions (read in t3x-nr-image-optimize) runs on `pull_request` with `types: [opened, synchronize, reopened, ready_for_review]` and gives `security`, `betterleaks`, `zizmor`, `fuzz`, `license-check` and `codeql` the condition `if: github.event.action != 'ready_for_review'`. Marking a draft ready therefore starts a second run of the same workflow on the same head SHA in which those jobs are skipped, and a skipped `uses:` job never materialises its inner check names. A ruleset that requires one of them by name — `security / Composer Audit` — then shows "Expected — Waiting for status to be reported" with every check green, and the PR stays `BLOCKED`.
+
+The passing result from the earlier run does not count, and re-running the job inside that earlier run does not clear it. Removing the individual context cleared it at once. This points to GitHub evaluating the newest run of the workflow, which is an inference from those two tests, not documented behaviour. Observed 2026-09-26 on netresearch/t3x-nr-image-optimize#207 (runs 212 and 213 of "Checks").
+
+The fix is the one the template's own `gate` job comment gives: require `All security checks`, which depends on every job and keeps its name on every event, and drop the individual job contexts. The same reasoning covers `merge_group`, where pull-request-only jobs never appear. To find repositories with the trap:
+
+```bash
+# Required contexts that name an individual job of an event-gated workflow,
+# on the default branch (pass another branch name to check a release branch)
+BRANCH=$(gh api "repos/$REPO" --jq .default_branch)
+gh api "repos/$REPO/rules/branches/$BRANCH" --jq '
+  [.[] | select(.type=="required_status_checks") | .ruleset_id as $id
+   | .parameters.required_status_checks[].context
+   | select(test("^(security|betterleaks|zizmor|fuzz|license-check|codeql) /"))
+   | "\(.) (ruleset \($id))"]'
+```
+
 ### Required "SonarCloud Code Analysis" status absent — AutoScan never analyzed the PR
 
 The same "BLOCKED with every visible check green" symptom also occurs with a *correct* required-checks list when the context comes from an external app that never ran. SonarCloud AutoScan sometimes never analyzes a PR: its `sonarqubecloud` check-suite sits `queued` with zero check runs, so the required `SonarCloud Code Analysis` context never reports (and, as above, a missing context does not appear in `gh pr checks`). Diagnose:
