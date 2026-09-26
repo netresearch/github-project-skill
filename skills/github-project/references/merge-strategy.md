@@ -455,8 +455,10 @@ The passing result from the earlier run does not count, and re-running the job i
 The fix is the one the template's own `gate` job comment gives: require `All security checks`, which depends on every job and keeps its name on every event, and drop the individual job contexts. The same reasoning covers `merge_group`, where pull-request-only jobs never appear. To find repositories with the trap:
 
 ```bash
-# Required contexts that name an individual job of an event-gated workflow
-gh api "repos/$REPO/rules/branches/main" --jq '
+# Required contexts that name an individual job of an event-gated workflow,
+# on the default branch (pass another branch name to check a release branch)
+BRANCH=$(gh api "repos/$REPO" --jq .default_branch)
+gh api "repos/$REPO/rules/branches/$BRANCH" --jq '
   [.[] | select(.type=="required_status_checks") | .ruleset_id as $id
    | .parameters.required_status_checks[].context
    | select(test("^(security|betterleaks|zizmor|fuzz|license-check|codeql) /"))
