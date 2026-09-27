@@ -381,8 +381,7 @@ substitute.
 
 **When REST is exhausted, read files without the API.** `gh api
 repos/<owner>/<repo>/contents/<path>` answers `HTTP 403 … API rate limit
-exceeded` once the REST budget is gone, while the same file is served by
-`curl -sfL https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`, which
-does not draw on it. Several files or a history search are one
-`git clone --depth=1` (or a fetch into an existing clone) away. `gh pr` and
-`gh issue` commands run on the GraphQL budget and keep working.
+exceeded` once the REST budget is gone. A file in a public repository is still
+served by `curl -sfL https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`,
+which sends no token; a private file needs git. Current files come from
+`git clone --depth=1`, a history search needs a full clone or a deepening fetch.
