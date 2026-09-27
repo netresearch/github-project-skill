@@ -378,3 +378,11 @@ base=main -f body=…` to open one (it returns `.html_url`). Keep GraphQL for wh
 only it does — review-thread resolution, `enqueuePullRequest`. **Merging stays
 on `gh pr merge`**: a REST `PUT /merge` bypasses local merge gating and is not a
 substitute.
+
+**When REST is exhausted, read files without the API.** `gh api
+repos/<owner>/<repo>/contents/<path>` answers `HTTP 403 … API rate limit
+exceeded` once the REST budget is gone, while the same file is served by
+`curl -sfL https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`, which
+does not draw on it. Several files or a history search are one
+`git clone --depth=1` (or a fetch into an existing clone) away. `gh pr` and
+`gh issue` commands run on the GraphQL budget and keep working.
