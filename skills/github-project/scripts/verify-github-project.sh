@@ -36,17 +36,17 @@ WARNINGS=0
 # Print functions
 pass() {
     echo -e "${GREEN}✓${NC} $1"
-    ((PASSED++))
+    PASSED=$((PASSED + 1))
 }
 
 fail() {
     echo -e "${RED}✗${NC} $1"
-    ((FAILED++))
+    FAILED=$((FAILED + 1))
 }
 
 warn() {
     echo -e "${YELLOW}!${NC} $1"
-    ((WARNINGS++))
+    WARNINGS=$((WARNINGS + 1))
 }
 
 info() {
@@ -85,7 +85,7 @@ info "Note: For CI/CD, security scanning, SLSA → see other skills"
 # Extract repo slug for GitHub API calls
 REPO_SLUG=""
 if git rev-parse --git-dir > /dev/null 2>&1; then
-    REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null)
+    REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null || true)
     if [ -n "$REMOTE_URL" ]; then
         REPO_SLUG=$(echo "$REMOTE_URL" | sed -E 's|.*github\.com[:/](.+/[^.]+)(\.git)?$|\1|')
     fi
@@ -95,18 +95,18 @@ fi
 header "Root Documentation Files"
 # ─────────────────────────────────────────────────────────────────
 
-[ -f "README.md" ] && pass "README.md exists" || fail "README.md missing"
-[ -f "LICENSE" ] && pass "LICENSE exists" || fail "LICENSE missing"
-[ -f "SECURITY.md" ] && pass "SECURITY.md exists" || fail "SECURITY.md missing (required for vulnerability reporting)"
-[ -f "CONTRIBUTING.md" ] && pass "CONTRIBUTING.md exists" || warn "CONTRIBUTING.md missing"
-[ -f "CODE_OF_CONDUCT.md" ] && pass "CODE_OF_CONDUCT.md exists" || warn "CODE_OF_CONDUCT.md missing"
-[ -f "CHANGELOG.md" ] && pass "CHANGELOG.md exists" || warn "CHANGELOG.md missing"
+if [ -f "README.md" ]; then pass "README.md exists"; else fail "README.md missing"; fi
+if [ -f "LICENSE" ]; then pass "LICENSE exists"; else fail "LICENSE missing"; fi
+if [ -f "SECURITY.md" ]; then pass "SECURITY.md exists"; else fail "SECURITY.md missing (required for vulnerability reporting)"; fi
+if [ -f "CONTRIBUTING.md" ]; then pass "CONTRIBUTING.md exists"; else warn "CONTRIBUTING.md missing"; fi
+if [ -f "CODE_OF_CONDUCT.md" ]; then pass "CODE_OF_CONDUCT.md exists"; else warn "CODE_OF_CONDUCT.md missing"; fi
+if [ -f "CHANGELOG.md" ]; then pass "CHANGELOG.md exists"; else warn "CHANGELOG.md missing"; fi
 
 # ─────────────────────────────────────────────────────────────────
 header ".github Directory Structure"
 # ─────────────────────────────────────────────────────────────────
 
-[ -d ".github" ] && pass ".github directory exists" || fail ".github directory missing"
+if [ -d ".github" ]; then pass ".github directory exists"; else fail ".github directory missing"; fi
 
 # CODEOWNERS for automatic reviewer assignment
 if [ -f ".github/CODEOWNERS" ]; then
@@ -267,8 +267,8 @@ header "Issue & PR Templates"
 if [ -d ".github/ISSUE_TEMPLATE" ]; then
     pass "Issue template directory exists"
 
-    [ -f ".github/ISSUE_TEMPLATE/bug_report.md" ] && pass "Bug report template exists" || warn "Bug report template missing"
-    [ -f ".github/ISSUE_TEMPLATE/feature_request.md" ] && pass "Feature request template exists" || warn "Feature request template missing"
+    if [ -f ".github/ISSUE_TEMPLATE/bug_report.md" ]; then pass "Bug report template exists"; else warn "Bug report template missing"; fi
+    if [ -f ".github/ISSUE_TEMPLATE/feature_request.md" ]; then pass "Feature request template exists"; else warn "Feature request template missing"; fi
 
     # Check for config.yml (template chooser)
     if [ -f ".github/ISSUE_TEMPLATE/config.yml" ]; then
