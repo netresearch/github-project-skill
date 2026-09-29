@@ -117,13 +117,14 @@ mechanical:
   # when its `enabledManagers` array is absent or empty, or when that array
   # (not some other key such as `packageRules[].matchManagers`) names a
   # matching manager. The Python managers listed are the ones covering what
-  # Dependabot's `pip` ecosystem covers. A per-manager `"enabled": false` block and an `enabledManagers`
-  # set by an extended preset are not detected. `//` and `/* */` comments
-  # (JSONC/JSON5) are stripped before `enabledManagers` is read, outside
-  # quoted strings. In a Dependabot file, commented-out lines are ignored and
-  # the ecosystem may be unquoted, single- or double-quoted. Before this, a repository on
-  # `local>netresearch/renovate-config` without a dependabot.yml failed both
-  # checks.
+  # Dependabot's `pip` ecosystem covers. A per-manager `"enabled": false`
+  # block and an `enabledManagers` set by an extended preset are not
+  # detected. `//` and `/* */` comments (JSONC/JSON5) are stripped before
+  # `enabledManagers` is read, outside quoted strings. In a Dependabot file,
+  # commented-out lines are ignored, flow-style entries are read, and the
+  # ecosystem may be unquoted, single- or double-quoted. Before this, a
+  # repository on `local>netresearch/renovate-config` without a
+  # dependabot.yml failed both checks.
   - id: GH-13
     type: script
     command: |
@@ -147,7 +148,7 @@ mechanical:
       }
       for f in .github/dependabot.yml .github/dependabot.yaml; do
         [ -f "$f" ] || continue
-        if grep -Ev '^[[:space:]]*#' "$f" | grep -Eq "package-ecosystem:[[:space:]]*[\"']?(composer|gomod|npm|pip)[\"']?([[:space:]]|#|\$)"; then exit 0; fi
+        if grep -Ev '^[[:space:]]*#' "$f" | grep -Eq "package-ecosystem[\"']?:[[:space:]]*[\"']?(composer|gomod|npm|pip)[\"']?([[:space:],}#]|\$)"; then exit 0; fi
       done
       for f in renovate.json renovate.jsonc renovate.json5 .github/renovate.json .github/renovate.jsonc .github/renovate.json5 \
                .gitlab/renovate.json .gitlab/renovate.jsonc .gitlab/renovate.json5 .renovaterc .renovaterc.json .renovaterc.jsonc .renovaterc.json5; do
@@ -184,7 +185,7 @@ mechanical:
       }
       for f in .github/dependabot.yml .github/dependabot.yaml; do
         [ -f "$f" ] || continue
-        if grep -Ev '^[[:space:]]*#' "$f" | grep -Eq "package-ecosystem:[[:space:]]*[\"']?(github-actions)[\"']?([[:space:]]|#|\$)"; then exit 0; fi
+        if grep -Ev '^[[:space:]]*#' "$f" | grep -Eq "package-ecosystem[\"']?:[[:space:]]*[\"']?(github-actions)[\"']?([[:space:],}#]|\$)"; then exit 0; fi
       done
       for f in renovate.json renovate.jsonc renovate.json5 .github/renovate.json .github/renovate.jsonc .github/renovate.json5 \
                .gitlab/renovate.json .gitlab/renovate.jsonc .gitlab/renovate.json5 .renovaterc .renovaterc.json .renovaterc.jsonc .renovaterc.json5; do
