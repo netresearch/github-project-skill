@@ -51,12 +51,12 @@ mechanical:
 
   - id: GH-06
     type: file_exists
-    target: "{.github/dependabot.yml,.github/dependabot.yaml,renovate.json,renovate.json5,.github/renovate.json,.github/renovate.json5,.renovaterc.json,.renovaterc.json5,.renovaterc}"
+    target: "{.github/dependabot.yml,.github/dependabot.yaml,renovate.json,renovate.jsonc,renovate.json5,.github/renovate.json,.github/renovate.jsonc,.github/renovate.json5,.gitlab/renovate.json,.gitlab/renovate.jsonc,.gitlab/renovate.json5,.renovaterc,.renovaterc.json,.renovaterc.jsonc,.renovaterc.json5}"
     severity: warning
     desc: >-
       Dependency update automation should be configured (Dependabot or
-      Renovate). Accepts both .yml/.yaml for Dependabot and .json/.json5
-      for Renovate.
+      Renovate). Accepts both .yml/.yaml for Dependabot and every file name
+      in Renovate's configFilePatterns, the same list GH-13/GH-14 read.
 
   - id: GH-07
     type: file_exists
@@ -118,19 +118,41 @@ mechanical:
   # (not some other key such as `packageRules[].matchManagers`) names a
   # matching manager. The Python managers listed are the ones covering what
   # Dependabot's `pip` ecosystem covers. A per-manager `"enabled": false` block and an `enabledManagers`
-  # set by an extended preset are not detected. Before this, a repository on
+  # set by an extended preset are not detected. `//` and `/* */` comments
+  # (JSONC/JSON5) are stripped before `enabledManagers` is read, outside
+  # quoted strings. In a Dependabot file, commented-out lines are ignored and
+  # the ecosystem may be unquoted, single- or double-quoted. Before this, a repository on
   # `local>netresearch/renovate-config` without a dependabot.yml failed both
   # checks.
   - id: GH-13
     type: script
     command: |
+      strip_comments() {
+        awk 'BEGIN { RS = "\001" } {
+          s = $0; n = length(s); q = ""; i = 1
+          while (i <= n) {
+            c = substr(s, i, 1); d = substr(s, i, 2)
+            if (q != "") {
+              printf "%s", c
+              if (c == "\\") { printf "%s", substr(s, i + 1, 1); i += 2; continue }
+              if (c == q) q = ""
+              i++; continue
+            }
+            if (c == "\"" || c == "\047") { q = c; printf "%s", c; i++; continue }
+            if (d == "//") { j = index(substr(s, i), "\n"); if (j == 0) break; i += j - 1; continue }
+            if (d == "/*") { j = index(substr(s, i + 2), "*/"); if (j == 0) break; i += j + 3; printf " "; continue }
+            printf "%s", c; i++
+          }
+        }' "$1"
+      }
       for f in .github/dependabot.yml .github/dependabot.yaml; do
-        if [ -f "$f" ] && grep -Eq 'package-ecosystem:\s*"?(composer|gomod|npm|pip)"?' "$f"; then exit 0; fi
+        [ -f "$f" ] || continue
+        if grep -Ev '^[[:space:]]*#' "$f" | grep -Eq "package-ecosystem:[[:space:]]*[\"']?(composer|gomod|npm|pip)[\"']?([[:space:]]|#|\$)"; then exit 0; fi
       done
       for f in renovate.json renovate.jsonc renovate.json5 .github/renovate.json .github/renovate.jsonc .github/renovate.json5 \
                .gitlab/renovate.json .gitlab/renovate.jsonc .gitlab/renovate.json5 .renovaterc .renovaterc.json .renovaterc.jsonc .renovaterc.json5; do
         [ -f "$f" ] || continue
-        managers=$(tr '\n' ' ' < "$f" | grep -Eo "enabledManagers[\"']?[[:space:]]*:[[:space:]]*\[[^]]*\]") || exit 0
+        managers=$(strip_comments "$f" | tr '\n' ' ' | grep -Eo "enabledManagers[\"']?[[:space:]]*:[[:space:]]*\[[^]]*\]") || exit 0
         if printf '%s' "$managers" | grep -Eq '\[[[:space:]]*\]'; then exit 0; fi
         if printf '%s' "$managers" | grep -Eq "[\"'](composer|gomod|npm|pip_requirements|pip_setup|pip-compile|pipenv|poetry|pep621|setup-cfg)[\"']"; then exit 0; fi
         exit 1
@@ -142,15 +164,34 @@ mechanical:
   - id: GH-14
     type: script
     command: |
+      strip_comments() {
+        awk 'BEGIN { RS = "\001" } {
+          s = $0; n = length(s); q = ""; i = 1
+          while (i <= n) {
+            c = substr(s, i, 1); d = substr(s, i, 2)
+            if (q != "") {
+              printf "%s", c
+              if (c == "\\") { printf "%s", substr(s, i + 1, 1); i += 2; continue }
+              if (c == q) q = ""
+              i++; continue
+            }
+            if (c == "\"" || c == "\047") { q = c; printf "%s", c; i++; continue }
+            if (d == "//") { j = index(substr(s, i), "\n"); if (j == 0) break; i += j - 1; continue }
+            if (d == "/*") { j = index(substr(s, i + 2), "*/"); if (j == 0) break; i += j + 3; printf " "; continue }
+            printf "%s", c; i++
+          }
+        }' "$1"
+      }
       for f in .github/dependabot.yml .github/dependabot.yaml; do
-        if [ -f "$f" ] && grep -Eq 'package-ecosystem:\s*"?github-actions"?' "$f"; then exit 0; fi
+        [ -f "$f" ] || continue
+        if grep -Ev '^[[:space:]]*#' "$f" | grep -Eq "package-ecosystem:[[:space:]]*[\"']?(github-actions)[\"']?([[:space:]]|#|\$)"; then exit 0; fi
       done
       for f in renovate.json renovate.jsonc renovate.json5 .github/renovate.json .github/renovate.jsonc .github/renovate.json5 \
                .gitlab/renovate.json .gitlab/renovate.jsonc .gitlab/renovate.json5 .renovaterc .renovaterc.json .renovaterc.jsonc .renovaterc.json5; do
         [ -f "$f" ] || continue
-        managers=$(tr '\n' ' ' < "$f" | grep -Eo "enabledManagers[\"']?[[:space:]]*:[[:space:]]*\[[^]]*\]") || exit 0
+        managers=$(strip_comments "$f" | tr '\n' ' ' | grep -Eo "enabledManagers[\"']?[[:space:]]*:[[:space:]]*\[[^]]*\]") || exit 0
         if printf '%s' "$managers" | grep -Eq '\[[[:space:]]*\]'; then exit 0; fi
-        if printf '%s' "$managers" | grep -Eq "[\"']github-actions[\"']"; then exit 0; fi
+        if printf '%s' "$managers" | grep -Eq "[\"'](github-actions)[\"']"; then exit 0; fi
         exit 1
       done
       exit 1
