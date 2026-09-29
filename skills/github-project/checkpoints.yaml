@@ -51,12 +51,12 @@ mechanical:
 
   - id: GH-06
     type: file_exists
-    target: "{.github/dependabot.yml,.github/dependabot.yaml,renovate.json,renovate.json5,.github/renovate.json,.github/renovate.json5,.renovaterc.json,.renovaterc.json5,.renovaterc}"
+    target: "{.github/dependabot.yml,.github/dependabot.yaml,renovate.json,renovate.jsonc,renovate.json5,.github/renovate.json,.github/renovate.jsonc,.github/renovate.json5,.gitlab/renovate.json,.gitlab/renovate.jsonc,.gitlab/renovate.json5,.renovaterc,.renovaterc.json,.renovaterc.jsonc,.renovaterc.json5}"
     severity: warning
     desc: >-
       Dependency update automation should be configured (Dependabot or
-      Renovate). Accepts both .yml/.yaml for Dependabot and .json/.json5
-      for Renovate.
+      Renovate). Accepts both .yml/.yaml for Dependabot and every file name
+      in Renovate's configFilePatterns, the same list GH-13/GH-14 read.
 
   - id: GH-07
     type: file_exists
@@ -104,20 +104,101 @@ mechanical:
     severity: warning
     desc: "README should have license badge"
 
-  # === DEPENDABOT CHECKS ===
+  # === UPDATE BOT CHECKS (Dependabot or Renovate) ===
+  # GH-13/GH-14 accept either bot. A Dependabot file must list the ecosystem
+  # as a `package-ecosystem`. Renovate reads its configuration from the first
+  # of the file names below that exists (renovatebot/renovate
+  # lib/config/app-strings.ts `configFilePatterns`, in that order, read by
+  # detectConfigFile() in lib/workers/repository/init/merge.ts; the
+  # `package.json` key is not checked), so only that file is evaluated. It
+  # enables every manager unless `enabledManagers` narrows the list (an empty
+  # array narrows nothing, getEnabledManagersList() in
+  # lib/modules/manager/index.ts, called from
+  # lib/workers/repository/extract/index.ts). So a Renovate config passes
+  # when its `enabledManagers` array is absent or empty, or when that array
+  # (not some other key such as `packageRules[].matchManagers`) names a
+  # matching manager. The Python managers listed are the ones covering what
+  # Dependabot's `pip` ecosystem covers. A per-manager `"enabled": false`
+  # block and an `enabledManagers` set by an extended preset are not
+  # detected. `//` and `/* */` comments (JSONC/JSON5) are stripped before
+  # `enabledManagers` is read, outside quoted strings. In a Dependabot file,
+  # commented-out lines are ignored, flow-style entries are read, and the
+  # ecosystem may be unquoted, single- or double-quoted. Before this, a
+  # repository on `local>netresearch/renovate-config` without a
+  # dependabot.yml failed both checks.
   - id: GH-13
-    type: regex
-    target: "{.github/dependabot.yml,.github/dependabot.yaml}"
-    pattern: 'package-ecosystem:\s*"?(composer|gomod|npm|pip)"?'
+    type: script
+    command: |
+      strip_comments() {
+        awk 'BEGIN { RS = "\001" } {
+          s = $0; n = length(s); q = ""; i = 1
+          while (i <= n) {
+            c = substr(s, i, 1); d = substr(s, i, 2)
+            if (q != "") {
+              printf "%s", c
+              if (c == "\\") { printf "%s", substr(s, i + 1, 1); i += 2; continue }
+              if (c == q) q = ""
+              i++; continue
+            }
+            if (c == "\"" || c == "\047") { q = c; printf "%s", c; i++; continue }
+            if (d == "//") { j = index(substr(s, i), "\n"); if (j == 0) break; i += j - 1; continue }
+            if (d == "/*") { j = index(substr(s, i + 2), "*/"); if (j == 0) break; i += j + 3; printf " "; continue }
+            printf "%s", c; i++
+          }
+        }' "$1"
+      }
+      for f in .github/dependabot.yml .github/dependabot.yaml; do
+        [ -f "$f" ] || continue
+        if grep -Ev '^[[:space:]]*#' "$f" | grep -Eq "package-ecosystem[\"']?:[[:space:]]*[\"']?(composer|gomod|npm|pip)[\"']?([[:space:],}#]|\$)"; then exit 0; fi
+      done
+      for f in renovate.json renovate.jsonc renovate.json5 .github/renovate.json .github/renovate.jsonc .github/renovate.json5 \
+               .gitlab/renovate.json .gitlab/renovate.jsonc .gitlab/renovate.json5 .renovaterc .renovaterc.json .renovaterc.jsonc .renovaterc.json5; do
+        [ -f "$f" ] || continue
+        managers=$(strip_comments "$f" | tr '\n' ' ' | grep -Eo "enabledManagers[\"']?[[:space:]]*:[[:space:]]*\[[^]]*\]") || exit 0
+        if printf '%s' "$managers" | grep -Eq '\[[[:space:]]*\]'; then exit 0; fi
+        if printf '%s' "$managers" | grep -Eq "[\"'](composer|gomod|npm|pip_requirements|pip_setup|pip-compile|pipenv|poetry|pep621|setup-cfg)[\"']"; then exit 0; fi
+        exit 1
+      done
+      exit 1
     severity: warning
-    desc: "Dependabot should monitor language-specific dependencies (composer, gomod, npm, pip)"
+    desc: "The update bot (Dependabot or Renovate) should monitor language-specific dependencies (composer, gomod, npm, pip)"
 
   - id: GH-14
-    type: regex
-    target: "{.github/dependabot.yml,.github/dependabot.yaml}"
-    pattern: 'package-ecosystem:\s*"?github-actions"?'
+    type: script
+    command: |
+      strip_comments() {
+        awk 'BEGIN { RS = "\001" } {
+          s = $0; n = length(s); q = ""; i = 1
+          while (i <= n) {
+            c = substr(s, i, 1); d = substr(s, i, 2)
+            if (q != "") {
+              printf "%s", c
+              if (c == "\\") { printf "%s", substr(s, i + 1, 1); i += 2; continue }
+              if (c == q) q = ""
+              i++; continue
+            }
+            if (c == "\"" || c == "\047") { q = c; printf "%s", c; i++; continue }
+            if (d == "//") { j = index(substr(s, i), "\n"); if (j == 0) break; i += j - 1; continue }
+            if (d == "/*") { j = index(substr(s, i + 2), "*/"); if (j == 0) break; i += j + 3; printf " "; continue }
+            printf "%s", c; i++
+          }
+        }' "$1"
+      }
+      for f in .github/dependabot.yml .github/dependabot.yaml; do
+        [ -f "$f" ] || continue
+        if grep -Ev '^[[:space:]]*#' "$f" | grep -Eq "package-ecosystem[\"']?:[[:space:]]*[\"']?(github-actions)[\"']?([[:space:],}#]|\$)"; then exit 0; fi
+      done
+      for f in renovate.json renovate.jsonc renovate.json5 .github/renovate.json .github/renovate.jsonc .github/renovate.json5 \
+               .gitlab/renovate.json .gitlab/renovate.jsonc .gitlab/renovate.json5 .renovaterc .renovaterc.json .renovaterc.jsonc .renovaterc.json5; do
+        [ -f "$f" ] || continue
+        managers=$(strip_comments "$f" | tr '\n' ' ' | grep -Eo "enabledManagers[\"']?[[:space:]]*:[[:space:]]*\[[^]]*\]") || exit 0
+        if printf '%s' "$managers" | grep -Eq '\[[[:space:]]*\]'; then exit 0; fi
+        if printf '%s' "$managers" | grep -Eq "[\"'](github-actions)[\"']"; then exit 0; fi
+        exit 1
+      done
+      exit 1
     severity: warning
-    desc: "Dependabot should monitor GitHub Actions"
+    desc: "The update bot (Dependabot or Renovate) should monitor GitHub Actions"
 
   # === GITIGNORE ===
   - id: GH-17
@@ -518,7 +599,7 @@ llm_reviews:
   # === SUBJECTIVE CHECKS (require LLM judgment) ===
   - id: GH-15
     domain: repo-health
-    rubric: references/llm-rubric.md#badge-order
+    rubric: references/repo-setup-guide.md#readme-badge-order
     severity: warning
     desc: "Verify README badges are in the correct order"
 
