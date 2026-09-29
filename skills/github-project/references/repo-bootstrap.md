@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Repository Bootstrap — Required First Step After `gh repo create`
 
 After creating any new Netresearch repository — `gh repo create`, push your initial commit, **then before opening the first PR** — you MUST apply branch protection. (The default branch ref must exist; the script exits 4 on empty repos.) Without this, the unresolved-threads workflow rule is unenforceable — operator discipline alone has demonstrably failed.

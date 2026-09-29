@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Reusable Workflow Pitfalls
 
 Operational and structural pitfalls when authoring reusable workflows and the composite actions they use. Distinct from `reusable-workflow-security.md` — that doc covers supply-chain trust and SHA pinning of *external* actions; this doc covers structural traps that have bitten in practice when building *internal* reusable workflows.

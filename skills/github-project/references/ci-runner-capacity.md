@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # CI Runner Capacity — Diagnose Before You Optimize
 
 A slow GitHub Actions pipeline is often **runner-acquisition-bound**, not

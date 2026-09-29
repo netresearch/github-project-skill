@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Merge Strategy for Signed Commits
 
 This guide explains how to configure GitHub repositories that require both signed commits and clean git history.

@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Bash Patterns in GitHub Actions `run:` Steps
 
 Recurring shell-scripting gotchas that turn workflow `run:` steps into silent data-loss bugs or, worse, build-passing-while-broken releases. Every entry here has caused a real incident in the netresearch fleet; fix each case up-front when you write new reusable workflows.

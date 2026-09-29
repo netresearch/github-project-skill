@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # GitHub Actions Upgrade Guide
 
 Read this when bumping SHA-pinned actions across majors — a Renovate major PR,

@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Cross-Repo Issue/PR References in Markdown
 
 GitHub autolinks a bare `#NN` in an issue/PR/comment body to an issue or PR **in

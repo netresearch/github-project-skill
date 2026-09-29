@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Agentic Workflows Reference
 
 Authoring AI-agent workflows that run on GitHub Actions: `gh-aw` for compiling Markdown specs into hardened Actions YAML, and `gh-aw-firewall` (`awf`) for sandboxing the agent process inside the runner.

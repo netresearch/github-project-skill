@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+#
 # Example checkpoints.yaml for github-project skill
 # Copy this to your skill repo root as checkpoints.yaml
 

@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Auto-merge & Auto-approve Guide
 
 Auto-merge for dependency bots and auto-approve for solo maintainers.

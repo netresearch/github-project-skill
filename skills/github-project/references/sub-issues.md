@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Sub-Issues Reference
 
 GitHub's sub-issues feature enables parent-child relationships between issues, supporting up to 8 levels of hierarchy and 100 sub-issues per parent. This replaced the deprecated tasklists feature (sunset April 2025).

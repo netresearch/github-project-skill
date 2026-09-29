@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # actionlint - GitHub Actions Workflow Linter
 
 Static analysis tool for GitHub Actions workflow files. Catches syntax errors, type mismatches, deprecated features, and security issues before pushing to CI.

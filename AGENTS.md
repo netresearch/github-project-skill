@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # GitHub Project Skill
 
 <!-- Index file — detail lives in docs/ and skills/. Keep under 100 lines. -->

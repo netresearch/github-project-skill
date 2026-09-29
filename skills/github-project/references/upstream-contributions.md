@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Contributing to Repositories You Do Not Own
 
 First contribution to a foreign repo — an issue, a PR, or both. Every step here
