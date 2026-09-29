@@ -113,6 +113,7 @@ mechanical:
   # `package.json` key is not checked), so only that file is evaluated. It
   # enables every manager unless `enabledManagers` narrows the list (an empty
   # array narrows nothing, getEnabledManagersList() in
+  # lib/modules/manager/index.ts, called from
   # lib/workers/repository/extract/index.ts). So a Renovate config passes
   # when its `enabledManagers` array is absent or empty, or when that array
   # (not some other key such as `packageRules[].matchManagers`) names a
