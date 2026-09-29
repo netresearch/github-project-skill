@@ -106,14 +106,21 @@ mechanical:
 
   # === UPDATE BOT CHECKS (Dependabot or Renovate) ===
   # GH-13/GH-14 accept either bot. A Dependabot file must list the ecosystem
-  # as a `package-ecosystem`. Renovate reads its configuration from any of the
-  # file names below (renovatebot/renovate lib/config/app-strings.ts,
-  # `configFilePatterns`; the `package.json` key is not checked) and enables
-  # every manager unless `enabledManagers` narrows the list, so a Renovate
-  # config passes when that key is absent or names a matching manager. A
-  # per-manager `"enabled": false` block is not detected. Before this, a
-  # repository on `local>netresearch/renovate-config` without a dependabot.yml
-  # failed both checks.
+  # as a `package-ecosystem`. Renovate reads its configuration from the first
+  # of the file names below that exists (renovatebot/renovate
+  # lib/config/app-strings.ts `configFilePatterns`, in that order, read by
+  # detectConfigFile() in lib/workers/repository/init/merge.ts; the
+  # `package.json` key is not checked), so only that file is evaluated. It
+  # enables every manager unless `enabledManagers` narrows the list (an empty
+  # array narrows nothing, getEnabledManagersList() in
+  # lib/workers/repository/extract/index.ts). So a Renovate config passes
+  # when its `enabledManagers` array is absent or empty, or when that array
+  # (not some other key such as `packageRules[].matchManagers`) names a
+  # matching manager. The Python managers listed are the ones covering what
+  # Dependabot's `pip` ecosystem covers. A per-manager `"enabled": false` block and an `enabledManagers`
+  # set by an extended preset are not detected. Before this, a repository on
+  # `local>netresearch/renovate-config` without a dependabot.yml failed both
+  # checks.
   - id: GH-13
     type: script
     command: |
@@ -123,8 +130,10 @@ mechanical:
       for f in renovate.json renovate.jsonc renovate.json5 .github/renovate.json .github/renovate.jsonc .github/renovate.json5 \
                .gitlab/renovate.json .gitlab/renovate.jsonc .gitlab/renovate.json5 .renovaterc .renovaterc.json .renovaterc.jsonc .renovaterc.json5; do
         [ -f "$f" ] || continue
-        if ! grep -q 'enabledManagers' "$f"; then exit 0; fi
-        if grep -Eq '"(composer|gomod|npm|pip_requirements|pip-compile|pipenv|poetry|pep621|setup-cfg)"' "$f"; then exit 0; fi
+        managers=$(tr '\n' ' ' < "$f" | grep -Eo "enabledManagers[\"']?[[:space:]]*:[[:space:]]*\[[^]]*\]") || exit 0
+        if printf '%s' "$managers" | grep -Eq '\[[[:space:]]*\]'; then exit 0; fi
+        if printf '%s' "$managers" | grep -Eq "[\"'](composer|gomod|npm|pip_requirements|pip_setup|pip-compile|pipenv|poetry|pep621|setup-cfg)[\"']"; then exit 0; fi
+        exit 1
       done
       exit 1
     severity: warning
@@ -139,8 +148,10 @@ mechanical:
       for f in renovate.json renovate.jsonc renovate.json5 .github/renovate.json .github/renovate.jsonc .github/renovate.json5 \
                .gitlab/renovate.json .gitlab/renovate.jsonc .gitlab/renovate.json5 .renovaterc .renovaterc.json .renovaterc.jsonc .renovaterc.json5; do
         [ -f "$f" ] || continue
-        if ! grep -q 'enabledManagers' "$f"; then exit 0; fi
-        if grep -q '"github-actions"' "$f"; then exit 0; fi
+        managers=$(tr '\n' ' ' < "$f" | grep -Eo "enabledManagers[\"']?[[:space:]]*:[[:space:]]*\[[^]]*\]") || exit 0
+        if printf '%s' "$managers" | grep -Eq '\[[[:space:]]*\]'; then exit 0; fi
+        if printf '%s' "$managers" | grep -Eq "[\"']github-actions[\"']"; then exit 0; fi
+        exit 1
       done
       exit 1
     severity: warning
