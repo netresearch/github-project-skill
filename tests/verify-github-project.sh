@@ -6,9 +6,10 @@
 # skills/github-project/scripts/verify-github-project.sh.
 #
 # Each case builds a fixture directory, runs the verifier against it, and
-# checks the exit code and lines of the output. No fixture has an `origin`
-# remote, so the verifier skips every GitHub API call and the test runs
-# offline. Requires bash and git.
+# checks the exit code and lines of the output. No fixture has a github.com
+# `origin` remote, so the verifier skips every GitHub API call and the test
+# runs offline; a stub `gh` on PATH records any call that would be made.
+# Requires bash and git.
 
 set -uo pipefail
 
@@ -142,6 +143,19 @@ run "$WORK/git-master"
 expect_exit "repository whose default branch is master fails" 1
 expect_line "default branch master is a failure" "✗ Default branch is 'master' (should be 'main')"
 expect_count "every section runs" "━━━" "$SECTIONS"
+
+echo "git repository with a non-GitHub origin remote"
+
+gitrepo "$WORK/git-gitlab" main
+git -C "$WORK/git-gitlab" remote add origin https://gitlab.com/acme/widget.git
+mkdir -p "$WORK/bin"
+printf '#!/usr/bin/env bash\necho "$*" >> "%s"\necho "{}"\n' "$WORK/gh-calls.log" > "$WORK/bin/gh"
+chmod +x "$WORK/bin/gh"
+: > "$WORK/gh-calls.log"
+PATH="$WORK/bin:$PATH" run "$WORK/git-gitlab"
+expect_line "GitHub API checks are skipped for a non-GitHub remote" "Skipping merge method compatibility check"
+calls=$(wc -l < "$WORK/gh-calls.log")
+report "no gh call is made for a non-GitHub remote" "$([ "$calls" -eq 0 ] && echo 0 || echo 1)" "$calls gh call(s): $(tr '\n' ';' < "$WORK/gh-calls.log")"
 
 echo
 if [ "$fail" -ne 0 ]; then

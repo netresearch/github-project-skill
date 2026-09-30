@@ -765,7 +765,7 @@ github-project (this skill)
 
 ## Tests
 
-The behavioural tests live in `tests/` and run offline; they need bash, git, jq and python3:
+The behavioural tests live in `tests/` and run offline; they need bash, git, jq, python3 and the usual coreutils, grep and sed:
 
 ```bash
 bash tests/verify-github-project.sh    # skills/github-project/scripts/verify-github-project.sh
@@ -773,7 +773,7 @@ bash tests/init-branch-protection.sh   # skills/github-project/scripts/init-bran
 bash tests/check-plugin-version.sh     # Build/Scripts/check-plugin-version.sh and Build/hooks/pre-push
 ```
 
-- `tests/verify-github-project.sh` runs the verifier against fixture directories without an `origin` remote, so no GitHub API call is made. It checks the exit codes, that all 12 sections run, and individual pass and failure lines, including the default-branch check in a git repository.
+- `tests/verify-github-project.sh` runs the verifier against fixture directories without a github.com `origin` remote, so no GitHub API call is made; a stub `gh` on `PATH` checks that a non-GitHub remote triggers none. It checks the exit codes, that all 12 sections run, and individual pass and failure lines, including the default-branch check in a git repository.
 - `tests/init-branch-protection.sh` puts a stub `gh` first on `PATH` that answers from prepared responses and records every request and request body. It checks each exit code documented in the script header, the body sent with `PUT` (with and without `--solo`), that nothing is written over protection the script could not read, that drift is reported and not corrected, and both `--from-current-checks` paths.
 - `tests/check-plugin-version.sh` builds throwaway git repositories and checks that a semver tag at `HEAD` must match the version in `.claude-plugin/plugin.json`, and that the pre-push hook passes the result on.
 
