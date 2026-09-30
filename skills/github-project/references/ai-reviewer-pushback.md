@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # AI Reviewer Pushback Patterns
 
 How to evaluate, respond to, and resolve review comments from automated AI reviewers (GitHub Copilot, gemini-code-assist, CodeRabbit, Sourcery, Codium / PR-Agent, etc.) without either rubber-stamping wrong advice or ignoring valid feedback.

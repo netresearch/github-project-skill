@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # PR Shows Too Many Commits (Stale Merge Base on Forks)
 
 When a fork's `main` is behind upstream and you create a PR after syncing, GitHub may cache the old merge base and show too many commits (e.g., 38 commits when only 1 is new). The `update-branch` API returns "There are no new commits on the base branch" and force-pushing says "Everything up-to-date" since the SHA hasn't changed.

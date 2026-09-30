@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Reusable Workflow Security Reference
 
 Security model for internal vs external reusable workflows, transitive dependency risks, and audit practices.

@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # GitHub Project Skill
 
 <!-- Index file — detail lives in docs/ and skills/. Keep under 100 lines. -->
@@ -7,8 +10,9 @@
 - `skills/github-project/` — Skill definition (SKILL.md), checkpoints, evals
 - `skills/github-project/references/` — Detailed reference docs (merge strategy, sub-issues, branch migration, etc.)
 - `skills/github-project/assets/` — Templates (auto-merge workflows, PR templates, CODEOWNERS, etc.)
-- `skills/github-project/scripts/` — `verify-github-project.sh` verification script
-- `.github/workflows/` — CI (lint, release, auto-merge-deps)
+- `skills/github-project/scripts/` — `verify-github-project.sh` verification script, `init-branch-protection.sh` branch protection bootstrap
+- `tests/` — Behavioural tests for the scripts (run by `.github/workflows/tests.yml`)
+- `.github/workflows/` — CI (lint, tests, security, release, auto-merge-deps)
 - `.claude-plugin/` — Plugin manifest for Claude Code marketplace
 - `Build/` — Build scripts and git hooks
 - `docs/` — Architecture and execution plans
@@ -43,6 +47,11 @@ This skill covers **GitHub platform configuration only**:
 
 # Check plugin version consistency
 ./Build/Scripts/check-plugin-version.sh
+
+# Run the behavioural tests (offline; see README "Tests")
+bash tests/verify-github-project.sh
+bash tests/init-branch-protection.sh
+bash tests/check-plugin-version.sh
 ```
 
 ## Key Patterns
@@ -71,3 +80,4 @@ This skill covers **GitHub platform configuration only**:
 - `skills/github-project/references/release-labeling.md` — Release label automation
 - `skills/github-project/references/repo-setup-guide.md` — Repository setup guide
 - `docs/ARCHITECTURE.md` — Architecture overview
+- `docs/SECURITY-ASSURANCE.md` — Security assurance case: threats, trust boundaries, limits

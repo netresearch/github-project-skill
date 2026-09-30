@@ -1,4 +1,6 @@
 ---
+# SPDX-License-Identifier: CC-BY-SA-4.0
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
 name: github-project
 description: "GitHub repository setup and platform-specific features. This skill should be used when creating new GitHub repositories, configuring branch protection rules, setting up GitHub Issues/Discussions/Projects, creating sub-issues and issue hierarchies, managing PR review workflows, configuring Dependabot/Renovate auto-merge, setting up merge queues with GraphQL enqueuePullRequest mutations, or checking GitHub project configuration. Focuses on GitHub platform features, not CI/CD pipelines or language-specific tooling. By Netresearch."
 ---
@@ -761,6 +763,42 @@ github-project (this skill)
     └── enterprise-readiness → Security workflows (Scorecard, CodeQL, SLSA)
 ```
 
+## Tests
+
+The behavioural tests live in `tests/` and run offline; they need bash, git, jq, python3 and the usual coreutils, grep and sed:
+
+```bash
+bash tests/verify-github-project.sh    # skills/github-project/scripts/verify-github-project.sh
+bash tests/init-branch-protection.sh   # skills/github-project/scripts/init-branch-protection.sh
+bash tests/check-plugin-version.sh     # Build/Scripts/check-plugin-version.sh and Build/hooks/pre-push
+```
+
+- `tests/verify-github-project.sh` runs the verifier against fixture directories; only the dotted-name fixture has a github.com `origin`, and the three remote fixtures run with a stub `gh` on `PATH`, so no fixture reaches the network. The stub checks that a non-GitHub remote and a host that merely contains `github.com` trigger no call and that a github.com remote whose name contains a dot is queried with its slug. It checks the exit codes, that all 12 sections run, and individual pass and failure lines, including the default-branch check in a git repository.
+- `tests/init-branch-protection.sh` puts a stub `gh` first on `PATH` that answers from prepared responses and records every request and request body. It checks each exit code documented in the script header, the body sent with `PUT` (with and without `--solo`), that nothing is written over protection the script could not read, that drift is reported and not corrected, and both `--from-current-checks` paths.
+- `tests/check-plugin-version.sh` builds throwaway git repositories and checks that a semver tag at `HEAD` must match the version in `.claude-plugin/plugin.json`, and that the pre-push hook passes the result on.
+
+Each check prints `ok` or `FAIL`; a `FAIL` line names the expectation that was not met and is followed by the script's output. A test file exits 1 when any check failed. In CI, the Skill Tests workflow (`.github/workflows/tests.yml`) runs every `tests/**/*.sh` on each pull request and on pushes to `main`, and fails when the repository ships scripts under `skills/*/scripts/` but no test ran.
+
+The skill's Markdown and templates are not executed here; Skill Validation and Eval Validation check their structure and the eval definitions in `skills/github-project/evals/evals.json`. A pull request that adds or changes behaviour in a script adds or updates a check in `tests/` that fails without the change.
+
+## Governance and policies
+
+This repository follows the Netresearch organisation policies:
+
+- [Governance](https://github.com/netresearch/.github/blob/main/GOVERNANCE.md): ownership, roles, how decisions are made and disputes resolved, and continuity.
+- [Roadmap](https://github.com/netresearch/.github/blob/main/ROADMAP.md): planned and explicitly excluded work for the coming year.
+- [Handling of dependency and code analysis findings](https://github.com/netresearch/.github/blob/main/SECURITY.md#handling-of-dependency-and-code-analysis-findings): thresholds, deadlines and the exception process for dependency (SCA) and static analysis (SAST) findings.
+- [Secret management](https://github.com/netresearch/.github/blob/main/SECURITY.md#secret-management): how CI and release credentials are stored, accessed and rotated.
+- [Access roster](https://github.com/netresearch/.github/blob/main/docs/access-roster.md): who holds administrative access to this repository and the organisation.
+
+The security assurance case for this skill (threat model, trust boundaries, countermeasures and limits) is in [docs/SECURITY-ASSURANCE.md](docs/SECURITY-ASSURANCE.md).
+
+Checks that run on pull requests in this repository:
+
+- Every pull request: Skill Validation (`lint.yml`: skill structure, markdownlint, yamllint, actionlint, JSON syntax, ShellCheck, ruff, checkpoint schema), Eval Validation (`eval-validate.yml`) and Skill Tests (`tests.yml`).
+- Pull requests to `main`: `security.yml` with Betterleaks (secret scanning), zizmor (workflow static analysis), dependency review, Composer Audit and Opengrep SAST (both behind a preflight event-gate job); Harness Verification (`harness-verify.yml`) and Template Drift (`check-template-drift.yml`). The organisation's security policy sets when dependency review and Opengrep fail: see [dependencies](https://github.com/netresearch/.github/blob/main/SECURITY.md#dependencies-software-composition-analysis) and [static analysis (SAST)](https://github.com/netresearch/.github/blob/main/SECURITY.md#static-analysis-sast).
+- Also on every pull request: Labeler (`labeler.yml`), the DCO sign-off check, SonarCloud Code Analysis and the CodeRabbit review status (GitHub Apps) and, for dependency-update pull requests, auto-merge (`auto-merge-deps.yml`). CodeQL for `actions` runs through GitHub's default setup.
+
 ## License
 
 This project uses split licensing:
@@ -779,7 +817,7 @@ See the individual license files for full terms.
 To check GitHub project configuration:
 
 ```bash
-./scripts/verify-github-project.sh /path/to/repository
+./skills/github-project/scripts/verify-github-project.sh /path/to/repository
 ```
 
 Checks: documentation files, CODEOWNERS, dependency management, issue/PR templates, auto-merge workflow, release configuration.

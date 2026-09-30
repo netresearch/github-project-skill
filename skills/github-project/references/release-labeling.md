@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Release Labeling Reference
 
 **Purpose:** Automatically track which PRs and issues shipped in each release using labels.

@@ -1,4 +1,6 @@
 ---
+# SPDX-License-Identifier: CC-BY-SA-4.0
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
 name: github-project
 description: "Use when bootstrapping a repo (apply branch protection before first PR), PRs won't merge or BLOCKED, AI reviewer pushback, auto-merge fails for Dependabot/Renovate, branch protection or rulesets, CI fails, authoring or consuming reusable workflows, editing a repo's own .github/workflows, harden-runner, or CODEOWNERS/PR templates."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"

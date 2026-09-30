@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Publishing a generated site to GitHub Pages (and org-data collectors)
 
 Lessons from shipping a nightly workflow that inventories an organization's repos and publishes a generated dashboard to GitHub Pages. Two classes of failure that a `200 OK` and a green build both hide.

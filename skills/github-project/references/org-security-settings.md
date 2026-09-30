@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Organization Security Settings Reference
 
 Org-level GitHub security settings for Actions permissions, SHA pinning, and action allow-lists.

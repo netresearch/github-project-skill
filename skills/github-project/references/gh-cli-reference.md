@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # gh CLI Commands Reference
 
 Non-obvious `gh` CLI gotchas and troubleshooting patterns for GitHub repository management. For basic `gh pr`/`gh run`/`gh api` usage, `gh help` and `gh <command> --help` cover it.

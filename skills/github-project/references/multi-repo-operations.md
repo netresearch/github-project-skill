@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
+
 # Multi-Repo Operations
 
 Batch and fleet-wide operations — releases, rebases, lint fixes, config rollouts — across many repositories in one sweep.
