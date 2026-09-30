@@ -157,6 +157,16 @@ expect_line "GitHub API checks are skipped for a non-GitHub remote" "Skipping me
 calls=$(wc -l < "$WORK/gh-calls.log")
 report "no gh call is made for a non-GitHub remote" "$([ "$calls" -eq 0 ] && echo 0 || echo 1)" "$calls gh call(s): $(tr '\n' ';' < "$WORK/gh-calls.log")"
 
+echo "git repository with a github.com origin whose name contains a dot"
+
+gitrepo "$WORK/git-dotted" main
+git -C "$WORK/git-dotted" remote add origin https://github.com/netresearch/.github.git
+: > "$WORK/gh-calls.log"
+PATH="$WORK/bin:$PATH" run "$WORK/git-dotted"
+expect_line "a dotted repository name yields its slug" "Checking GitHub settings for netresearch/.github"
+calls=$(grep -c '^api repos/netresearch/\.github' "$WORK/gh-calls.log")
+report "the API is queried with the dotted slug" "$([ "$calls" -gt 0 ] && echo 0 || echo 1)" "gh calls: $(tr '\n' ';' < "$WORK/gh-calls.log")"
+
 echo
 if [ "$fail" -ne 0 ]; then
     echo "verify-github-project.sh: FAILED ($count checks)"

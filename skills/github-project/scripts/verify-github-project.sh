@@ -91,7 +91,7 @@ if git rev-parse --git-dir > /dev/null 2>&1; then
     if [ -n "$REMOTE_URL" ]; then
         # Only a github.com remote yields a slug; any other URL leaves it empty,
         # so the GitHub API checks below are skipped instead of queried with it.
-        REPO_SLUG=$(echo "$REMOTE_URL" | sed -nE 's|.*github\.com[:/](.+/[^.]+)(\.git)?$|\1|p')
+        REPO_SLUG=$(echo "$REMOTE_URL" | sed -nE 's#\.git$##; s#^.*github\.com[:/]([^/]+/[^/]+)$#\1#p')
     fi
 fi
 
