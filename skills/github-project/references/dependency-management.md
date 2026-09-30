@@ -241,6 +241,26 @@ Whoever pushed to the branch owns the PR from then on: track it to merge, or clo
 - Apply the rebase label (`rebaseLabel`, default `rebase`): Renovate then regenerates its commit even on a modified branch, which discards the foreign commit.
 - For another bot that routinely commits on top of Renovate PRs, list its commit-author email (or a glob or regex matching it) in `gitIgnoredAuthors`, so its pushes do not count as a modification.
 
+### A version that lives outside an image tag needs a custom manager
+
+Renovate's built-in managers read image tags, actions and lock files. A version stated as `ARG APP_VERSION=1.2.3`, as a Compose default (`${APP_VERSION:-1.2.3}`), in `.env.example`, in a CI `env:` block or in a README table is invisible to them, so the application itself is the one dependency no bot ever proposes — while its base images update weekly. A `customManagers` entry of `customType: regex` closes that; the points that cost a detour in `netresearch/moodle-docker` (PR #94):
+
+- **One manager per file shape, the same `depNameTemplate`.** Put the pair that must move together in one `matchStrings` entry spanning both lines, and capture a pinned commit as `currentDigest`. Give that manager `autoReplaceStringTemplate` (`ARG V={{{newValue}}}\nARG COMMIT={{{newDigest}}}`), otherwise only the version is rewritten and the integrity check fails the next build. For a `github-tags` datasource on an *annotated* tag the digest Renovate returns is the commit, not the tag object (checked: `344232c…`, not `f9158b1…`), which is what `git ls-remote <repo> 'refs/tags/vX^{}'` gives.
+- **Add a `packageRules` entry with `groupName` for the dependency.** Separate managers that share a `depName` are not guaranteed to land in one update, and an auto-merged patch PR that changes the Compose defaults but not the Dockerfile leaves a stack that refuses to start when the two disagree. CodeRabbit raised this on the PR; the lookup had already shown one branch name, but that is an accident of naming and `groupName` makes it a rule.
+- **Automerge patch only.** `matchUpdateTypes: ["patch"]` with `automerge: true`, and for minor and major `automerge: false` plus the label your auto-merge workflow refuses (the `netresearch/.github` reusable skips `deps-no-automerge` and `deps-major`). A reusable that trusts every Renovate PR merges a minor release the moment the checks pass unless the label is there.
+- **`managerFilePatterns` is the current key; older Renovate calls it `fileMatch`.** `npx renovate-config-validator` resolved to 37.x here and answered `Custom Manager contains disallowed fields: managerFilePatterns`; `npx --package renovate@latest renovate-config-validator` (44.x) accepted the same file. Run the validator from the version the hosted app runs, not from whatever `npx` cached.
+
+Verify before opening the PR, locally, without touching the repository:
+
+```bash
+GITHUB_COM_TOKEN=$(gh auth token) LOG_FORMAT=json LOG_LEVEL=debug RENOVATE_ONBOARDING=false \
+  npx -y renovate@latest --platform=local --dry-run=lookup > run.json
+jq -c 'select(.msg|test("packageFiles with updates")) | .config.regex[]
+       | {file:.packageFile, deps:[.deps[]|{currentValue,currentDigest,updates}]}' run.json
+```
+
+That proves extraction: every occurrence listed, digest captured. It cannot show an update while the tree is already current, so prove the positive case on a copy **outside any repository** with the version and pin set back one release (the repository's own `renovate.json` would otherwise be discovered and the comparison measures the wrong pair): the lookup must offer the next release with the right `newDigest`, and one `branchName` for every occurrence (with `groupName` set it is `renovate/<group>`; the `groupName` field itself printed `null` in the lookup output, so read the branch name, not that field). What a local lookup does not exercise is the file rewrite and the merge; those only happen in the hosted run, so say so in the PR.
+
 ### Migrating from Dependabot to Renovate
 
 Renovate replaces Dependabot only where Renovate **runs**. A `renovate.json` in the tree is a declaration, not a run: on `netresearch` (2026-09-24), 27 of 137 repositories with a Renovate config had no Renovate PR in three months, most none since the onboarding wave of February 2025 — one had lost its onboarding merge in a history rewrite. Switching Dependabot off there leaves the repository with no update bot at all.
