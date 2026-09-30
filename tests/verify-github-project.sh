@@ -6,10 +6,10 @@
 # skills/github-project/scripts/verify-github-project.sh.
 #
 # Each case builds a fixture directory, runs the verifier against it, and
-# checks the exit code and lines of the output. No fixture has a github.com
-# `origin` remote, so the verifier skips every GitHub API call and the test
-# runs offline; a stub `gh` on PATH records any call that would be made.
-# Requires bash and git.
+# checks the exit code and lines of the output. Only the dotted-name fixture
+# has a github.com `origin`; the two remote fixtures run with a stub `gh` on
+# PATH that records and answers every call, so no fixture reaches the
+# network. Requires bash and git.
 
 set -uo pipefail
 
