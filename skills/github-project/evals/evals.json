@@ -430,5 +430,33 @@
                 "Yes. Delete .github/dependabot.yml in every repo and disable Dependabot security updates and dependabot_alerts org-wide, since renovate.json is present everywhere."
             ]
         }
+    },
+    {
+        "name": "private_copy_mirror_push",
+        "prompt": "Our public repo needs a private copy that always matches main, because the consumer only accepts private repositories. I plan a scheduled workflow in the private repo that fetches the public one and pushes with GITHUB_TOKEN. Good idea?",
+        "assertions": [
+            {
+                "type": "content",
+                "pattern": "(deploy key|deploy-key)"
+            },
+            {
+                "type": "content",
+                "pattern": "(workflow file|\\.github/workflows|workflows permission)"
+            },
+            {
+                "type": "content",
+                "pattern": "(origin/main|GITHUB_SHA|roll(s|ed)? (the copy )?back)"
+            },
+            {
+                "type": "content",
+                "pattern": "(disable Actions|actions/permissions|Actions disabled)"
+            }
+        ],
+        "samples": {
+            "passing": "No: GITHUB_TOKEN cannot push changes to .github/workflows, so the first upstream workflow change breaks it. Push from the public repo instead, with a write deploy key of the copy stored in an environment limited to main, force-pushing origin/main rather than GITHUB_SHA so a re-run cannot roll the copy back, and disable Actions in the copy entirely.",
+            "failing": [
+                "Yes, a nightly schedule in the private repo with contents: write on GITHUB_TOKEN is enough."
+            ]
+        }
     }
 ]
