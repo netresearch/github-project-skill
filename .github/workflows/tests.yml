@@ -7,7 +7,7 @@ name: Skill Tests
 # reusable: the two shipped scripts under skills/github-project/scripts/,
 # Build/Scripts/check-plugin-version.sh and the pre-push hook. The other
 # workflows validate structure, lint and security; none of them executes a
-# script. Not part of the central skill template, so it carries its own notice.
+# script. Not part of the central skill template.
 
 on:
   push:
