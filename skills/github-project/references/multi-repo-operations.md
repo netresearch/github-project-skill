@@ -398,6 +398,25 @@ baseline is traceable. The script never overwrites an existing
 
 See [dependency-management.md](./dependency-management.md) for which Dependabot ecosystems hard-fail when their manifest is missing (the common source of template drift on Go repos).
 
+## Keeping a private copy of a public repository in sync
+
+Some consumers accept only a private repository — the Claude organization marketplace is one — so a public repository gets a private twin. GitHub has no push mirroring, and a copy maintained by carrying changes over in pull requests drifts: `netresearch/claude-code-marketplace-P` had diverged in workflows, site code and the lockfile before its sync was automated. Make the copy a byte-identical mirror of the source's default branch and let the source push it.
+
+- **Push from the source, with a write deploy key of the copy.** Generate an ed25519 key, add the public half to the copy (`POST /repos/<copy>/keys` with `read_only=false`) and store the private half as a secret in a source **environment** whose deployment branch policy allows only `main`. A deploy key is scoped to that one repository, and unlike `GITHUB_TOKEN` it can push changes to `.github/workflows/`. A scheduled workflow in the copy pushing with its own `GITHUB_TOKEN` looks simpler and fails on the first upstream workflow change.
+- **Push `origin/main` as fetched at run time, not `GITHUB_SHA`**, with `--force`. `GITHUB_SHA` is fixed per run, so re-running an old run would roll the copy back. Checkout needs `fetch-depth: 0` and `persist-credentials: false`; pin the host key (`github.com ssh-ed25519 …` from `GET /meta`) instead of trusting on first use.
+- **Guard the job with `if: github.repository == '<source>'`** and put it in a `concurrency` group without `cancel-in-progress`.
+- **Disable Actions in the copy entirely** (`PUT /repos/<copy>/actions/permissions -F enabled=false`). It receives every workflow file of the source; per-workflow `gh workflow disable` misses each file added later.
+- **Keep bots off the copy.** When the Renovate app is installed on all org repositories, narrowing the installation would change it org-wide; instead add a rule to the source's `renovate.json`, which reaches the copy with the next push:
+
+  ```json
+  "packageRules": [
+    { "matchRepositories": ["<org>/<copy>"], "enabled": false }
+  ]
+  ```
+
+  `matchRepositories` matches the repository Renovate is processing, not a dependency's source (`lib/util/package-rules/repositories.ts` compares it against the processed `repository`); an AI reviewer claiming otherwise is wrong. Close the bot pull requests already open in the copy, and turn off Dependabot security updates there (`DELETE /repos/<copy>/automated-security-fixes`).
+- **The first run replaces the copy's own history.** Move anything that exists only in the copy (a README section, a note) into the source first, and say in the pull request that the copy's own commits will be orphaned.
+
 ## Common Anti-Patterns
 
 | Anti-pattern | Consequence | Fix |
