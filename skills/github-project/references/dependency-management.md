@@ -250,7 +250,7 @@ Renovate's built-in managers read image tags, actions and lock files. A version 
 - **Automerge patch only.** `matchUpdateTypes: ["patch"]` with `automerge: true`, and for minor and major `automerge: false` plus the label your auto-merge workflow refuses (the `netresearch/.github` reusable skips `deps-no-automerge` and `deps-major`). A reusable that trusts every Renovate PR merges a minor release the moment the checks pass unless the label is there.
 - **`managerFilePatterns` is the current key; older Renovate calls it `fileMatch`.** `npx renovate-config-validator` resolved to 37.x here and answered `Custom Manager contains disallowed fields: managerFilePatterns`; `npx --package renovate@latest renovate-config-validator` (44.x) accepted the same file. Run the validator from the version the hosted app runs, not from whatever `npx` cached.
 
-Verify before opening the PR, locally, without touching the repository:
+Verify before opening the PR, locally, without changing tracked files (the `run.json` log is an untracked file, so keep it out of the commit):
 
 ```bash
 GITHUB_COM_TOKEN=$(gh auth token) LOG_FORMAT=json LOG_LEVEL=debug RENOVATE_ONBOARDING=false \
