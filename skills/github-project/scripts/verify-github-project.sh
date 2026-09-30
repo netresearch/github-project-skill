@@ -89,9 +89,10 @@ REPO_SLUG=""
 if git rev-parse --git-dir > /dev/null 2>&1; then
     REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null || true)
     if [ -n "$REMOTE_URL" ]; then
-        # Only a github.com remote yields a slug; any other URL leaves it empty,
-        # so the GitHub API checks below are skipped instead of queried with it.
-        REPO_SLUG=$(echo "$REMOTE_URL" | sed -nE 's#\.git$##; s#^.*github\.com[:/]([^/]+/[^/]+)$#\1#p')
+        # Only a remote whose host is exactly github.com yields a slug; any
+        # other URL (another host, or a host that merely contains github.com)
+        # leaves it empty, so the GitHub API checks below are skipped.
+        REPO_SLUG=$(echo "$REMOTE_URL" | sed -nE 's#\.git$##; s#^(https?://|ssh://)?([^@/]+@)?github\.com[:/]([^/]+/[^/]+)$#\3#p')
     fi
 fi
 

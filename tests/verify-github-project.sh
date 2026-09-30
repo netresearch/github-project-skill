@@ -7,7 +7,7 @@
 #
 # Each case builds a fixture directory, runs the verifier against it, and
 # checks the exit code and lines of the output. Only the dotted-name fixture
-# has a github.com `origin`; the two remote fixtures run with a stub `gh` on
+# has a github.com `origin`; the three remote fixtures run with a stub `gh` on
 # PATH that records and answers every call, so no fixture reaches the
 # network. Requires bash and git.
 
@@ -156,6 +156,15 @@ PATH="$WORK/bin:$PATH" run "$WORK/git-gitlab"
 expect_line "GitHub API checks are skipped for a non-GitHub remote" "Skipping merge method compatibility check"
 calls=$(wc -l < "$WORK/gh-calls.log")
 report "no gh call is made for a non-GitHub remote" "$([ "$calls" -eq 0 ] && echo 0 || echo 1)" "$calls gh call(s): $(tr '\n' ';' < "$WORK/gh-calls.log")"
+
+echo "git repository whose origin host only contains github.com"
+
+gitrepo "$WORK/git-lookalike" main
+git -C "$WORK/git-lookalike" remote add origin https://evilgithub.com/acme/widget.git
+: > "$WORK/gh-calls.log"
+PATH="$WORK/bin:$PATH" run "$WORK/git-lookalike"
+calls=$(wc -l < "$WORK/gh-calls.log")
+report "no gh call is made for a look-alike host" "$([ "$calls" -eq 0 ] && echo 0 || echo 1)" "$calls gh call(s): $(tr '\n' ';' < "$WORK/gh-calls.log")"
 
 echo "git repository with a github.com origin whose name contains a dot"
 
