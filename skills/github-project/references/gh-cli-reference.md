@@ -382,6 +382,19 @@ only it does — review-thread resolution, `enqueuePullRequest`. **Merging stays
 on `gh pr merge`**: a REST `PUT /merge` bypasses local merge gating and is not a
 substitute.
 
+**GraphQL can refuse while `graphql.remaining` still shows thousands.** On
+2026-10-18 every `gh pr create`, `gh pr ready` and `gh issue comment` failed
+with `GraphQL: API rate limit already exceeded for user ID …` for about 45
+minutes, until the reported `graphql.reset`, while `gh api rate_limit` showed
+4441 GraphQL points left. The counter did not show this wall; the refusal text
+is the signal. REST kept working throughout:
+open the pull request with `"draft": true` in the `POST …/pulls` body, comment
+with `POST repos/<owner>/<repo>/issues/N/comments`, change title, body or state
+with `PATCH`, and reply to a review comment with
+`POST repos/<owner>/<repo>/pulls/N/comments/<comment id>/replies`. Leaving
+draft (`gh pr ready`) and resolving review threads have no REST form; retry
+those after `graphql.reset` in one background loop.
+
 **When REST is exhausted, read files without the API.** `gh api
 repos/<owner>/<repo>/contents/<path>` answers `HTTP 403 … API rate limit
 exceeded` once the REST budget is gone. A file in a public repository is still
