@@ -79,7 +79,7 @@ gh pr view PR --repo OWNER/REPO --json reviewThreads --jq '.reviewThreads'
 
 ### Calling Organisation Reusables
 
-**Rule:** `uses: netresearch/<repo>/.github/workflows/<name>.yml@main`. Never a commit hash, also not `@<sha> # main`; third-party actions stay SHA-pinned. Why: `references/reusable-workflow-security.md`.
+**Rule:** `uses: netresearch/<repo>/.github/workflows/<name>.yml@main`. Never a commit hash, also not `@<sha> # main`; third-party actions stay SHA-pinned. A CodeQL `actions/unpinned-tag`, zizmor or SonarCloud finding on such a line is dismissed as won't fix, never fixed by pinning. Why: `references/reusable-workflow-security.md`.
 
 ## Running Scripts
 

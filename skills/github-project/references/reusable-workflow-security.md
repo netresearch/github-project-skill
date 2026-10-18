@@ -10,7 +10,7 @@ Security model for internal vs external reusable workflows, transitive dependenc
 ### Internal workflows (`@org/repo/.github/workflows/x.yml@main`)
 
 - Under your organization's control
-- **Netresearch rule: call them at `@main`. Never pin them to a commit hash**, also not as `@<sha> # main`. They are maintained together with their callers; a hash freezes the caller on an old copy and makes Renovate open digest PRs for it. They are exempt from `sha_pinning_required`, so no ruleset needs the hash, and a zizmor `unpinned-uses` finding on one is not a reason to pin. Copy the ref form of the neighbouring callers. `validate-skill.sh` in skill-repo-skill fails a skill repo that pins one.
+- **Netresearch rule: call them at `@main`. Never pin them to a commit hash**, also not as `@<sha> # main`. They are maintained together with their callers; a hash freezes the caller on an old copy and makes Renovate open digest PRs for it. They are exempt from `sha_pinning_required`, so no ruleset needs the hash. A CodeQL `actions/unpinned-tag`, zizmor `unpinned-uses` or SonarCloud `githubactions:S7637` finding on one is a false positive: dismiss it as won't fix, never pin (`reusable-workflow-pitfalls.md`). Copy the ref form of the neighbouring callers. `validate-skill.sh` in skill-repo-skill fails a skill repo that pins one.
 - Changes are visible in your org's commit history
 - Trust model: same as trusting your own code
 

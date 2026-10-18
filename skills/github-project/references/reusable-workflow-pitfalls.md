@@ -250,7 +250,7 @@ required check via a ruleset when classic `required_status_checks` isn't set.)
 
 ## Own reusables stay `@main` — never SHA-pin them
 
-Reusables in Netresearch-owned repos (`netresearch/.github`, typo3-ci-workflows) are called `@main` (or a tag once releases exist), NEVER by commit SHA: pinning freezes every consumer to a snapshot and defeats "fix once, all pick it up". The trust model differs from third-party actions (which DO get SHA-pinned). SonarCloud `githubactions:S7637` flags every new `@main` reusable line on migration PRs — a false positive for first-party reusables: mark Safe/Won't-fix (or add an org-level exception for `netresearch/.github/**@main`), never capitulate with a SHA pin.
+Reusables in Netresearch-owned repos (`netresearch/.github`, typo3-ci-workflows) are called `@main`, NEVER by commit SHA: pinning freezes every consumer to a snapshot and defeats "fix once, all pick it up". The trust model differs from third-party actions (which DO get SHA-pinned). Three scanners flag every `@main` reusable line, and all three are false positives for first-party reusables: SonarCloud `githubactions:S7637`, CodeQL `actions/unpinned-tag` ("Unpinned tag for a non-immutable Action or reusable workflow") and zizmor `unpinned-uses`. Dismiss the finding as won't fix (or add an org-level exception for `netresearch/*/.github/workflows/**@main`); never capitulate with a SHA pin. On 2026-10-18 an agent pinned `script-check.yml` in netresearch-branding-skill "to resolve the unpinned reusable workflow finding" from CodeQL.
 
 ## Validating a new reusable: the first caller IS the test — use a temp branch pin
 
