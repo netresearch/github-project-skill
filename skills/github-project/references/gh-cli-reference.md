@@ -389,8 +389,8 @@ minutes, until the reported `graphql.reset`, while `gh api rate_limit` showed
 4441 GraphQL points left. The counter did not show this wall; the refusal text
 is the signal. REST kept working throughout:
 open the pull request with `"draft": true` in the `POST …/pulls` body, comment
-with `POST repos/<owner>/<repo>/issues/N/comments`, and change title, body or
-state with `PATCH`, and reply to a review comment with
+with `POST repos/<owner>/<repo>/issues/N/comments`, change title, body or state
+with `PATCH`, and reply to a review comment with
 `POST repos/<owner>/<repo>/pulls/N/comments/<comment id>/replies`. Leaving
 draft (`gh pr ready`) and resolving review threads have no REST form; retry
 those after `graphql.reset` in one background loop.
