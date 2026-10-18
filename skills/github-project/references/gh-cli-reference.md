@@ -390,9 +390,10 @@ minutes, until the reported `graphql.reset`, while `gh api rate_limit` showed
 is the signal. REST kept working throughout:
 open the pull request with `"draft": true` in the `POST …/pulls` body, comment
 with `POST repos/<owner>/<repo>/issues/N/comments`, and change title, body or
-state with `PATCH`. Leaving draft (`gh pr ready`) and replying to or resolving
-review threads have no REST form; retry those after `graphql.reset` in one
-background loop.
+state with `PATCH`, and reply to a review comment with
+`POST repos/<owner>/<repo>/pulls/N/comments/<comment id>/replies`. Leaving
+draft (`gh pr ready`) and resolving review threads have no REST form; retry
+those after `graphql.reset` in one background loop.
 
 **When REST is exhausted, read files without the API.** `gh api
 repos/<owner>/<repo>/contents/<path>` answers `HTTP 403 … API rate limit
