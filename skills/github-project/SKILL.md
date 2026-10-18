@@ -77,6 +77,10 @@ gh pr view PR --repo OWNER/REPO --json reviewThreads --jq '.reviewThreads'
 
 `references/auto-merge-guide.md`: signed-commit rebase, workflow-file PRs, Copilot race.
 
+### Calling Organisation Reusables
+
+**Rule:** `uses: netresearch/<repo>/.github/workflows/<name>.yml@main`. Never a commit hash, also not `@<sha> # main`; third-party actions stay SHA-pinned. A CodeQL `actions/unpinned-tag`, zizmor or SonarCloud finding on such a line is dismissed as won't fix, never fixed by pinning. Why: `references/reusable-workflow-security.md`.
+
 ## Running Scripts
 
 ```bash
