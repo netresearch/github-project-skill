@@ -458,5 +458,34 @@
                 "Yes, a nightly schedule in the private repo with contents: write on GITHUB_TOKEN is enough."
             ]
         }
+    },
+    {
+        "name": "automerged_bump_breaks_scheduled_workflow",
+        "prompt": "Renovate bumped python-version to 3.15 in our nightly workflow, all PR checks were green and auto-merge merged it. Since then the nightly run fails: No matching distribution found for PyYAML==6.0.3. Fix it so this cannot slip through again.",
+        "assertions": [
+            {
+                "type": "content",
+                "pattern": "(cp315|no .{0,20}wheel|wheel.{0,30}3\\.15|only-binary)"
+            },
+            {
+                "type": "content",
+                "pattern": "pull_request"
+            },
+            {
+                "type": "content",
+                "pattern": "(paths:|path filter|path-filtered)"
+            },
+            {
+                "type": "content",
+                "pattern": "(schedule|scheduled).{0,80}(no|never|not).{0,40}(check|run|exercise)|(no|never|not).{0,40}(check|run|exercise).{0,80}(schedule|scheduled)"
+            }
+        ],
+        "samples": {
+            "passing": "PyYAML 6.0.3 has no cp315 wheel and --only-binary refuses the sdist, so pin python-version back to 3.14. The bump merged because the workflow only runs on schedule, so no check on the PR ever executed it. Add a pull_request trigger with paths: limited to this workflow file and a job that runs only setup-python and the install step on PRs; keep write permissions on the publishing job, which is skipped on pull_request.",
+            "failing": [
+                "Pin python-version to 3.14 and add a Renovate rule with allowedVersions <3.15 for python.",
+                "Re-run the nightly workflow; the PyPI outage should be over."
+            ]
+        }
     }
 ]
