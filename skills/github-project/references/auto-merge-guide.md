@@ -778,3 +778,118 @@ Treat "pushed and green" as "merged" on those branches:
   is deleted post-merge.
 - Check whether the merge already happened before diagnosing a push failure:
   `gh pr view $PR --repo $R --json state,mergedAt,mergedBy`.
+
+## Auto-merge proves only what the PR's own checks run
+
+A green dependency PR says nothing about a workflow that no check on that PR
+executes. A workflow triggered only by `schedule` or `workflow_dispatch` is the
+common case: when Renovate bumps `python-version`, an action or a pinned tool
+inside it, the PR's checks are the *other* workflows, they pass, and the
+auto-merge workflow merges. The bumped workflow first runs at its next schedule
+or dispatch, on the base branch, and fails there.
+
+Measured on one repository: Renovate moved a nightly dashboard workflow from
+Python 3.14 to 3.15. Its install step is
+`pip install --only-binary :all: … PyYAML==6.0.3`, and PyYAML 6.0.3 publishes
+no cp315 wheel, so every nightly run failed with
+`No matching distribution found for PyYAML==6.0.3`. The PR had merged green,
+because the test workflow installs a different requirements file. Eight
+nightly runs failed before the fix merged.
+
+Find the workflows that a bump PR cannot exercise:
+
+```bash
+# Workflows without a pull_request / pull_request_target / merge_group trigger
+for f in .github/workflows/*.y*ml; do
+  yq -e '.on | has("pull_request") or has("pull_request_target") or has("merge_group")' "$f" >/dev/null 2>&1 \
+    || echo "$f: $(yq -o=json -I=0 '.on | keys' "$f")"
+done
+```
+
+Give each such workflow a PR-time check that runs its fragile steps — the
+runtime setup and the dependency install — and nothing that writes:
+
+```yaml
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/impact-dashboard.yml   # only PRs that change this file
+
+permissions:
+  contents: read                                 # the default for every job
+
+env:
+  DASHBOARD_DEPS: requests==2.34.2 PyYAML==6.0.3 Jinja2==3.1.6
+
+jobs:
+  install-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@<sha>  # vX
+        with:
+          python-version: '3.14'                 # keep identical to the build job
+      - run: |
+          # shellcheck disable=SC2086
+          pip install --only-binary :all: $DASHBOARD_DEPS
+
+  build:
+    # Name the events that may publish. `!= 'pull_request'` would also run the
+    # publisher on a merge_group trigger added later.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write                            # publishing needs it, the check does not
+    concurrency:                                 # job level: PR checks must not queue
+      group: impact-dashboard                    # behind the nightly publisher
+      cancel-in-progress: false
+    # … unchanged steps, installing $DASHBOARD_DEPS …
+```
+
+Three details decide whether the check works:
+
+- **Keep `python-version` a literal in both jobs.** Renovate opened the bump
+  from the literal `with:` value of `setup-python`, and one PR updated every
+  such literal in the repository. An `${{ env.… }}` expression in that place is
+  not a version string; do not trade the duplicated literal for one, or the
+  bump PR, and with it the check, may never come.
+- **The auto-merge workflow must wait for this check.** Read which path the
+  repository takes (§ *`mergeStateStatus: BLOCKED` — Check Required vs
+  Non-Required Checks First*).
+  - Without required checks, the shared `auto-merge-deps.yml` gates on every
+    check of the PR itself; a failed `install-check` stops the merge, and the
+    `paths:` filter above is fine.
+  - With required status checks, only those hold a native auto-merge, so
+    `install-check` has to become one. Then drop the workflow-level `paths:`
+    filter: a required check whose workflow a path filter skipped stays
+    pending, and every unrelated PR is blocked. Run the job on every PR; it
+    takes seconds. To limit it to changes of this file anyway, trigger on
+    every PR and decide inside the job whether to run the install steps, so
+    the job always reports.
+  - With a merge queue, also add `merge_group:` to `on:` and let
+    `install-check` run for it (`if: github.event_name == 'pull_request' ||
+    github.event_name == 'merge_group'`); a required check that never reports
+    on the merge-group commit holds the queue.
+- **Prove the check against the failing version before relying on it.** Run the
+  step from the file, not a retyped copy, in the official image of both
+  versions; the old one must pass and the new one must fail:
+
+  ```bash
+  RUN="$(yq -r '.jobs.build.steps[] | select(.name=="Install dependencies") | .run' .github/workflows/impact-dashboard.yml)"
+  for v in 3.14 3.15; do
+    docker run --rm -e DASHBOARD_DEPS="$(yq -r .env.DASHBOARD_DEPS .github/workflows/impact-dashboard.yml)" \
+      python:$v bash -ec "$RUN"; echo "$v exit=$?"
+  done
+  ```
+
+The check fails a premature bump and passes on its own once the dependency
+ships support, so it needs no later clean-up. A Renovate `allowedVersions` cap
+reaches the same safety but stays in place until someone remembers to lift it.
+
+A converted `run:` line can also break the file itself:
+`pip install --only-binary :all: $DEPS` is not a valid plain YAML scalar,
+because a colon followed by a space starts a mapping. Keep a block scalar
+(`run: |` or `run: >-`) and run `actionlint` before pushing.
