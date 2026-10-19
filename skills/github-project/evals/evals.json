@@ -478,12 +478,21 @@
             {
                 "type": "content",
                 "pattern": "(schedule|scheduled).{0,80}(no|never|not).{0,40}(check|run|exercise)|(no|never|not).{0,40}(check|run|exercise).{0,80}(schedule|scheduled)"
+            },
+            {
+                "type": "content",
+                "pattern": "(on PRs|on pull requests|pull_request).{0,120}(setup-python|install)|(setup-python|install).{0,120}(on PRs|on pull requests)"
+            },
+            {
+                "type": "content",
+                "pattern": "(write permission|contents: write).{0,60}(publish|build)|(publish|build)[a-z ]{0,30}(job|step).{0,60}(write permission|contents: write)"
             }
         ],
         "samples": {
             "passing": "PyYAML 6.0.3 has no cp315 wheel and --only-binary refuses the sdist, so pin python-version back to 3.14. The bump merged because the workflow only runs on schedule, so no check on the PR ever executed it. Add a pull_request trigger with paths: limited to this workflow file and a job that runs only setup-python and the install step on PRs; keep write permissions on the publishing job, which is skipped on pull_request.",
             "failing": [
                 "Pin python-version to 3.14 and add a Renovate rule with allowedVersions <3.15 for python.",
+                "PyYAML has no cp315 wheel, so pin python-version to 3.14. The bump merged because the workflow only runs on schedule, so no check on the PR ever ran it. Add a pull_request trigger with paths: limited to this workflow file.",
                 "Re-run the nightly workflow; the PyPI outage should be over."
             ]
         }
