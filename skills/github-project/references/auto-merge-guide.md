@@ -785,16 +785,16 @@ A green dependency PR says nothing about a workflow that no check on that PR
 executes. A workflow triggered only by `schedule` or `workflow_dispatch` is the
 common case: when Renovate bumps `python-version`, an action or a pinned tool
 inside it, the PR's checks are the *other* workflows, they pass, and the
-auto-merge workflow merges. The bumped workflow first runs the next night, on
-the base branch, and fails there.
+auto-merge workflow merges. The bumped workflow first runs at its next schedule
+or dispatch, on the base branch, and fails there.
 
 Measured on one repository: Renovate moved a nightly dashboard workflow from
 Python 3.14 to 3.15. Its install step is
 `pip install --only-binary :all: … PyYAML==6.0.3`, and PyYAML 6.0.3 publishes
 no cp315 wheel, so every nightly run failed with
 `No matching distribution found for PyYAML==6.0.3`. The PR had merged green,
-because the test workflow installs a different requirements file. The failure
-lasted eight nights before anyone looked.
+because the test workflow installs a different requirements file. Eight
+nightly runs failed before the fix merged.
 
 Find the workflows that a bump PR cannot exercise:
 
@@ -838,6 +838,7 @@ jobs:
 
   build:
     if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
     permissions:
       contents: write                            # publishing needs it, the check does not
     concurrency:                                 # job level: PR checks must not queue
@@ -877,5 +878,5 @@ reaches the same safety but stays in place until someone remembers to lift it.
 
 A converted `run:` line can also break the file itself:
 `pip install --only-binary :all: $DEPS` is not a valid plain YAML scalar,
-because a colon followed by a space starts a mapping. Keep a block scalar (`run: |` or `run: >-`) and
-run `actionlint` before pushing.
+because a colon followed by a space starts a mapping. Keep a block scalar
+(`run: |` or `run: >-`) and run `actionlint` before pushing.
