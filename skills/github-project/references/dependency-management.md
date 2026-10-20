@@ -244,6 +244,30 @@ Whoever pushed to the branch owns the PR from then on: track it to merge, or clo
 - Apply the rebase label (`rebaseLabel`, default `rebase`): Renovate then regenerates its commit even on a modified branch, which discards the foreign commit.
 - For another bot that routinely commits on top of Renovate PRs, list its commit-author email (or a glob or regex matching it) in `gitIgnoredAuthors`, so its pushes do not count as a modification.
 
+### Ticking Renovate's rebase box from the CLI
+
+Every Renovate PR body carries the line `- [ ] <!-- rebase-check -->If you want to rebase/retry this PR, check this box`. Ticking it asks Renovate to rebase or retry the branch, and it works without the web UI: replace `- [ ] <!-- rebase-check -->` with `- [x] <!-- rebase-check -->` in the body and PATCH the body back. Replace only the first occurrence, and keep the body in a file rather than on the command line, because Renovate bodies with release notes run to tens of kilobytes:
+
+```bash
+R=OWNER/REPO; N=123
+gh api "repos/$R/pulls/$N" --jq .body > body.md
+python3 - body.md <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old, new = "- [ ] <!-- rebase-check -->", "- [x] <!-- rebase-check -->"
+assert old in s, "no unticked rebase box: already ticked, or not a Renovate PR"
+open(p, "w").write(s.replace(old, new, 1))
+PY
+# PATCH only a body that carries the tick; -F reads the value from the file
+grep -qF -- '- [x] <!-- rebase-check -->' body.md \
+  && gh api "repos/$R/pulls/$N" -X PATCH -F body=@body.md --silent
+# Read it back: expect 1
+gh api "repos/$R/pulls/$N" --jq .body | grep -cF -- '- [x] <!-- rebase-check -->'
+```
+
+Renovate acts on its next run, which can be minutes or hours away. Until then `pr-status.sh` keeps reporting the branch as behind its base; that is the expected state, not a failed tick. Do not tick again and do not poll: the read-back above is the confirmation, and the rebased push is what wakes the PR's checks.
+
 ### A version that lives outside an image tag needs a custom manager
 
 Renovate's built-in managers read image tags, actions and lock files. A version stated as `ARG APP_VERSION=1.2.3`, as a Compose default (`${APP_VERSION:-1.2.3}`), in `.env.example`, in a CI `env:` block or in a README table is invisible to them, so the application itself is the one dependency no bot ever proposes — while its base images update weekly. A `customManagers` entry of `customType: regex` closes that; the points that cost a detour in `netresearch/moodle-docker` (PR #94):
@@ -263,6 +287,27 @@ jq -c 'select(.msg|test("packageFiles with updates")) | .config.regex[]
 ```
 
 That proves extraction: every occurrence listed, digest captured. It cannot show an update while the tree is already current, so prove the positive case on a copy **outside any repository** with the version and pin set back one release (the repository's own `renovate.json` would otherwise be discovered and the comparison measures the wrong pair): the lookup must offer the next release with the right `newDigest`, and one `branchName` for every occurrence (with `groupName` set it is `renovate/<group>`; the `groupName` field itself printed `null` in the lookup output, so read the branch name, not that field). What a local lookup does not exercise is the file rewrite and the merge; those only happen in the hosted run, so say so in the PR.
+
+### Hash-pinned `requirements.lock` files Renovate cannot regenerate
+
+A Python sidecar that pins `requirements.txt` and keeps a separate `--hash`-pinned `requirements.lock` beside it, made by hand rather than by a manager Renovate runs, breaks on every Python update: Renovate bumps `requirements.txt` and leaves the lock as it is, so the check comparing the two fails on every such PR. If that check is not required and the PR automerges, the disagreement lands on `main`. netresearch/t3x-nr-llm#1005 merged that way: `requirements.txt` then said `transformers==5.19.0`, the lock still said 5.17.0, and the image went on installing 5.17.0.
+
+The durable fix is a lock Renovate maintains itself:
+
+- **uv:** `pyproject.toml` plus `uv.lock`; Renovate's `pep621` manager regenerates `uv.lock` on each update (netresearch/t3x-nr-llm#1138).
+- **pip-compile:** Renovate's `pip-compile` manager, which regenerates the output file with the command it reads from that file's header. Its `managerFilePatterns` is empty by default, so it has to be pointed at the output `.txt` file, and the file must keep pip-compile's default header.
+
+Until then, a single bump can be finished by hand. When PyPI lists the same base requirements for the old and the new version, only the package's own entry and its wheel hash change in the lock. Compare both from PyPI's JSON API, and take the hash from there rather than from a local download:
+
+```bash
+PKG=transformers; OLD=5.17.0; NEW=5.19.0
+reqs() { curl -s "https://pypi.org/pypi/$PKG/$1/json" | jq -r '.info.requires_dist // [] | .[] | select(test("extra ==") | not)' | sort; }
+diff <(reqs "$OLD") <(reqs "$NEW") && echo "base requirements identical"
+curl -s "https://pypi.org/pypi/$PKG/$NEW/json" \
+  | jq -r '.urls[] | select(.packagetype == "bdist_wheel") | "\(.filename) sha256:\(.digests.sha256)"'
+```
+
+If `diff` prints anything, the dependency set moved with the package (for this pair it does: `huggingface-hub` changes its range), and the lock has to be regenerated rather than edited.
 
 ### Migrating from Dependabot to Renovate
 
