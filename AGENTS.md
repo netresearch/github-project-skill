@@ -52,6 +52,7 @@ This skill covers **GitHub platform configuration only**:
 bash tests/verify-github-project.sh
 bash tests/init-branch-protection.sh
 bash tests/check-plugin-version.sh
+bash tests/checkpoint-gh-37.sh
 ```
 
 ## Key Patterns
