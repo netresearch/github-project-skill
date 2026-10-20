@@ -771,11 +771,13 @@ The behavioural tests live in `tests/` and run offline; they need bash, git, jq,
 bash tests/verify-github-project.sh    # skills/github-project/scripts/verify-github-project.sh
 bash tests/init-branch-protection.sh   # skills/github-project/scripts/init-branch-protection.sh
 bash tests/check-plugin-version.sh     # Build/Scripts/check-plugin-version.sh and Build/hooks/pre-push
+bash tests/checkpoint-gh-37.sh         # checkpoint GH-37 in skills/github-project/checkpoints.yaml
 ```
 
 - `tests/verify-github-project.sh` runs the verifier against fixture directories; only the dotted-name fixture has a github.com `origin`, and the three remote fixtures run with a stub `gh` on `PATH`, so no fixture reaches the network. The stub checks that a non-GitHub remote and a host that merely contains `github.com` trigger no call and that a github.com remote whose name contains a dot is queried with its slug. It checks the exit codes, that all 12 sections run, and individual pass and failure lines, including the default-branch check in a git repository.
 - `tests/init-branch-protection.sh` puts a stub `gh` first on `PATH` that answers from prepared responses and records every request and request body. It checks each exit code documented in the script header, the body sent with `PUT` (with and without `--solo`), that nothing is written over protection the script could not read, that drift is reported and not corrected, and both `--from-current-checks` paths.
 - `tests/check-plugin-version.sh` builds throwaway git repositories and checks that a semver tag at `HEAD` must match the version in `.claude-plugin/plugin.json`, and that the pre-push hook passes the result on.
+- `tests/checkpoint-gh-37.sh` reads GH-37's script out of `checkpoints.yaml` and runs it in fixture directories: the org preset as `github>` or `local>` (with `:preset` or `#ref`, in JSON, JSONC or JSON5) and a repository without a Renovate config pass; `config:recommended` alone, the preset only in a comment, a `description` or `ignorePresets`, a look-alike repository name, a missing `extends`, and a preset in a later config file than the one Renovate reads fail.
 
 Each check prints `ok` or `FAIL`; a `FAIL` line names the expectation that was not met and is followed by the script's output. A test file exits 1 when any check failed. In CI, the Skill Tests workflow (`.github/workflows/tests.yml`) runs every `tests/**/*.sh` on each pull request and on pushes to `main`, and fails when the repository ships scripts under `skills/*/scripts/` but no test ran.
 

@@ -203,6 +203,54 @@ mechanical:
     severity: warning
     desc: "The update bot (Dependabot or Renovate) should monitor GitHub Actions"
 
+  # GH-37: a Renovate config that extends only `config:recommended` runs, so
+  # GH-06/13/14 pass, but none of the organisation's rules reach it. On
+  # 2026-10-19, 64 of 198 active netresearch repositories were in that state;
+  # it surfaced only through a ruff pre-commit pin that never got updated,
+  # because the org preset is what enables Renovate's pre-commit manager.
+  # Reads the same file list in the same order as GH-13/14 (the first file
+  # that exists is the one Renovate uses) and strips comments the same way,
+  # then looks for a `github>ORG/renovate-config` or `local>ORG/renovate-config`
+  # preset (with or without `:preset`, `//path` or `#ref`) inside an `extends`
+  # array. A repository without a Renovate config is out of scope and passes;
+  # GH-06 covers a missing update bot. Not detected: the org preset reached
+  # only through another preset the config extends.
+  - id: GH-37
+    type: script
+    command: |
+      strip_comments() {
+        awk 'BEGIN { RS = "\001" } {
+          s = $0; n = length(s); q = ""; i = 1
+          while (i <= n) {
+            c = substr(s, i, 1); d = substr(s, i, 2)
+            if (q != "") {
+              printf "%s", c
+              if (c == "\\") { printf "%s", substr(s, i + 1, 1); i += 2; continue }
+              if (c == q) q = ""
+              i++; continue
+            }
+            if (c == "\"" || c == "\047") { q = c; printf "%s", c; i++; continue }
+            if (d == "//") { j = index(substr(s, i), "\n"); if (j == 0) break; i += j - 1; continue }
+            if (d == "/*") { j = index(substr(s, i + 2), "*/"); if (j == 0) break; i += j + 3; printf " "; continue }
+            printf "%s", c; i++
+          }
+        }' "$1"
+      }
+      for f in renovate.json renovate.jsonc renovate.json5 .github/renovate.json .github/renovate.jsonc .github/renovate.json5 \
+               .gitlab/renovate.json .gitlab/renovate.jsonc .gitlab/renovate.json5 .renovaterc .renovaterc.json .renovaterc.jsonc .renovaterc.json5; do
+        [ -f "$f" ] || continue
+        extends=$(strip_comments "$f" | tr '\n' ' ' | grep -Eo "extends[\"']?[[:space:]]*:[[:space:]]*\[[^]]*\]") || exit 1
+        if printf '%s' "$extends" | grep -Eq "[\"'](github|local)>[^/\"'[:space:]]+/renovate-config([:/#][^\"']*)?[\"']"; then exit 0; fi
+        exit 1
+      done
+      exit 0
+    severity: warning
+    desc: >-
+      The repository's Renovate config should extend the organisation preset
+      (github>ORG/renovate-config or local>ORG/renovate-config), so org-wide
+      rules (compromised-version deny list, minimum release age, pre-commit
+      manager, go mod tidy) apply. Passes when no Renovate config exists.
+
   # === GITIGNORE ===
   - id: GH-17
     type: file_exists
