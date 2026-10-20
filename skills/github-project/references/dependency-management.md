@@ -300,11 +300,20 @@ The durable fix is a lock Renovate maintains itself:
 Until then, a single bump can be finished by hand. When PyPI lists the same base requirements for the old and the new version, only the package's own entry and its wheel hash change in the lock. Compare both from PyPI's JSON API, and take the hash from there rather than from a local download:
 
 ```bash
+set -euo pipefail
 PKG=transformers; OLD=5.17.0; NEW=5.19.0
-reqs() { curl -s "https://pypi.org/pypi/$PKG/$1/json" | jq -r '.info.requires_dist // [] | .[] | select(test("extra ==") | not)' | sort; }
-diff <(reqs "$OLD") <(reqs "$NEW") && echo "base requirements identical"
-curl -s "https://pypi.org/pypi/$PKG/$NEW/json" \
-  | jq -r '.urls[] | select(.packagetype == "bdist_wheel") | "\(.filename) sha256:\(.digests.sha256)"'
+# Fail closed: a failed request or an unexpected body must stop here, never
+# reach the comparison as an empty list that reads as "identical".
+meta() { curl -fsS "https://pypi.org/pypi/$PKG/$1/json"; }
+reqs() { jq -r 'if (.info | has("requires_dist")) then (.info.requires_dist // [])
+                else error("no requires_dist in the PyPI response") end
+                | map(select(test("extra ==") | not)) | sort | .[]' <<<"$1"; }
+old_json=$(meta "$OLD"); new_json=$(meta "$NEW")
+old_reqs=$(reqs "$old_json"); new_reqs=$(reqs "$new_json")
+if diff <(printf '%s\n' "$old_reqs") <(printf '%s\n' "$new_reqs"); then
+  echo "base requirements identical"
+fi
+jq -er '.urls[] | select(.packagetype == "bdist_wheel") | "\(.filename) sha256:\(.digests.sha256)"' <<<"$new_json"
 ```
 
 If `diff` prints anything, the dependency set moved with the package (for this pair it does: `huggingface-hub` changes its range), and the lock has to be regenerated rather than edited.
