@@ -215,7 +215,8 @@ if [[ "$MODE" == "--merge-queue" ]]; then
         exit 1
     fi
 
-    if ! RULES="$(gh api "repos/$OWNER/$REPO/rules/branches/$DEFAULT_BRANCH?per_page=100" 2>/dev/null)" \
+    if ! RULES="$(gh api --paginate "repos/$OWNER/$REPO/rules/branches/$DEFAULT_BRANCH?per_page=100" 2>/dev/null \
+            | jq -s 'add // []')" \
         || ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"$RULES"; then
         err "cannot read the rules in effect on $DEFAULT_BRANCH — not writing over an unknown state"
         exit 3
@@ -382,7 +383,8 @@ if [[ "$MODE" == "--from-current-checks" ]]; then
     # Under a merge queue strict must stay false (see --merge-queue). An
     # unreadable rule set is not read as "no queue": strict=true would then
     # undo the queue's setting.
-    if ! RULES="$(gh api "repos/$OWNER/$REPO/rules/branches/$DEFAULT_BRANCH?per_page=100" 2>/dev/null)" \
+    if ! RULES="$(gh api --paginate "repos/$OWNER/$REPO/rules/branches/$DEFAULT_BRANCH?per_page=100" 2>/dev/null \
+            | jq -s 'add // []')" \
         || ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"$RULES"; then
         err "cannot read the rules in effect on $DEFAULT_BRANCH — not writing over an unknown state"
         exit 3

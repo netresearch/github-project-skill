@@ -312,6 +312,16 @@ run acme/widget --from-current-checks
 expect_exit "status checks under a merge queue are updated" 0
 expect_json "under a merge queue branches need not be up to date" "$(body PATCH "$PROT/required_status_checks")" '.strict' 'false'
 
+scenario checks-queue-second-page
+checks_repo
+respond GET "$REPO/rules/branches/main?per_page=100" 0 "[{\"type\":\"deletion\",\"ruleset_id\":3}][$(mq_rule)]"
+respond GET "$PROT" 0 "$(compliant | jq -c '.required_status_checks = {strict: false, contexts: ["old"]}')"
+respond GET "$REPO/commits/abc1234def/check-runs?per_page=100" 0 "$RUNS"
+respond PATCH "$PROT/required_status_checks" 0 '{}'
+run acme/widget --from-current-checks
+expect_exit "status checks under a queue on the second page of rules are updated" 0
+expect_json "a queue on the second page keeps strict false" "$(body PATCH "$PROT/required_status_checks")" '.strict' 'false'
+
 scenario checks-rules-unreadable
 checks_repo
 respond GET "$REPO/rules/branches/main?per_page=100" 1 '' 'HTTP 403: API rate limit exceeded'
@@ -364,6 +374,15 @@ respond GET "$PROT" 0 "$(classic_checks false "$LINT")"
 run acme/widget --merge-queue
 expect_exit "an existing standard queue exits 0" 0
 expect_no_write "an existing standard queue with strict=false is left alone"
+
+scenario mq-second-page
+mq_repo
+# gh --paginate prints one array per page; the queue sits on the second one.
+respond GET "$REPO/rules/branches/main?per_page=100" 0 "[{\"type\":\"deletion\",\"ruleset_id\":3}][$(mq_rule)]"
+respond GET "$PROT" 0 "$(classic_checks false "$LINT")"
+run acme/widget --merge-queue
+expect_exit "a queue on the second page of rules is found" 0
+expect_no_write "a queue on the second page gets no second ruleset"
 
 scenario mq-existing-strict
 mq_repo
