@@ -433,6 +433,17 @@ expect_exit "a ruleset-required SonarCloud context exits 6" 6
 report "the refusal names the ruleset" "$(grep -qF 'Ruleset(s) 9: remove them' <<<"$OUT"; echo $?)" "ruleset not named"
 expect_no_write "a ruleset-required app context gets no write"
 
+scenario mq-actions-job-named-like-app
+mq_repo
+# A workflow job called zizmor, pinned to GitHub Actions: it reports on merge_group.
+respond GET "$REPO/rules/branches/main?per_page=100" 0 '[{"type":"required_status_checks","ruleset_id":9,"parameters":{"strict_required_status_checks_policy":false,"required_status_checks":[{"context":"zizmor","integration_id":15368}]}}]'
+respond GET "$PROT" 0 "$(classic_checks true '[{"context":"lint","app_id":15368},{"context":"betterleaks","app_id":15368},{"context":"CodeQL","app_id":57789}]')"
+run acme/widget --merge-queue
+expect_exit "an app context next to Actions-pinned namesakes exits 6" 6
+report "an Actions-pinned namesake is not named" "$(grep -qF -- '- betterleaks' <<<"$OUT" && echo 1 || echo 0)" "betterleaks named"
+report "the PATCH keeps the Actions-pinned namesake" "$(grep -qF -- "<<<'{\"strict\":false,\"checks\":[{\"context\":\"lint\",\"app_id\":15368},{\"context\":\"betterleaks\",\"app_id\":15368}]}'" <<<"$OUT"; echo $?)" "namesake dropped"
+report "a ruleset with only an Actions-pinned namesake is not named" "$(grep -qF 'Ruleset(s)' <<<"$OUT" && echo 1 || echo 0)" "ruleset named"
+
 scenario mq-drift
 mq_repo
 respond GET "$REPO/rules/branches/main?per_page=100" 0 "[$(mq_rule "$(jq -c '.merge_method = "SQUASH" | .check_response_timeout_minutes = 30' <<<"$MQ_STD")")]"

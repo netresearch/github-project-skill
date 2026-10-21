@@ -55,7 +55,8 @@
 #         - a required context is one that apps post only against the pull
 #           request and never on a merge_group ref (CodeQL, Opengrep OSS,
 #           betterleaks, zizmor, SonarCloud Code Analysis): every queue
-#           entry would time out (exit 6),
+#           entry would time out (exit 6); a context of that name pinned to
+#           the GitHub Actions app (15368) is a workflow job and passes,
 #         - a ruleset requires branches to be up to date
 #           (strict_required_status_checks_policy: true),
 #         - a merge_queue rule exists with other parameters (drift, exit 1).
@@ -247,31 +248,37 @@ if [[ "$MODE" == "--merge-queue" ]]; then
           ($r[] | select(.type == "required_status_checks")
                 | .parameters.required_status_checks[]?.context) ] | unique')"
 
-    BAD="$(jq -r --argjson apps "$APP_CONTEXTS" '.[] | select(. as $x | $apps | index($x))' <<<"$REQUIRED")"
+    # The same required contexts, one entry per source with the app it is
+    # pinned to. A context pinned to the GitHub Actions app (15368) is a
+    # workflow job that happens to carry one of the app names; it reports on
+    # merge_group like any other job, so only unpinned or other-app entries
+    # are refused. contexts[] carries no app and is read only when checks[]
+    # is empty.
+    ENTRIES="$(jq -n --argjson c "$CLASSIC" --argjson r "$RULES" --argjson apps "$APP_CONTEXTS" '
+        [ ( ($c.required_status_checks // {}) as $s
+            | if (($s.checks // []) | length) > 0
+              then $s.checks[] | {src: "classic", context, app: .app_id}
+              else ($s.contexts // [])[] | {src: "classic", context: ., app: null} end ),
+          ( $r[] | select(.type == "required_status_checks") | .ruleset_id as $id
+            | .parameters.required_status_checks[]? | {src: $id, context, app: .integration_id} ) ]
+        | map(.bad = ((.context as $x | $apps | index($x)) != null and .app != 15368))')"
+
+    BAD="$(jq -r '[.[] | select(.bad) | .context] | unique | .[]' <<<"$ENTRIES")"
     if [[ -n "$BAD" ]]; then
         err "required context(s) that never report on a merge_group ref:"
         while IFS= read -r n; do printf '  - %s\n' "$n" >&2; done <<<"$BAD"
         err "every queue entry would wait for them and time out. Drop them from the"
         err "required checks first; for a code-scanning tool, a ruleset code_scanning rule"
         err "gates the pull request instead (references/merge-strategy.md)."
-        if [[ "$(jq --argjson apps "$APP_CONTEXTS" '[(.required_status_checks.checks // [])[].context,
-                (.required_status_checks.contexts // [])[]] | any(. as $x | $apps | index($x))' \
-                <<<"$CLASSIC")" == "true" ]]; then
-            # checks[] is canonical; a protection that only has the deprecated
-            # contexts[] mirror is read from there instead.
-            KEEP="$(jq -c --argjson apps "$APP_CONTEXTS" '.required_status_checks
-                | (if ((.checks // []) | length) > 0 then .checks else [(.contexts // [])[] | {context: .}] end)
-                | {strict: false, checks: [.[] | select(.context as $x | $apps | index($x) | not)
-                    | {context} + (if .app_id then {app_id} else {} end)]}' <<<"$CLASSIC")"
+        if [[ "$(jq 'any(.[]; .src == "classic" and .bad)' <<<"$ENTRIES")" == "true" ]]; then
+            KEEP="$(jq -c '{strict: false, checks: [.[] | select(.src == "classic" and (.bad | not))
+                    | {context} + (if .app then {app_id: .app} else {} end)]}' <<<"$ENTRIES")"
             err "Classic protection — keep the other checks:"
             err "  gh api -X PATCH $PROTECTION_URL/required_status_checks --input - <<<'$KEEP'"
         fi
-        if [[ "$(jq --argjson apps "$APP_CONTEXTS" '[.[] | select(.type == "required_status_checks")
-                | .parameters.required_status_checks[]?.context] | any(. as $x | $apps | index($x))' \
-                <<<"$RULES")" == "true" ]]; then
-            err "Ruleset(s) $(jq -r --argjson apps "$APP_CONTEXTS" '[.[] | select(.type == "required_status_checks"
-                and any(.parameters.required_status_checks[]?; .context as $x | $apps | index($x)))
-                | .ruleset_id] | unique | join(", ")' <<<"$RULES"): remove them from the required_status_checks rule."
+        RS_BAD="$(jq -r '[.[] | select(.src != "classic" and .bad) | .src] | unique | map(tostring) | join(", ")' <<<"$ENTRIES")"
+        if [[ -n "$RS_BAD" ]]; then
+            err "Ruleset(s) $RS_BAD: remove them from the required_status_checks rule."
         fi
         err "No change made."
         exit 6

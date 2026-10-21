@@ -171,7 +171,7 @@ The bootstrap script sets it up. Run it as the third step, after the baseline an
 bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/REPO --merge-queue
 ```
 
-It reads first and refuses without writing when merge commits are disabled, when a required context is one that never reports on a `merge_group` ref (exit 6, see below), when a ruleset requires branches to be up to date, or when a queue already exists with other parameters (exit 1, per-field diff). Otherwise it creates a ruleset `merge-queue` that holds only the queue, reads it back, and sets the classic `strict` flag to `false`. A standard queue that is already in place is left alone. `--from-current-checks` keeps `strict` at `false` once a queue is in effect. By hand, the same ruleset is:
+It reads first and refuses without writing when merge commits are disabled, when a required context is one that never reports on a `merge_group` ref (exit 6, see below; a context of the same name pinned to the GitHub Actions app, `15368`, is a workflow job and passes), when a ruleset requires branches to be up to date, or when a queue already exists with other parameters (exit 1, per-field diff). Otherwise it creates a ruleset `merge-queue` that holds only the queue, reads it back, and sets the classic `strict` flag to `false`. A standard queue that is already in place is left alone. `--from-current-checks` keeps `strict` at `false` once a queue is in effect. By hand, the same ruleset is:
 
 ```bash
 gh api -X POST repos/OWNER/REPO/rulesets --input - <<'JSON'
