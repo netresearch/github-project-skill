@@ -86,6 +86,7 @@ gh pr view PR --repo OWNER/REPO --json reviewThreads --jq '.reviewThreads'
 ```bash
 scripts/init-branch-protection.sh OWNER/REPO              # baseline
 scripts/init-branch-protection.sh OWNER/REPO --from-current-checks   # after first CI
+scripts/init-branch-protection.sh OWNER/REPO --merge-queue    # then: org-standard queue
 scripts/verify-github-project.sh /path/to/repository      # local-checkout audit
 ```
 

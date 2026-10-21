@@ -32,6 +32,9 @@
 #       (incl. bypass_pull_request_allowances, dismissal_restrictions,
 #       restrictions) is carried over, required_status_checks is added,
 #       required_signatures is left out (separate endpoint, not a PUT field).
+#       strict ("require branches to be up to date") is sent as true, or as
+#       false when a merge_queue rule is in effect on the default branch:
+#       the queue replaces the author-side update strict would force.
 #
 #   bash init-branch-protection.sh <owner>/<repo> --solo
 #       Same as the first form, but with required_approving_review_count 0,
@@ -41,6 +44,31 @@
 #       need an admin bypass there. Conversation resolution, the force-push
 #       and deletion bans and the later required status checks still gate
 #       the merge. Drift is checked against the same 0.
+#
+#   bash init-branch-protection.sh <owner>/<repo> --merge-queue
+#       Adds the Netresearch merge queue to the default branch. Run it after
+#       the baseline and after --from-current-checks. Reads everything first:
+#       the repository, the rules in effect on the default branch
+#       (GET /rules/branches/{branch}, which includes org rulesets) and the
+#       classic protection. It refuses, without writing anything, when:
+#         - merge commits are disabled (the queue merges with MERGE),
+#         - a required context is one that apps post only against the pull
+#           request and never on a merge_group ref (CodeQL, Opengrep OSS,
+#           betterleaks, zizmor, SonarCloud Code Analysis): every queue
+#           entry would time out (exit 6),
+#         - a ruleset requires branches to be up to date
+#           (strict_required_status_checks_policy: true),
+#         - a merge_queue rule exists with other parameters (drift, exit 1).
+#       Otherwise it creates a dedicated repository ruleset "merge-queue"
+#       targeting ~DEFAULT_BRANCH with only the merge_queue rule (it never
+#       rewrites an existing ruleset), reads it back, and sets the classic
+#       strict flag ("require branches to be up to date") to false, because
+#       the queue replaces the author-side update it forces. A queue that
+#       already exists with the standard parameters is left alone.
+#       The merge_queue rule exists only in repository rulesets; an org
+#       ruleset rejects it and classic protection has no toggle for it.
+#       Every workflow that produces a required context needs `merge_group:`
+#       in `on:`, or that context never reports in the queue.
 #
 # Baseline applied (see assets/branch-protection.json.template):
 #   required_conversation_resolution: true   <- the load-bearing field
@@ -63,11 +91,12 @@
 # Exit codes:
 #   0  - applied successfully, or already compliant
 #   1  - drift detected on opinionated fields (per-field diff printed),
-#        or a PUT/PATCH failed
+#        a --merge-queue precondition refused, or a write failed
 #   2  - invalid arguments / template missing
-#   3  - repo not found or no access
+#   3  - repo not found or no access, or protection/rules unreadable
 #   4  - default branch ref does not yet exist (empty repo — push first)
 #   5  - --from-current-checks: no completed CI run on default branch
+#   6  - --merge-queue: a required context never reports on merge_group
 #
 # SPDX-License-Identifier: MIT
 # Copyright (c) Netresearch DTT GmbH
@@ -92,6 +121,7 @@ Usage:
   init-branch-protection.sh <owner>/<repo>
   init-branch-protection.sh <owner>/<repo> --from-current-checks
   init-branch-protection.sh <owner>/<repo> --solo
+  init-branch-protection.sh <owner>/<repo> --merge-queue
 
 See script header comment for full documentation.
 EOF
@@ -105,7 +135,7 @@ EOF
 SLUG="$1"
 MODE="${2:-apply}"
 
-if [[ "$MODE" != "apply" && "$MODE" != "--from-current-checks" && "$MODE" != "--solo" ]]; then
+if [[ "$MODE" != "apply" && "$MODE" != "--from-current-checks" && "$MODE" != "--solo" && "$MODE" != "--merge-queue" ]]; then
     err "unknown second argument: $MODE"
     usage
 fi
@@ -158,6 +188,169 @@ fi
 
 PROTECTION_URL="repos/$OWNER/$REPO/branches/$DEFAULT_BRANCH/protection"
 
+# ---------- --merge-queue mode ----------
+if [[ "$MODE" == "--merge-queue" ]]; then
+    # Org standard (netresearch/t3x-nr-vault, ruleset t3x-baseline). MERGE:
+    # the org lands with merge commits, which GitHub signs. 180 minutes: 60
+    # was measured to eject green entries under the org's own job backlog
+    # (references/merge-strategy.md, "A bulk operation of your own can eject
+    # queue entries").
+    MQ_PARAMS='{
+        "merge_method": "MERGE",
+        "grouping_strategy": "ALLGREEN",
+        "check_response_timeout_minutes": 180,
+        "max_entries_to_build": 10,
+        "max_entries_to_merge": 10,
+        "min_entries_to_merge": 1,
+        "min_entries_to_merge_wait_minutes": 5
+    }'
+    # Posted by apps against the pull request only; never on a merge_group ref.
+    APP_CONTEXTS='["CodeQL","Opengrep OSS","betterleaks","zizmor","SonarCloud Code Analysis"]'
+
+    # ---- reads ----
+    if [[ "$(jq -r '.allow_merge_commit' <<<"$REPO_JSON")" != "true" ]]; then
+        err "merge commits are disabled on $SLUG (allow_merge_commit is not true)"
+        err "the queue merges with MERGE; enable merge commits first:"
+        err "  gh api -X PATCH repos/$OWNER/$REPO -F allow_merge_commit=true"
+        exit 1
+    fi
+
+    if ! RULES="$(gh api "repos/$OWNER/$REPO/rules/branches/$DEFAULT_BRANCH" 2>/dev/null)" \
+        || ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"$RULES"; then
+        err "cannot read the rules in effect on $DEFAULT_BRANCH — not writing over an unknown state"
+        exit 3
+    fi
+
+    PROTECTION_ERR="$(mktemp)"
+    trap 'rm -f "$PROTECTION_ERR"' EXIT
+    if CLASSIC="$(gh api "$PROTECTION_URL" 2>"$PROTECTION_ERR")"; then
+        if [[ -z "$(jq -r '.url // empty' <<<"$CLASSIC" 2>/dev/null)" ]]; then
+            err "unexpected branch protection response on $DEFAULT_BRANCH — not writing over an unknown state:"
+            printf '%s\n' "$CLASSIC" >&2
+            exit 3
+        fi
+    elif grep -q 'Branch not protected' "$PROTECTION_ERR" - <<<"$CLASSIC"; then
+        CLASSIC='{}'
+    else
+        err "cannot read branch protection on $DEFAULT_BRANCH — not writing over an unknown state:"
+        cat "$PROTECTION_ERR" >&2
+        exit 3
+    fi
+
+    # ---- decide ----
+    # Every required context, from classic protection (checks[] is canonical,
+    # contexts its deprecated mirror) and from every ruleset in effect.
+    REQUIRED="$(jq -n --argjson c "$CLASSIC" --argjson r "$RULES" '
+        [ ($c.required_status_checks.contexts // [])[],
+          ($c.required_status_checks.checks // [])[].context,
+          ($r[] | select(.type == "required_status_checks")
+                | .parameters.required_status_checks[]?.context) ] | unique')"
+
+    BAD="$(jq -r --argjson apps "$APP_CONTEXTS" '.[] | select(. as $x | $apps | index($x))' <<<"$REQUIRED")"
+    if [[ -n "$BAD" ]]; then
+        err "required context(s) that never report on a merge_group ref:"
+        while IFS= read -r n; do printf '  - %s\n' "$n" >&2; done <<<"$BAD"
+        err "every queue entry would wait for them and time out. Drop them from the"
+        err "required checks first; for a code-scanning tool, a ruleset code_scanning rule"
+        err "gates the pull request instead. Classic protection: PATCH"
+        err "  $PROTECTION_URL/required_status_checks"
+        err "with the remaining checks. Ruleset: edit the required_status_checks rule."
+        err "No change made."
+        exit 6
+    fi
+
+    STRICT_RS="$(jq -r '.[] | select(.type == "required_status_checks"
+        and .parameters.strict_required_status_checks_policy == true) | .ruleset_id' <<<"$RULES")"
+    if [[ -n "$STRICT_RS" ]]; then
+        err "ruleset(s) $(tr '\n' ' ' <<<"$STRICT_RS")require branches to be up to date"
+        err "(strict_required_status_checks_policy: true). Under a merge queue it must be"
+        err "false; this script does not rewrite an existing ruleset. Set it to false in"
+        err "the ruleset, then re-run. No change made."
+        exit 1
+    fi
+
+    EXISTING_MQ="$(jq -c '[.[] | select(.type == "merge_queue")]' <<<"$RULES")"
+    NEED_RULESET=true
+    if [[ "$(jq 'length' <<<"$EXISTING_MQ")" -gt 0 ]]; then
+        DRIFT="$(jq -r --argjson want "$MQ_PARAMS" '.[] | .ruleset_id as $id | .parameters as $p
+            | $want | to_entries[] | select($p[.key] != .value)
+            | "  ruleset \($id) \(.key): expected=\(.value) actual=\($p[.key])"' <<<"$EXISTING_MQ")"
+        if [[ -n "$DRIFT" ]]; then
+            warn "a merge queue exists on $DEFAULT_BRANCH with other parameters:"
+            printf '%s\n' "$DRIFT" >&2
+            warn "not auto-correcting — edit the merge_queue rule in that ruleset by hand."
+            exit 1
+        fi
+        NEED_RULESET=false
+        ok "merge queue already in effect on $DEFAULT_BRANCH with the standard parameters"
+    fi
+
+    CLASSIC_STRICT="$(jq -r '.required_status_checks.strict // false' <<<"$CLASSIC")"
+
+    if [[ "$(jq 'length' <<<"$REQUIRED")" -eq 0 ]]; then
+        warn "no required status checks on $DEFAULT_BRANCH — the queue will gate nothing"
+        warn "until some are required (run --from-current-checks after a green CI run)."
+    fi
+
+    if [[ "$NEED_RULESET" == "false" && "$CLASSIC_STRICT" != "true" ]]; then
+        ok "$SLUG already has the merge queue and strict=false — nothing to do"
+        exit 0
+    fi
+
+    # ---- writes ----
+    if [[ "$NEED_RULESET" == "true" ]]; then
+        RULESET_BODY="$(jq -n --argjson p "$MQ_PARAMS" '{
+            name: "merge-queue",
+            target: "branch",
+            enforcement: "active",
+            bypass_actors: [],
+            conditions: {ref_name: {include: ["~DEFAULT_BRANCH"], exclude: []}},
+            rules: [{type: "merge_queue", parameters: $p}]
+        }')"
+        info "POST repos/$OWNER/$REPO/rulesets"
+        if ! RESP="$(gh api -X POST "repos/$OWNER/$REPO/rulesets" --input - <<<"$RULESET_BODY" 2>&1)"; then
+            err "creating the merge-queue ruleset failed:"
+            printf '%s\n' "$RESP" >&2
+            exit 1
+        fi
+        RULESET_ID="$(jq -r '.id // empty' <<<"$RESP" 2>/dev/null || true)"
+        if [[ -z "$RULESET_ID" ]]; then
+            err "ruleset POST answered without an id — check the repository's rulesets:"
+            printf '%s\n' "$RESP" >&2
+            exit 1
+        fi
+        # Read back: the answer to the POST is not proof the rule landed.
+        BACK="$(gh api "repos/$OWNER/$REPO/rulesets/$RULESET_ID" 2>/dev/null || true)"
+        if [[ "$(jq -r --argjson want "$MQ_PARAMS" '
+                .enforcement == "active"
+                and any(.rules[]?; .type == "merge_queue"
+                    and (.parameters as $p | $want | to_entries | all(.value == $p[.key])))' \
+                <<<"${BACK:-null}" 2>/dev/null)" != "true" ]]; then
+            err "ruleset $RULESET_ID read back without an active merge_queue rule with the standard parameters:"
+            printf '%s\n' "$BACK" >&2
+            exit 1
+        fi
+        ok "ruleset $RULESET_ID \"merge-queue\" created; merge queue active on $DEFAULT_BRANCH"
+    fi
+
+    if [[ "$CLASSIC_STRICT" == "true" ]]; then
+        SUBRES="$PROTECTION_URL/required_status_checks"
+        info "PATCH $SUBRES (strict=false)"
+        if ! RESP="$(gh api -X PATCH "$SUBRES" --input - <<<'{"strict": false}' 2>&1)"; then
+            err "PATCH failed (the queue exists; strict is still true):"
+            printf '%s\n' "$RESP" >&2
+            exit 1
+        fi
+        if [[ "$(gh api "$SUBRES" --jq '.strict' 2>/dev/null || true)" != "false" ]]; then
+            err "classic strict read back as not false after the PATCH"
+            exit 1
+        fi
+        ok "classic \"require branches to be up to date\" (strict) set to false"
+    fi
+    info "every workflow producing a required context needs 'merge_group:' in 'on:'"
+    exit 0
+fi
+
 # ---------- --from-current-checks mode ----------
 if [[ "$MODE" == "--from-current-checks" ]]; then
     # Baseline protection MUST already exist — this mode only adds required
@@ -166,6 +359,20 @@ if [[ "$MODE" == "--from-current-checks" ]]; then
         err "no existing branch protection on $SLUG"
         err "run without --from-current-checks first to apply the baseline."
         exit 1
+    fi
+
+    # Under a merge queue strict must stay false (see --merge-queue). An
+    # unreadable rule set is not read as "no queue": strict=true would then
+    # undo the queue's setting.
+    if ! RULES="$(gh api "repos/$OWNER/$REPO/rules/branches/$DEFAULT_BRANCH" 2>/dev/null)" \
+        || ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"$RULES"; then
+        err "cannot read the rules in effect on $DEFAULT_BRANCH — not writing over an unknown state"
+        exit 3
+    fi
+    STRICT=true
+    if [[ "$(jq -r 'any(.[]; .type == "merge_queue")' <<<"$RULES")" == "true" ]]; then
+        STRICT=false
+        info "a merge queue is in effect on $DEFAULT_BRANCH — strict stays false"
     fi
 
     info "discovering required status checks from latest commit on $DEFAULT_BRANCH ..."
@@ -220,12 +427,12 @@ if [[ "$MODE" == "--from-current-checks" ]]; then
     # branch-protection fields untouched.
     if [[ "$(jq -r '.required_status_checks != null' <<<"$CURRENT")" == "true" ]]; then
         SUBRES="$PROTECTION_URL/required_status_checks"
-        PATCH_BODY="$(jq -n --argjson checks "$CHECKS_JSON" \
-            '{strict: true, contexts: $checks}')"
+        PATCH_BODY="$(jq -n --argjson checks "$CHECKS_JSON" --argjson strict "$STRICT" \
+            '{strict: $strict, contexts: $checks}')"
 
         info "PATCH $SUBRES"
         if RESP="$(gh api -X PATCH "$SUBRES" --input - <<<"$PATCH_BODY" 2>&1)"; then
-            ok "required status checks applied (${#CHECK_NAMES[@]} contexts, strict=true)"
+            ok "required status checks applied (${#CHECK_NAMES[@]} contexts, strict=$STRICT)"
             exit 0
         else
             err "PATCH failed:"
@@ -242,7 +449,7 @@ if [[ "$MODE" == "--from-current-checks" ]]; then
     # carried over. required_signatures is deliberately absent: it is a
     # separate endpoint and not a PUT field (see header).
     info "required status checks not enabled yet — re-applying protection with them added"
-    PUT_BODY="$(jq --argjson checks "$CHECKS_JSON" '
+    PUT_BODY="$(jq --argjson checks "$CHECKS_JSON" --argjson strict "$STRICT" '
         def enabled($f): (.[$f].enabled // false);
         def actors: {
             users: [(.users // [])[].login],
@@ -250,7 +457,7 @@ if [[ "$MODE" == "--from-current-checks" ]]; then
             apps:  [(.apps  // [])[].slug]
         };
         {
-            required_status_checks: {strict: true, contexts: $checks},
+            required_status_checks: {strict: $strict, contexts: $checks},
             enforce_admins: enabled("enforce_admins"),
             required_pull_request_reviews: (
                 .required_pull_request_reviews
@@ -279,7 +486,7 @@ if [[ "$MODE" == "--from-current-checks" ]]; then
 
     info "PUT $PROTECTION_URL"
     if RESP="$(gh api -X PUT "$PROTECTION_URL" --input - <<<"$PUT_BODY" 2>&1)"; then
-        ok "required status checks applied (${#CHECK_NAMES[@]} contexts, strict=true)"
+        ok "required status checks applied (${#CHECK_NAMES[@]} contexts, strict=$STRICT)"
         ok "all other protection settings carried over from the current state"
         exit 0
     else
