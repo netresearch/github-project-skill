@@ -57,6 +57,13 @@
 #           betterleaks, zizmor, SonarCloud Code Analysis): every queue
 #           entry would time out (exit 6); a context of that name pinned to
 #           the GitHub Actions app (15368) is a workflow job and passes,
+#         - CodeQL default setup is configured
+#           (GET /code-scanning/default-setup: state "configured") and an
+#           "Analyze (<language>)" context is required: default setup posts
+#           it under the Actions app but never runs on a merge_group ref
+#           (exit 6; the remedy is a ruleset code_scanning rule for CodeQL).
+#           A workflow-prefixed "codeql / Analyze (...)" is not refused; an
+#           unreadable default-setup state exits 3,
 #         - a ruleset requires branches to be up to date
 #           (strict_required_status_checks_policy: true),
 #         - a merge_queue rule exists with other parameters (drift, exit 1).
@@ -254,14 +261,33 @@ if [[ "$MODE" == "--merge-queue" ]]; then
     # merge_group like any other job, so only unpinned or other-app entries
     # are refused. contexts[] carries no app and is read only when checks[]
     # is empty.
-    ENTRIES="$(jq -n --argjson c "$CLASSIC" --argjson r "$RULES" --argjson apps "$APP_CONTEXTS" '
+    # CodeQL default setup posts "Analyze (<language>)" under the GitHub
+    # Actions app, but never runs on a merge_group ref, so the 15368 pin does
+    # not help here. Only the bare name is default setup's: a repository's own
+    # codeql.yml called as a reusable reports "codeql / Analyze (...)" and has
+    # merge_group like any other workflow. Default setup is read only when such
+    # a context is required.
+    DEFAULT_SETUP=false
+    if jq -e 'any(.[]; test("^Analyze \\(.+\\)$"))' >/dev/null <<<"$REQUIRED"; then
+        if ! DS_STATE="$(gh api "repos/$OWNER/$REPO/code-scanning/default-setup" --jq '.state' 2>/dev/null)" \
+            || [[ -z "$DS_STATE" || "$DS_STATE" == "null" ]]; then
+            err "an Analyze (...) context is required, but the CodeQL default setup state is unreadable"
+            err "(GET repos/$OWNER/$REPO/code-scanning/default-setup) — not writing over an unknown state"
+            exit 3
+        fi
+        [[ "$DS_STATE" == "configured" ]] && DEFAULT_SETUP=true
+    fi
+
+    ENTRIES="$(jq -n --argjson c "$CLASSIC" --argjson r "$RULES" --argjson apps "$APP_CONTEXTS" \
+            --argjson ds "$DEFAULT_SETUP" '
         [ ( ($c.required_status_checks // {}) as $s
             | if (($s.checks // []) | length) > 0
               then $s.checks[] | {src: "classic", context, app: .app_id}
               else ($s.contexts // [])[] | {src: "classic", context: ., app: null} end ),
           ( $r[] | select(.type == "required_status_checks") | .ruleset_id as $id
             | .parameters.required_status_checks[]? | {src: $id, context, app: .integration_id} ) ]
-        | map(.bad = ((.context as $x | $apps | index($x)) != null and .app != 15368))')"
+        | map(.bad = (((.context as $x | $apps | index($x)) != null and .app != 15368)
+                      or ($ds and (.context | test("^Analyze \\(.+\\)$")))))')"
 
     BAD="$(jq -r '[.[] | select(.bad) | .context] | unique | .[]' <<<"$ENTRIES")"
     if [[ -n "$BAD" ]]; then
@@ -270,9 +296,16 @@ if [[ "$MODE" == "--merge-queue" ]]; then
         err "every queue entry would wait for them and time out. Drop them from the"
         err "required checks first; for a code-scanning tool, a ruleset code_scanning rule"
         err "gates the pull request instead (references/merge-strategy.md)."
+        if [[ "$DEFAULT_SETUP" == "true" ]]; then
+            err "CodeQL default setup is configured: its Analyze (...) checks never run in the"
+            err "queue. Drop them and add this rule to a repository ruleset on $DEFAULT_BRANCH:"
+            err '  {"type":"code_scanning","parameters":{"code_scanning_tools":[{"tool":"CodeQL","alerts_threshold":"errors","security_alerts_threshold":"high_or_higher"}]}}'
+        fi
         if [[ "$(jq 'any(.[]; .src == "classic" and .bad)' <<<"$ENTRIES")" == "true" ]]; then
+            # app_id -1 keeps "any app"; an omitted app_id would pin the
+            # check to whichever app posted it recently (GitHub REST docs).
             KEEP="$(jq -c '{strict: false, checks: [.[] | select(.src == "classic" and (.bad | not))
-                    | {context} + (if .app then {app_id: .app} else {} end)]}' <<<"$ENTRIES")"
+                    | {context, app_id: (.app // -1)}]}' <<<"$ENTRIES")"
             err "Classic protection — keep the other checks:"
             err "  gh api -X PATCH $PROTECTION_URL/required_status_checks --input - <<<'$KEEP'"
         fi
