@@ -14,7 +14,7 @@ GitHub platform configuration and repository management patterns. This skill foc
 > Applies `required_conversation_resolution: true` + 1-approver baseline so the
 > "abort merge if unresolved threads" rule is structurally enforced, not just
 > documented. See `skills/github-project/SKILL.md` → *Required First Step
-> After `gh repo create`* for the two-step flow.
+> After `gh repo create`* for the full flow (baseline, required checks, merge queue).
 
 ## 🔌 Compatibility
 
@@ -329,26 +329,18 @@ gh api repos/{owner}/{repo}/rulesets/{ruleset_id} --jq '.rules[] | select(.type 
 
 **Fix: Update ruleset to match repository settings**
 
+A PUT replaces every field it sends as a whole: a `rules` array holding only the two changed rules deletes all other rules of the ruleset, and GitHub rejects a `pull_request` or `merge_queue` rule that does not carry all of its required parameters. Read the ruleset, change the two fields, and send the full `rules` array back. The REST reference marks no top-level field of the PUT as required; that a field left out (`bypass_actors`, `conditions`) is kept is not tested here, so read the ruleset back.
+
 For merge commits only:
 ```bash
-gh api repos/{owner}/{repo}/rulesets/{ruleset_id} -X PUT --input - << 'EOF'
-{
-  "rules": [
-    {
-      "type": "pull_request",
-      "parameters": {
-        "allowed_merge_methods": ["merge"]
-      }
-    },
-    {
-      "type": "merge_queue",
-      "parameters": {
-        "merge_method": "MERGE"
-      }
-    }
-  ]
-}
-EOF
+gh api repos/{owner}/{repo}/rulesets/{ruleset_id} --jq '{rules: [.rules[]
+    | if .type == "pull_request" then .parameters.allowed_merge_methods = ["merge"]
+      elif .type == "merge_queue" then .parameters.merge_method = "MERGE"
+      else . end
+    | if .parameters == null then del(.parameters) else . end]}' \
+  | gh api repos/{owner}/{repo}/rulesets/{ruleset_id} -X PUT --input -
+# Read it back: the same rules and bypass actors as before, with the two fields changed
+gh api repos/{owner}/{repo}/rulesets/{ruleset_id} --jq '{bypass_actors, conditions, rules}'
 ```
 
 **Ruleset merge method alignment:**
@@ -775,7 +767,7 @@ bash tests/checkpoint-gh-37.sh         # checkpoint GH-37 in skills/github-proje
 ```
 
 - `tests/verify-github-project.sh` runs the verifier against fixture directories; only the dotted-name fixture has a github.com `origin`, and the three remote fixtures run with a stub `gh` on `PATH`, so no fixture reaches the network. The stub checks that a non-GitHub remote and a host that merely contains `github.com` trigger no call and that a github.com remote whose name contains a dot is queried with its slug. It checks the exit codes, that all 12 sections run, and individual pass and failure lines, including the default-branch check in a git repository.
-- `tests/init-branch-protection.sh` puts a stub `gh` first on `PATH` that answers from prepared responses and records every request and request body. It checks each exit code documented in the script header, the body sent with `PUT` (with and without `--solo`), that nothing is written over protection the script could not read, that drift is reported and not corrected, and both `--from-current-checks` paths.
+- `tests/init-branch-protection.sh` puts a stub `gh` first on `PATH` that answers from prepared responses and records every request and request body. It checks each exit code documented in the script header, the body sent with `PUT` (with and without `--solo`), that nothing is written over protection the script could not read, that drift is reported and not corrected, both `--from-current-checks` paths (with `strict` false under a merge queue), and `--merge-queue`: the ruleset body and its read-back, the strict PATCH, the no-op on an existing standard queue, and each refusal.
 - `tests/check-plugin-version.sh` builds throwaway git repositories and checks that a semver tag at `HEAD` must match the version in `.claude-plugin/plugin.json`, and that the pre-push hook passes the result on.
 - `tests/checkpoint-gh-37.sh` reads GH-37's script out of `checkpoints.yaml` and runs it in fixture directories: the org preset as `github>` or `local>` (with `:preset` or `#ref`, in JSON, JSONC or JSON5) and a repository without a Renovate config pass; `config:recommended` alone, the preset only in a comment, a `description` or `ignorePresets`, a look-alike repository name, a missing `extends`, and a preset in a later config file than the one Renovate reads fail.
 

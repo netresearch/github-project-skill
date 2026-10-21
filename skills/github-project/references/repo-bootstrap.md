@@ -18,7 +18,7 @@ git -C <worktree> config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/
 git -C <worktree> push -u origin main
 ```
 
-## Two-step flow
+## Bootstrap flow
 
 ```bash
 # 1. Immediately after `gh repo create` and the first push:
@@ -42,10 +42,22 @@ bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/
 # 2. After the first CI run completes on the default branch:
 bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/REPO --from-current-checks
 #    Discovers successful check-run names from /commits/{default}/check-runs
-#    and sets them as required contexts with strict=true: PATCHes the
+#    and sets them as required contexts with strict=true (false once a merge
+#    queue is in effect): PATCHes the
 #    existing status-check block, or — when step 1 left none — re-PUTs the
 #    protection with every current setting carried over (the PATCH
 #    subresource answers 404 "Required status checks not enabled").
+
+# 3. Then add the org-standard merge queue:
+bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/REPO --merge-queue
+#    Creates a repository ruleset "merge-queue" on ~DEFAULT_BRANCH and sets
+#    classic strict to false. Refuses (exit 6) while a required context is one
+#    that never reports on merge_group (CodeQL, Opengrep OSS, betterleaks,
+#    zizmor, SonarCloud Code Analysis) — see merge-strategy.md, "Enabling a
+#    merge queue".
+#    Prerequisite the script cannot check: every workflow that produces a
+#    required context has `merge_group:` in `on:`. Without it that context
+#    never reports in the queue and every entry times out.
 ```
 
 The script is idempotent: re-running on an already-compliant repo reports `already compliant` and exits 0. Drift on opinionated fields exits 1 with a per-field diff (no silent clobber of admin choices).

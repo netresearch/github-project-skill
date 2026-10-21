@@ -163,38 +163,35 @@ Neither catches a semantic conflict no test covers. Post-merge push CI on the de
 
 ## Enabling a merge queue
 
-The classic branch-protection REST API does **not** expose a merge-queue toggle, so a repository **ruleset** is the only scriptable path. The `merge_queue` rule is **repository-level only** — an org-level ruleset rejects it, so a queue is always a per-repo decision.
+A merge queue on the default branch is the Netresearch standard. The classic branch-protection REST API does **not** expose a merge-queue toggle, so a repository **ruleset** is the only scriptable path. The `merge_queue` rule is **repository-level only** — an org-level ruleset rejects it, so every repository gets its own.
+
+The bootstrap script sets it up. Run it as the third step, after the baseline and after `--from-current-checks`, so the required checks exist when the queue starts gating:
+
+```bash
+bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/REPO --merge-queue
+```
+
+It reads first and refuses without writing when merge commits are disabled, when a required context is one that never reports on a `merge_group` ref (exit 6, see below; a context of the same name pinned to the GitHub Actions app, `15368`, is a workflow job and passes), when a ruleset requires branches to be up to date, or when a queue already exists with other parameters (exit 1, per-field diff). Otherwise it creates a ruleset `merge-queue` that holds only the queue, reads it back, and sets the classic `strict` flag to `false`. A standard queue that is already in place is left alone. `--from-current-checks` keeps `strict` at `false` once a queue is in effect. By hand, the same ruleset is:
 
 ```bash
 gh api -X POST repos/OWNER/REPO/rulesets --input - <<'JSON'
 {
-  "name": "merge-queue-main",
+  "name": "merge-queue",
   "target": "branch",
   "enforcement": "active",
-  "bypass_actors": [
-    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }
-  ],
-  "conditions": { "ref_name": { "include": ["refs/heads/main"], "exclude": [] } },
+  "bypass_actors": [],
+  "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
   "rules": [
     {
       "type": "merge_queue",
       "parameters": {
-        "merge_method": "SQUASH",
+        "merge_method": "MERGE",
         "grouping_strategy": "ALLGREEN",
-        "check_response_timeout_minutes": 30,
-        "max_entries_to_build": 5,
-        "max_entries_to_merge": 5,
+        "check_response_timeout_minutes": 180,
+        "max_entries_to_build": 10,
+        "max_entries_to_merge": 10,
         "min_entries_to_merge": 1,
         "min_entries_to_merge_wait_minutes": 5
-      }
-    },
-    {
-      "type": "required_status_checks",
-      "parameters": {
-        "strict_required_status_checks_policy": false,
-        "required_status_checks": [
-          { "context": "Tests (8.2)", "integration_id": 15368 }
-        ]
       }
     }
   ]
@@ -202,14 +199,15 @@ gh api -X POST repos/OWNER/REPO/rulesets --input - <<'JSON'
 JSON
 ```
 
-Parameters and gotchas:
+These are the org parameters (ruleset `t3x-baseline` in netresearch/t3x-nr-vault). Parameters and gotchas:
 
-- `merge_method`: `SQUASH` | `MERGE` | `REBASE`. The queue owns the merge method for every entry, so per-PR choice disappears. `SQUASH`/`MERGE` stay GitHub-signed; `REBASE` re-creates commits **unsigned** — on a signed-commits branch, prefer `SQUASH`/`MERGE`.
+- `merge_method`: `SQUASH` | `MERGE` | `REBASE`. The queue owns the merge method for every entry, so per-PR choice disappears. The org uses `MERGE`: it lands with merge commits, which GitHub signs. `REBASE` re-creates commits **unsigned** and fails on a signed-commits branch.
 - `grouping_strategy`: `ALLGREEN` (every queued entry must pass) or `HEADGREEN` (only the group's head commit — all changes combined — must pass). `ALLGREEN` is the safe default; `HEADGREEN` only saves CI under contention.
-- `check_response_timeout_minutes`: a required check that has not reported by then is treated as **failed** and the entry is ejected. Size it above one CI cycle — and see *A bulk operation of your own can eject queue entries* below, because "one CI cycle" is an assumption about normal load that your own fan-out can break.
+- `check_response_timeout_minutes`: a required check that has not reported by then is treated as **failed** and the entry is ejected. The org uses 180 because 60 was measured to eject green entries under the org's own job backlog — see *A bulk operation of your own can eject queue entries* below.
 - `min_entries_to_merge` + `min_entries_to_merge_wait_minutes`: the wait only holds a smaller-than-minimum group. With `min_entries_to_merge: 1` **the wait value is inert** — a single entry already meets the minimum, so it never batches. Only raise the minimum (and the wait) if you actually want to batch, e.g. a Dependabot burst.
-- `required_status_checks[].integration_id: 15368` pins each required context to the **GitHub Actions app**, so another app cannot satisfy (spoof) the context. Every required-check workflow must also carry an `on: merge_group:` trigger, or its checks never report on the queue and every group times out.
-- Enable the queue in **one surface only**. If a classic branch-protection rule already gates the branch, leave reviews/conversation-resolution there and put the queue + required checks in the ruleset — then set the classic `strict` ("require branches up to date") flag to **false**: the queue makes it redundant and it otherwise forces author-side update-branch churn.
+- **Every required context must report on `merge_group`.** A workflow-produced context does so only if its workflow has `merge_group:` in `on:`. The app contexts `CodeQL`, `Opengrep OSS`, `betterleaks`, `zizmor` and `SonarCloud Code Analysis` are posted against the pull request only and never on a `merge_group` ref; as required contexts they make every queue entry time out. Drop them from the required checks; for the code-scanning tools a ruleset `code_scanning` rule gates the pull request instead, one entry per tool: `{"type":"code_scanning","parameters":{"code_scanning_tools":[{"tool":"CodeQL","alerts_threshold":"errors","security_alerts_threshold":"high_or_higher"}]}}` (the shape netresearch/t3x-rte_ckeditor_image uses). `DCO` (app) and `dco / DCO` (workflow) do report on `merge_group`.
+- **"Require branches to be up to date" must be off** under a queue — classic `strict`, ruleset `strict_required_status_checks_policy`. It forces the author-side rebase the queue replaces. Required checks may stay in classic protection (where `--from-current-checks` writes them) or in a ruleset; the queue gates whichever applies.
+- In a ruleset `required_status_checks` rule, `integration_id: 15368` pins a context to the **GitHub Actions app**, so another app cannot satisfy (spoof) it.
 - `enforcement: "evaluate"` dry-runs the ruleset (logs what it *would* block) without enforcing — a soft launch before `active`. Rollback is one call: delete the ruleset (or set `enforcement: "disabled"`) and restore the classic `strict` flag.
 
 ## Troubleshooting
@@ -504,7 +502,13 @@ gh api graphql -f query='query($owner:String!,$repo:String!,$branch:String!){
 gh run list --repo OWNER/REPO --event merge_group -L 5   # any build for this PR?
 ```
 
-If there is no entry and no `merge_group` run after the required checks have passed, admin-merge with the queue's configured method (preserves signatures with `--merge`):
+If there is no entry and no `merge_group` run after the required checks have passed, an admin merge with the queue's configured method (preserves signatures with `--merge`) is possible **only when the ruleset that holds the `merge_queue` rule lists you as a bypass actor**. A ruleset is bypassed only by the actors on its bypass list; being a repository admin is not enough. Read it first:
+
+```bash
+gh api "repos/OWNER/REPO/rulesets/<id>" --jq '{name, bypass_actors, current_user_can_bypass}'
+```
+
+The org-standard queue has `bypass_actors: []` (ruleset `t3x-baseline` in netresearch/t3x-nr-vault, and the ruleset `init-branch-protection.sh --merge-queue` creates). There `current_user_can_bypass` reads `never` even for an org admin, so `--admin` does not get past the queue. What is left is to arm auto-merge again (`gh pr merge <PR> --disable-auto`, then `gh pr merge <PR> --auto`); whether that clears this failure mode has not been measured. Where the answer is `always` or `pull_requests_only`:
 
 ```bash
 gh pr merge <PR> --repo OWNER/REPO --merge --admin
@@ -554,7 +558,8 @@ gh pr merge <PR> --repo OWNER/REPO --auto     # enqueues when the gate passes
 ```
 
 (The explicit-strategy form is still correct for `--admin` bypass merges, which
-run outside the queue — as in the enqueue-failure fallback above.)
+run outside the queue — as in the enqueue-failure fallback above, and only for
+a bypass actor of the queue's ruleset.)
 
 ### Batch review-fix commits before pushing — each push re-runs the full PR CI
 

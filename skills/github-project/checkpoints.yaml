@@ -521,8 +521,12 @@ llm_reviews:
     domain: security
     prompt: |
       Check repository ruleset for merge queue + branch protection compatibility:
-      1. If merge_queue is enabled, require_last_push_approval MUST be false
-         (merge queue commits dismiss approvals, causing permanent blocks)
+      1. If merge_queue is enabled and require_last_push_approval is true,
+         flag the combination as untested, not as a confirmed block: the
+         queue builds on its own gh-readonly-queue/* branches and does not
+         push to the pull request branch, GitHub's merge queue documentation
+         does not describe the interaction, and none of the 37 Netresearch
+         repositories with a queue (checked 2026-10-21) combines the two
       2. If require_code_owner_review is true, verify CODEOWNERS file exists
          on the default branch (enabling without the file blocks all PRs)
       3. For solo-maintainer repos: either required_approving_review_count 1
@@ -532,7 +536,8 @@ llm_reviews:
          without an admin bypass.
 
       Check via both sources, because init-branch-protection.sh writes classic
-      branch protection, which the rulesets endpoint does not return:
+      branch protection, which the rulesets endpoint does not return (its
+      --merge-queue mode writes the queue as a repository ruleset):
         gh api --paginate repos/OWNER/REPO/rules/branches/BRANCH --jq '.[]'
         gh api repos/OWNER/REPO/branches/BRANCH/protection \
           --jq '{approvals: .required_pull_request_reviews.required_approving_review_count, conversation_resolution: .required_conversation_resolution.enabled}'
