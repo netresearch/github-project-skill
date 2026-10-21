@@ -502,7 +502,13 @@ gh api graphql -f query='query($owner:String!,$repo:String!,$branch:String!){
 gh run list --repo OWNER/REPO --event merge_group -L 5   # any build for this PR?
 ```
 
-If there is no entry and no `merge_group` run after the required checks have passed, admin-merge with the queue's configured method (preserves signatures with `--merge`):
+If there is no entry and no `merge_group` run after the required checks have passed, an admin merge with the queue's configured method (preserves signatures with `--merge`) is possible **only when the ruleset that holds the `merge_queue` rule lists you as a bypass actor**. A ruleset is bypassed only by the actors on its bypass list; being a repository admin is not enough. Read it first:
+
+```bash
+gh api "repos/OWNER/REPO/rulesets/<id>" --jq '{name, bypass_actors, current_user_can_bypass}'
+```
+
+The org-standard queue has `bypass_actors: []` (ruleset `t3x-baseline` in netresearch/t3x-nr-vault, and the ruleset `init-branch-protection.sh --merge-queue` creates). There `current_user_can_bypass` reads `never` even for an org admin, so `--admin` does not get past the queue. What is left is to arm auto-merge again (`gh pr merge <PR> --disable-auto`, then `gh pr merge <PR> --auto`); whether that clears this failure mode has not been measured. Where the answer is `always` or `pull_requests_only`:
 
 ```bash
 gh pr merge <PR> --repo OWNER/REPO --merge --admin
@@ -552,7 +558,8 @@ gh pr merge <PR> --repo OWNER/REPO --auto     # enqueues when the gate passes
 ```
 
 (The explicit-strategy form is still correct for `--admin` bypass merges, which
-run outside the queue — as in the enqueue-failure fallback above.)
+run outside the queue — as in the enqueue-failure fallback above, and only for
+a bypass actor of the queue's ruleset.)
 
 ### Batch review-fix commits before pushing — each push re-runs the full PR CI
 

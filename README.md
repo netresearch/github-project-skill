@@ -329,26 +329,18 @@ gh api repos/{owner}/{repo}/rulesets/{ruleset_id} --jq '.rules[] | select(.type 
 
 **Fix: Update ruleset to match repository settings**
 
+A PUT replaces every field it sends as a whole: a `rules` array holding only the two changed rules deletes all other rules of the ruleset, and GitHub rejects a `pull_request` or `merge_queue` rule that does not carry all of its required parameters. Read the ruleset, change the two fields, and send the full `rules` array back. The REST reference marks no top-level field of the PUT as required; that a field left out (`bypass_actors`, `conditions`) is kept is not tested here, so read the ruleset back.
+
 For merge commits only:
 ```bash
-gh api repos/{owner}/{repo}/rulesets/{ruleset_id} -X PUT --input - << 'EOF'
-{
-  "rules": [
-    {
-      "type": "pull_request",
-      "parameters": {
-        "allowed_merge_methods": ["merge"]
-      }
-    },
-    {
-      "type": "merge_queue",
-      "parameters": {
-        "merge_method": "MERGE"
-      }
-    }
-  ]
-}
-EOF
+gh api repos/{owner}/{repo}/rulesets/{ruleset_id} --jq '{rules: [.rules[]
+    | if .type == "pull_request" then .parameters.allowed_merge_methods = ["merge"]
+      elif .type == "merge_queue" then .parameters.merge_method = "MERGE"
+      else . end
+    | if .parameters == null then del(.parameters) else . end]}' \
+  | gh api repos/{owner}/{repo}/rulesets/{ruleset_id} -X PUT --input -
+# Read it back: the same rules and bypass actors as before, with the two fields changed
+gh api repos/{owner}/{repo}/rulesets/{ruleset_id} --jq '{bypass_actors, conditions, rules}'
 ```
 
 **Ruleset merge method alignment:**
