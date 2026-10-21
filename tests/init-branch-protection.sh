@@ -422,7 +422,58 @@ respond GET "$REPO/rules/branches/main?per_page=100" 0 '[]'
 respond GET "$PROT" 0 "$(compliant | jq -c '.required_status_checks = {strict: true, contexts: ["lint", "zizmor"], checks: []}')"
 run acme/widget --merge-queue
 expect_exit "a required zizmor context in contexts[] exits 6" 6
-report "the PATCH keeps contexts[]-only checks" "$(grep -qF -- "<<<'{\"strict\":false,\"checks\":[{\"context\":\"lint\"}]}'" <<<"$OUT"; echo $?)" "lint dropped"
+report "the PATCH keeps contexts[]-only checks for any app" "$(grep -qF -- "<<<'{\"strict\":false,\"checks\":[{\"context\":\"lint\",\"app_id\":-1}]}'" <<<"$OUT"; echo $?)" "lint dropped or pinned"
+
+DEFAULT_SETUP=$REPO/code-scanning/default-setup
+# This repository's own required checks (2026-10-21): CodeQL default setup
+# posts "Analyze (<language>)" under the GitHub Actions app; DCO is unpinned.
+DS_CHECKS='[{"context":"Analyze (actions)","app_id":15368},{"context":"lint","app_id":15368},{"context":"DCO","app_id":null}]'
+
+scenario mq-default-setup-analyze
+mq_repo
+respond GET "$REPO/rules/branches/main?per_page=100" 0 '[{"type":"required_status_checks","ruleset_id":9,"parameters":{"strict_required_status_checks_policy":false,"required_status_checks":[{"context":"Analyze (python)","integration_id":15368}]}}]'
+respond GET "$PROT" 0 "$(classic_checks true "$DS_CHECKS")"
+respond GET "$DEFAULT_SETUP" 0 '{"state":"configured","languages":["actions","python"]}'
+run acme/widget --merge-queue
+expect_exit "a required default-setup Analyze context exits 6" 6
+report "the refusal names the Analyze context" "$(grep -qF -- '- Analyze (actions)' <<<"$OUT"; echo $?)" "context not named"
+report "the refusal names the ruleset-required Analyze context" "$(grep -qF 'Ruleset(s) 9: remove them' <<<"$OUT"; echo $?)" "ruleset not named"
+report "the refusal names the code_scanning rule as the remedy" "$(grep -qF '"code_scanning_tools":[{"tool":"CodeQL","alerts_threshold":"errors","security_alerts_threshold":"high_or_higher"}]' <<<"$OUT"; echo $?)" "remedy missing"
+report "the PATCH keeps an unpinned context for any app (-1)" "$(grep -qF -- "<<<'{\"strict\":false,\"checks\":[{\"context\":\"lint\",\"app_id\":15368},{\"context\":\"DCO\",\"app_id\":-1}]}'" <<<"$OUT"; echo $?)" "PATCH command wrong"
+expect_no_write "a required default-setup Analyze context gets no write"
+
+scenario mq-default-setup-off
+mq_repo
+respond GET "$REPO/rules/branches/main?per_page=100" 0 '[]'
+respond GET "$PROT" 0 "$(classic_checks false "$DS_CHECKS")"
+respond GET "$DEFAULT_SETUP" 0 '{"state":"not-configured","languages":[]}'
+respond POST "$RULESETS" 0 '{"id":42}'
+respond GET "$RULESETS/42" 0 "$CREATED"
+run acme/widget --merge-queue
+expect_exit "an Analyze context without default setup is allowed" 0
+expect_call "the queue is created without default setup" "POST $RULESETS"
+
+scenario mq-codeql-workflow-analyze
+mq_repo
+respond GET "$REPO/rules/branches/main?per_page=100" 0 '[]'
+respond GET "$PROT" 0 "$(classic_checks false '[{"context":"codeql / Analyze (python)","app_id":15368}]')"
+respond GET "$DEFAULT_SETUP" 0 '{"state":"configured","languages":["python"]}'
+respond POST "$RULESETS" 0 '{"id":42}'
+respond GET "$RULESETS/42" 0 "$CREATED"
+run acme/widget --merge-queue
+expect_exit "a workflow-prefixed codeql / Analyze context is allowed" 0
+expect_call "the queue is created next to a workflow Analyze job" "POST $RULESETS"
+
+scenario mq-default-setup-unreadable
+mq_repo
+respond GET "$REPO/rules/branches/main?per_page=100" 0 '[]'
+respond GET "$PROT" 0 "$(classic_checks false "$DS_CHECKS")"
+respond GET "$DEFAULT_SETUP" 1 '' 'HTTP 403: Resource not accessible by integration'
+respond POST "$RULESETS" 0 '{"id":42}'
+respond GET "$RULESETS/42" 0 "$CREATED"
+run acme/widget --merge-queue
+expect_exit "an unreadable default setup with an Analyze context exits 3" 3
+expect_no_write "an unreadable default setup gets no write"
 
 scenario mq-app-context-ruleset
 mq_repo
