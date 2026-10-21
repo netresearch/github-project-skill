@@ -18,7 +18,7 @@ git -C <worktree> config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/
 git -C <worktree> push -u origin main
 ```
 
-## Two-step flow
+## Bootstrap flow
 
 ```bash
 # 1. Immediately after `gh repo create` and the first push:
@@ -55,6 +55,9 @@ bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/
 #    that never reports on merge_group (CodeQL, Opengrep OSS, betterleaks,
 #    zizmor, SonarCloud Code Analysis) — see merge-strategy.md, "Enabling a
 #    merge queue".
+#    Prerequisite the script cannot check: every workflow that produces a
+#    required context has `merge_group:` in `on:`. Without it that context
+#    never reports in the queue and every entry times out.
 ```
 
 The script is idempotent: re-running on an already-compliant repo reports `already compliant` and exits 0. Drift on opinionated fields exits 1 with a per-field diff (no silent clobber of admin choices).

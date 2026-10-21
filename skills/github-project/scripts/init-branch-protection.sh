@@ -215,7 +215,7 @@ if [[ "$MODE" == "--merge-queue" ]]; then
         exit 1
     fi
 
-    if ! RULES="$(gh api "repos/$OWNER/$REPO/rules/branches/$DEFAULT_BRANCH" 2>/dev/null)" \
+    if ! RULES="$(gh api "repos/$OWNER/$REPO/rules/branches/$DEFAULT_BRANCH?per_page=100" 2>/dev/null)" \
         || ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"$RULES"; then
         err "cannot read the rules in effect on $DEFAULT_BRANCH — not writing over an unknown state"
         exit 3
@@ -252,9 +252,26 @@ if [[ "$MODE" == "--merge-queue" ]]; then
         while IFS= read -r n; do printf '  - %s\n' "$n" >&2; done <<<"$BAD"
         err "every queue entry would wait for them and time out. Drop them from the"
         err "required checks first; for a code-scanning tool, a ruleset code_scanning rule"
-        err "gates the pull request instead. Classic protection: PATCH"
-        err "  $PROTECTION_URL/required_status_checks"
-        err "with the remaining checks. Ruleset: edit the required_status_checks rule."
+        err "gates the pull request instead (references/merge-strategy.md)."
+        if [[ "$(jq --argjson apps "$APP_CONTEXTS" '[(.required_status_checks.checks // [])[].context,
+                (.required_status_checks.contexts // [])[]] | any(. as $x | $apps | index($x))' \
+                <<<"$CLASSIC")" == "true" ]]; then
+            # checks[] is canonical; a protection that only has the deprecated
+            # contexts[] mirror is read from there instead.
+            KEEP="$(jq -c --argjson apps "$APP_CONTEXTS" '.required_status_checks
+                | (if ((.checks // []) | length) > 0 then .checks else [(.contexts // [])[] | {context: .}] end)
+                | {strict: false, checks: [.[] | select(.context as $x | $apps | index($x) | not)
+                    | {context} + (if .app_id then {app_id} else {} end)]}' <<<"$CLASSIC")"
+            err "Classic protection — keep the other checks:"
+            err "  gh api -X PATCH $PROTECTION_URL/required_status_checks --input - <<<'$KEEP'"
+        fi
+        if [[ "$(jq --argjson apps "$APP_CONTEXTS" '[.[] | select(.type == "required_status_checks")
+                | .parameters.required_status_checks[]?.context] | any(. as $x | $apps | index($x))' \
+                <<<"$RULES")" == "true" ]]; then
+            err "Ruleset(s) $(jq -r --argjson apps "$APP_CONTEXTS" '[.[] | select(.type == "required_status_checks"
+                and any(.parameters.required_status_checks[]?; .context as $x | $apps | index($x)))
+                | .ruleset_id] | unique | join(", ")' <<<"$RULES"): remove them from the required_status_checks rule."
+        fi
         err "No change made."
         exit 6
     fi
@@ -347,7 +364,8 @@ if [[ "$MODE" == "--merge-queue" ]]; then
         fi
         ok "classic \"require branches to be up to date\" (strict) set to false"
     fi
-    info "every workflow producing a required context needs 'merge_group:' in 'on:'"
+    warn "every workflow producing a required context needs 'merge_group:' in 'on:',"
+    warn "or that context never reports in the queue and every entry times out."
     exit 0
 fi
 
@@ -364,7 +382,7 @@ if [[ "$MODE" == "--from-current-checks" ]]; then
     # Under a merge queue strict must stay false (see --merge-queue). An
     # unreadable rule set is not read as "no queue": strict=true would then
     # undo the queue's setting.
-    if ! RULES="$(gh api "repos/$OWNER/$REPO/rules/branches/$DEFAULT_BRANCH" 2>/dev/null)" \
+    if ! RULES="$(gh api "repos/$OWNER/$REPO/rules/branches/$DEFAULT_BRANCH?per_page=100" 2>/dev/null)" \
         || ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"$RULES"; then
         err "cannot read the rules in effect on $DEFAULT_BRANCH — not writing over an unknown state"
         exit 3

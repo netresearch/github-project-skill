@@ -532,7 +532,8 @@ llm_reviews:
          without an admin bypass.
 
       Check via both sources, because init-branch-protection.sh writes classic
-      branch protection, which the rulesets endpoint does not return:
+      branch protection, which the rulesets endpoint does not return (its
+      --merge-queue mode writes the queue as a repository ruleset):
         gh api --paginate repos/OWNER/REPO/rules/branches/BRANCH --jq '.[]'
         gh api repos/OWNER/REPO/branches/BRANCH/protection \
           --jq '{approvals: .required_pull_request_reviews.required_approving_review_count, conversation_resolution: .required_conversation_resolution.enabled}'
