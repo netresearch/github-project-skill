@@ -444,7 +444,8 @@ run acme/widget --merge-queue
 expect_exit "a required default-setup Analyze context exits 6" 6
 report "the refusal names the Analyze context" "$(grep -qF -- '- Analyze (actions)' <<<"$OUT"; echo $?)" "context not named"
 report "the refusal names the ruleset-required Analyze context" "$(grep -qF 'Ruleset(s) 9: remove them' <<<"$OUT"; echo $?)" "ruleset not named"
-report "the refusal names the code_scanning rule as the remedy" "$(grep -qF '"code_scanning_tools":[{"tool":"CodeQL","alerts_threshold":"errors","security_alerts_threshold":"high_or_higher"}]' <<<"$OUT"; echo $?)" "remedy missing"
+report "the refusal names the shared CodeQL workflow as the remedy" "$(grep -qF 'netresearch/.github/.github/workflows/codeql.yml@main' <<<"$OUT"; echo $?)" "remedy missing"
+report "the remedy disables default setup first" "$(grep -qF 'code-scanning/default-setup -f state=not-configured' <<<"$OUT"; echo $?)" "disable step missing"
 report "the PATCH keeps an unpinned context for any app (-1)" "$(grep -qF -- "<<<'{\"strict\":false,\"checks\":[{\"context\":\"lint\",\"app_id\":15368},{\"context\":\"DCO\",\"app_id\":-1}]}'" <<<"$OUT"; echo $?)" "PATCH command wrong"
 expect_no_write "a required default-setup Analyze context gets no write"
 
@@ -469,6 +470,33 @@ respond GET "$RULESETS/42" 0 "$CREATED"
 run acme/widget --merge-queue
 expect_exit "a workflow-prefixed codeql / Analyze context is allowed" 0
 expect_call "the queue is created next to a workflow Analyze job" "POST $RULESETS"
+
+# netresearch/enterprise-readiness-skill on 2026-10-22: the merge-queue ruleset
+# carries a code_scanning rule for CodeQL while default setup is configured, and
+# fork pull requests #151 and #152 stayed BLOCKED with every check green.
+ERS_RULES='[{"type":"deletion","ruleset_id":14507403,"parameters":null},{"type":"non_fast_forward","ruleset_id":14507403,"parameters":null},{"type":"copilot_code_review","ruleset_id":14507403,"parameters":{"review_on_push":false,"review_draft_pull_requests":false}},{"type":"merge_queue","ruleset_id":25562807,"parameters":{"merge_method":"MERGE","max_entries_to_build":10,"min_entries_to_merge":1,"max_entries_to_merge":10,"min_entries_to_merge_wait_minutes":5,"grouping_strategy":"ALLGREEN","check_response_timeout_minutes":180}},{"type":"code_scanning","ruleset_id":25562807,"parameters":{"code_scanning_tools":[{"tool":"CodeQL","security_alerts_threshold":"high_or_higher","alerts_threshold":"errors"}]}}]'
+ERS_CHECKS='[{"context":"Skill Validation / Skill Validation","app_id":15368},{"context":"eval-validate / Eval Validation","app_id":15368},{"context":"DCO","app_id":null},{"context":"tests / Skill Tests","app_id":15368},{"context":"All security checks","app_id":15368}]'
+
+scenario mq-codeql-rule-default-setup
+mq_repo
+respond GET "$REPO/rules/branches/main?per_page=100" 0 "$ERS_RULES"
+respond GET "$PROT" 0 "$(classic_checks false "$ERS_CHECKS")"
+respond GET "$DEFAULT_SETUP" 0 '{"state":"configured","languages":["actions","python"]}'
+run acme/widget --merge-queue
+expect_exit "a code_scanning rule for CodeQL next to default setup exits 6" 6
+report "the refusal says fork pull requests stay blocked" "$(grep -qF 'every fork pull request' <<<"$OUT"; echo $?)" "fork cause missing"
+report "the refusal names the shared CodeQL workflow" "$(grep -qF 'netresearch/.github/.github/workflows/codeql.yml@main' <<<"$OUT"; echo $?)" "remedy missing"
+expect_no_write "a code_scanning rule next to default setup gets no write"
+
+scenario mq-codeql-rule-advanced-setup
+mq_repo
+respond GET "$REPO/rules/branches/main?per_page=100" 0 "$ERS_RULES"
+respond GET "$PROT" 0 "$(classic_checks false "$ERS_CHECKS")"
+respond GET "$DEFAULT_SETUP" 0 '{"state":"not-configured","languages":[]}'
+run acme/widget --merge-queue
+expect_exit "a code_scanning rule for CodeQL without default setup is accepted" 0
+report "the existing standard queue is left alone" "$(grep -qF 'nothing to do' <<<"$OUT"; echo $?)" "queue not recognised"
+expect_no_write "an accepted standard queue gets no write"
 
 scenario mq-default-setup-unreadable
 mq_repo

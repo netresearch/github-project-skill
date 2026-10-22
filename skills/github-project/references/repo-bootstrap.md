@@ -54,9 +54,10 @@ bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/
 #    classic strict to false and allow_auto_merge to true. Refuses (exit 6)
 #    while a required context is one that never reports on merge_group
 #    (CodeQL, Opengrep OSS, betterleaks, zizmor, SonarCloud Code Analysis,
-#    and "Analyze (<language>)" while CodeQL default setup is configured) —
-#    see merge-strategy.md, "Enabling a
-#    merge queue".
+#    and "Analyze (<language>)" while CodeQL default setup is configured),
+#    and while a ruleset code_scanning rule requires CodeQL under default
+#    setup, which blocks every fork pull request — see merge-strategy.md,
+#    "Enabling a merge queue".
 #    Prerequisite the script cannot check: every workflow that produces a
 #    required context has `merge_group:` in `on:`. Without it that context
 #    never reports in the queue and every entry times out.
