@@ -585,9 +585,7 @@ gh pr merge NUMBER --repo OWNER/REPO --auto --merge
 ```
 
 **Limitations discovered:**
-- GitHub may reject auto-merge on a second PR in the same repo if the first is still pending: "Pull request Auto merge is not allowed for this repository"
-- This is typically a timing issue — once the first PR merges, re-enable auto-merge on remaining PRs
-- Some repos need the "Allow auto-merge" setting enabled in repository settings first
+- "Pull request Auto merge is not allowed for this repository" means the repository setting `allow_auto_merge` is `false` (measured 2026-10-21/22 in six netresearch repositories, merge-queue ones included). Check it with `gh api repos/OWNER/REPO --jq .allow_auto_merge` and enable it with `gh api -X PATCH repos/OWNER/REPO -F allow_auto_merge=true`; `init-branch-protection.sh --merge-queue` does this for a queue repository. A timing cause (a second PR rejected while the first is pending) was reported earlier but has not been measured.
 - Repos where you lack admin/maintainer access will fail with permission errors
 
 ## Archived Repos — Handle Dependabot/Renovate PRs with Care

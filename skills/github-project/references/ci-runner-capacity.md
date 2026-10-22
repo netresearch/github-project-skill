@@ -86,6 +86,27 @@ single congested run makes any change look worthless.
   docs-only PRs, and add `concurrency: cancel-in-progress` for `pull_request`
   (never for `merge_group`/push-to-main).
 
+### A concurrency group cancels pending runs even without `cancel-in-progress`
+
+A concurrency group holds at most one **pending** run: "When a new job or
+workflow run is queued, any existing `pending` job or workflow run in the same
+group is canceled and replaced" ([GitHub docs][concurrency]).
+`cancel-in-progress: false` does not change that; it only spares the run that
+is already in progress. A group keyed on `github.ref` therefore lets a push to
+`main` drop a pending scheduled or `main` run. Key the group per run outside
+pull requests (netresearch/.github#515):
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+```
+
+Template netresearch/.github#513 shipped without this; CodeRabbit flagged it on
+the consumer PRs (e.g. netresearch/t3x-scheduler#65).
+
+[concurrency]: https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
+
 ## Compute is still worth cutting
 
 Even when it buys no wall clock, halving job-minutes lowers org-wide queue
