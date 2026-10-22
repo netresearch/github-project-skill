@@ -142,6 +142,21 @@ gh api repos/OWNER/REPO/stats/contributors --jq 'length'
 
 The general shape: test the status code, never the emptiness of the output.
 
+### `author_association` depends on who reads it
+
+`author_association` on issues, comments and pull requests is computed for the reader, not stored with the author. An organization member whose membership is private shows as `MEMBER` only to readers who can see that membership, which in practice means other members. An anonymous request, or a token whose owner is not a member, sees the same author as `CONTRIBUTOR` or `NONE`.
+
+Measured 2026-10-21 and again 2026-10-22 in TYPO3-Documentation: one comment by a private member read `MEMBER` with a member's token and `NONE` through an unauthenticated `curl`. 58 of the organization's 66 members had private membership (`orgs/ORG/members` minus `orgs/ORG/public_members`), so most of the team looked like outsiders to a non-member.
+
+Before classifying comments as "from the team" by `author_association`, check that the token belongs to an active member of that organization:
+
+```bash
+gh api user/memberships/orgs/ORG --jq .state   # "active" -> MEMBER values are reliable
+                                               # 404     -> token owner is not a member
+```
+
+Without `active`, treat team membership as unknown, not as "not a member".
+
 ### Rapid `gh api` calls intermittently return HTTP 401
 
 Rapid sequences of `gh api` calls (REST + GraphQL) sometimes return `401 "Requires authentication"` even with valid auth — transient, clears with ~5-10s spacing and a retry. **Trap:** piping a `gh` listing straight into `while read` consumes the 401 error text as data when a call fails (e.g. JSON error braces get fed into a GraphQL mutation as "thread IDs"). Always capture output into a variable first, check the exit status, then iterate; add a `sleep 5-10` between bulk review-thread replies/resolves.
