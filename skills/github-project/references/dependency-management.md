@@ -844,6 +844,15 @@ When repo B depends on a version of repo A that was *just* released, the order i
 
 `gh api -X PATCH repos/OWNER/REPO/dependabot/alerts/N` rejects a `dismissed_comment` over 280 characters with HTTP 422 (`Only 280 characters are allowed`) — check `${#COMMENT}` before the call. Valid `dismissed_reason` values: `fix_started`, `inaccurate`, `no_bandwidth`, `not_used`, `tolerable_risk` (use `not_used` for "vulnerable code not in execution path").
 
+## Org Dependabot alerts: no advisory filter, and an unknown parameter is ignored
+
+`GET /orgs/ORG/dependabot/alerts` cannot filter by GHSA or CVE ID. The [endpoint documentation](https://docs.github.com/en/rest/dependabot/alerts?apiVersion=2022-11-28#list-dependabot-alerts-for-an-organization) lists `classification`, `state`, `severity`, `ecosystem`, `package`, `epss_percentage`, `artifact_registry_url`, `artifact_registry`, `has`, `assignee`, `runtime_risk`, `scope` and `relationship`, plus sorting and paging; `ghsa_id` and `cve_id` exist only in the response. A `ghsa=` parameter is silently ignored and the call returns every open alert of the organisation: measured on `netresearch` 2026-10-22, 331 rows with `&ghsa=GHSA-6q48-6c7w-9gw2` and 331 without. Narrow by package and filter the advisory client-side:
+
+```bash
+gh api --paginate "orgs/ORG/dependabot/alerts?state=open&package=certifi&per_page=100" \
+  --jq '.[] | select(.security_advisory.ghsa_id=="GHSA-6q48-6c7w-9gw2") | "\(.repository.full_name) #\(.number)"'
+```
+
 ## Merging the workflow-file bot PRs that auto-merge skipped
 
 The "GITHUB_TOKEN Cannot Modify Workflow Files" section above explains why auto-merge skips these PRs. To land them by hand: clone and merge locally — SSH (`git clone git@github.com:…`) is the reliable path in environments without a working credential helper (HTTPS works only when credentials are explicitly available). For repos with several workflow PRs, merge them one at a time — they typically touch the same files.
