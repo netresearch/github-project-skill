@@ -343,6 +343,7 @@ mq_repo() { # mq_repo [allow_merge_commit] [allow_auto_merge] — common respons
     respond GET "$REPO" 0 "$(jq -nc --argjson m "${1:-true}" --argjson a "${2:-true}" \
         '{default_branch: "main", allow_merge_commit: $m, allow_auto_merge: $a}')"
     respond GET "$REPO/branches/main" 0 '{}'
+    return 0
 }
 classic_checks() { # classic_checks <strict> <checks-json> — protection with required checks
     compliant | jq -c --argjson s "$1" --argjson k "$2" \
@@ -554,7 +555,7 @@ run acme/widget --merge-queue
 expect_exit "disallowed auto-merge next to a standard queue is fixed" 0
 expect_call "auto-merge is allowed on the repository" "PATCH $REPO"
 expect_json "allow_auto_merge is sent as true" "$(body PATCH "$REPO")" '.' '{"allow_auto_merge":true}'
-report "allow_auto_merge is read back" "$([ "$(grep -cxF "GET $REPO" "$CASE/calls")" -eq 2 ] && echo 0 || echo 1)" "no second GET $REPO"
+report "allow_auto_merge is read back" "$([[ "$(grep -cxF "GET $REPO" "$CASE/calls")" -eq 2 ]] && echo 0 || echo 1)" "no second GET $REPO"
 report "no ruleset is created for an existing queue" "$(grep -q "^POST " "$CASE/calls" && echo 1 || echo 0)" "POST sent"
 
 scenario mq-auto-merge-readback
