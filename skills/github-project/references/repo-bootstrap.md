@@ -50,8 +50,8 @@ bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/
 
 # 3. Then add the org-standard merge queue:
 bash <skill-root>/skills/github-project/scripts/init-branch-protection.sh OWNER/REPO --merge-queue
-#    Creates a repository ruleset "merge-queue" on ~DEFAULT_BRANCH and sets
-#    classic strict to false. Refuses (exit 6) while a required context is one
+#    Creates a repository ruleset "merge-queue" on ~DEFAULT_BRANCH, sets
+#    classic strict to false and allow_auto_merge to true. Refuses (exit 6) while a required context is one
 #    that never reports on merge_group (CodeQL, Opengrep OSS, betterleaks,
 #    zizmor, SonarCloud Code Analysis, and "Analyze (<language>)" while CodeQL
 #    default setup is configured) — see merge-strategy.md, "Enabling a

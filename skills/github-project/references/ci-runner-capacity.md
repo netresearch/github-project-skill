@@ -88,11 +88,12 @@ single congested run makes any change look worthless.
 
 ### A concurrency group cancels pending runs even without `cancel-in-progress`
 
-A concurrency group holds at most one **pending** run: "When a new job or
-workflow run is queued, any existing `pending` job or workflow run in the same
-group is canceled and replaced" ([GitHub docs][concurrency]).
-`cancel-in-progress: false` does not change that; it only spares the run that
-is already in progress. A group keyed on `github.ref` therefore lets a push to
+By default (`queue: single`) a concurrency group holds at most one **pending**
+run: "When a new job or workflow run is queued, any existing `pending` job or
+workflow run in the same group is canceled and replaced" ([GitHub
+docs][concurrency]). `cancel-in-progress: false` does not change that; it only
+spares the run that is already in progress. (`queue: max` lets up to 100 runs
+wait instead.) A group keyed on `github.ref` therefore lets a push to
 `main` drop a pending scheduled or `main` run. Key the group per run outside
 pull requests (netresearch/.github#515):
 
