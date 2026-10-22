@@ -124,3 +124,53 @@ coverage-on (`schedule`) path still hides a bug (e.g. a job that now exceeds its
 dispatchable. If it's *new in the PR*, that path is only verifiable after merge;
 if it already exists on the default branch, you can dispatch the PR branch's
 version directly. Either way, check it; don't assume.
+
+## Scheduled runs cancelled by a push in the same concurrency group
+
+A workflow with `concurrency: group: ${{ github.workflow }}-${{ github.ref }}`
+puts `schedule`, `workflow_dispatch` and `push` runs on the default branch into
+one group. With the default `queue: single`, GitHub keeps at most one
+**pending** run per group: a newer run replaces the pending one even with
+`cancel-in-progress: false`. That setting only protects the run that is already
+**running**. (`queue: max` allows up to 100 pending runs, but GitHub rejects it
+in combination with `cancel-in-progress: true` — see the fix below.)
+
+A nightly run that waits behind a running push run is therefore cancelled by
+the next push, before it starts a job. Observed in netresearch/t3x-nr-llm:
+scheduled run 39209624988 (2026-10-19) was created at 06:23:25, waited behind
+a push run that was still running, and was cancelled at 06:33:06 — one second
+after push run 39210564782 was created.
+
+Signature: conclusion `cancelled`, zero jobs, and a run of another event
+created in the same group within a second of the cancellation. The second
+command below lists candidates only: it shows creation times, not the group, so
+confirm that the candidate's event and ref fall into the same group and that its
+`created_at` matches the cancelled run's `updated_at`.
+
+```bash
+R=OWNER/REPO; RUN=RUN_ID
+# 0 = the run never started a job
+gh api "repos/$R/actions/runs/$RUN/jobs?per_page=100" --paginate --jq '.jobs|length'
+# The cancellation time of the run under suspicion
+gh api "repos/$R/actions/runs/$RUN" --jq '"\(.event) \(.head_branch) \(.updated_at)"'
+# Candidates for the replacing run (same workflow and branch, created around then)
+gh api "repos/$R/actions/workflows/ci.yml/runs?branch=main&created=FROM..TO" \
+  --jq '.workflow_runs[] | "\(.id) \(.event) \(.created_at) \(.conclusion)"'
+```
+
+Fix: give schedule and manual runs their own group and leave the other groups
+as they are:
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && format('-{0}', github.event_name) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+```
+
+Push and pull-request runs keep the group they had; only pull-request runs
+cancel their predecessor. `queue: max` is no alternative here: the
+`cancel-in-progress` expression is true for pull requests, and GitHub refuses
+`queue: max` together with `cancel-in-progress: true`. Where a workflow never
+cancels in progress, `queue: max` in the shared group keeps the scheduled run
+waiting instead. Applied in netresearch/t3x-nr-llm#1155
+(<https://github.com/netresearch/t3x-nr-llm/pull/1155>).
