@@ -370,6 +370,15 @@ it:
 gh api rate_limit --jq '{core: .resources.core, graphql: .resources.graphql}'
 ```
 
+**For GraphQL headroom, ask GraphQL itself.** On 2026-10-21 at 13:06 UTC
+`gh api rate_limit` reported `graphql.remaining` 3920 of 5000, while the
+query below returned `remaining: 0` (reset 13:10:41) and every GraphQL call
+failed with "API rate limit already exceeded":
+
+```bash
+gh api graphql -f query='{rateLimit{remaining resetAt cost}}'
+```
+
 **Pace from the reported `graphql.remaining`, never from a call count.** Because
 points are not requests, arithmetic over the number of `gh pr view` invocations
 misstates how much GraphQL headroom is left — the same loop costs more against a

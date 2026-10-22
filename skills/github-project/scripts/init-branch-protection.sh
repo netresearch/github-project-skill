@@ -71,8 +71,11 @@
 #       targeting ~DEFAULT_BRANCH with only the merge_queue rule (it never
 #       rewrites an existing ruleset), reads it back, and sets the classic
 #       strict flag ("require branches to be up to date") to false, because
-#       the queue replaces the author-side update it forces. A queue that
-#       already exists with the standard parameters is left alone.
+#       the queue replaces the author-side update it forces. It also sets
+#       the repository's allow_auto_merge to true and reads it back: with
+#       it false, `gh pr merge --auto` cannot enqueue a pull request ("Auto
+#       merge is not allowed for this repository"). A queue that already
+#       exists with the standard parameters is left alone.
 #       The merge_queue rule exists only in repository rulesets; an org
 #       ruleset rejects it and classic protection has no toggle for it.
 #       Every workflow that produces a required context needs `merge_group:`
@@ -344,14 +347,18 @@ if [[ "$MODE" == "--merge-queue" ]]; then
     fi
 
     CLASSIC_STRICT="$(jq -r '.required_status_checks.strict // false' <<<"$CLASSIC")"
+    # `gh pr merge --auto` is how a pull request enters the queue; with
+    # allow_auto_merge false it fails with "Auto merge is not allowed for
+    # this repository".
+    AUTO_MERGE="$(jq -r '.allow_auto_merge // false' <<<"$REPO_JSON")"
 
     if [[ "$(jq 'length' <<<"$REQUIRED")" -eq 0 ]]; then
         warn "no required status checks on $DEFAULT_BRANCH — the queue will gate nothing"
         warn "until some are required (run --from-current-checks after a green CI run)."
     fi
 
-    if [[ "$NEED_RULESET" == "false" && "$CLASSIC_STRICT" != "true" ]]; then
-        ok "$SLUG already has the merge queue and strict=false — nothing to do"
+    if [[ "$NEED_RULESET" == "false" && "$CLASSIC_STRICT" != "true" && "$AUTO_MERGE" == "true" ]]; then
+        ok "$SLUG already has the merge queue, strict=false and auto-merge allowed — nothing to do"
         exit 0
     fi
 
@@ -404,6 +411,21 @@ if [[ "$MODE" == "--merge-queue" ]]; then
             exit 1
         fi
         ok "classic \"require branches to be up to date\" (strict) set to false"
+    fi
+
+    if [[ "$AUTO_MERGE" != "true" ]]; then
+        info "PATCH repos/$OWNER/$REPO (allow_auto_merge=true)"
+        if ! RESP="$(gh api -X PATCH "repos/$OWNER/$REPO" --input - <<<'{"allow_auto_merge": true}' 2>&1)"; then
+            err "PATCH failed (the queue exists; auto-merge is still not allowed):"
+            printf '%s\n' "$RESP" >&2
+            err "by hand: gh api -X PATCH repos/$OWNER/$REPO -F allow_auto_merge=true"
+            exit 1
+        fi
+        if [[ "$(gh api "repos/$OWNER/$REPO" --jq '.allow_auto_merge' 2>/dev/null || true)" != "true" ]]; then
+            err "allow_auto_merge read back as not true after the PATCH"
+            exit 1
+        fi
+        ok "allow_auto_merge set to true (gh pr merge --auto enqueues)"
     fi
     warn "every workflow producing a required context needs 'merge_group:' in 'on:',"
     warn "or that context never reports in the queue and every entry times out."
