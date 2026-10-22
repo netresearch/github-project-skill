@@ -61,9 +61,14 @@
 #           (GET /code-scanning/default-setup: state "configured") and an
 #           "Analyze (<language>)" context is required: default setup posts
 #           it under the Actions app but never runs on a merge_group ref
-#           (exit 6; the remedy is a ruleset code_scanning rule for CodeQL).
+#           (exit 6; the remedy is a workflow job calling the shared
+#           netresearch/.github codeql.yml in place of default setup).
 #           A workflow-prefixed "codeql / Analyze (...)" is not refused; an
 #           unreadable default-setup state exits 3,
+#         - a ruleset code_scanning rule requires CodeQL while default setup
+#           is configured: default setup never analyses pull requests from
+#           forks, so every fork pull request stays blocked (exit 6, same
+#           remedy),
 #         - a ruleset requires branches to be up to date
 #           (strict_required_status_checks_policy: true),
 #         - a merge_queue rule exists with other parameters (drift, exit 1).
@@ -270,15 +275,46 @@ if [[ "$MODE" == "--merge-queue" ]]; then
     # codeql.yml called as a reusable reports "codeql / Analyze (...)" and has
     # merge_group like any other workflow. Default setup is read only when such
     # a context is required.
+    # Default setup is also read when a ruleset code_scanning rule requires
+    # CodeQL: default setup never analyses pull requests from forks, so that
+    # rule blocks every outside contribution while default setup is on.
+    CODEQL_RULE=false
+    jq -e 'any(.[]; .type == "code_scanning"
+            and any(.parameters.code_scanning_tools[]?; .tool == "CodeQL"))' >/dev/null <<<"$RULES" \
+        && CODEQL_RULE=true
     DEFAULT_SETUP=false
-    if jq -e 'any(.[]; test("^Analyze \\(.+\\)$"))' >/dev/null <<<"$REQUIRED"; then
+    if [[ "$CODEQL_RULE" == "true" ]] || jq -e 'any(.[]; test("^Analyze \\(.+\\)$"))' >/dev/null <<<"$REQUIRED"; then
         if ! DS_STATE="$(gh api "repos/$OWNER/$REPO/code-scanning/default-setup" --jq '.state' 2>/dev/null)" \
             || [[ -z "$DS_STATE" || "$DS_STATE" == "null" ]]; then
-            err "an Analyze (...) context is required, but the CodeQL default setup state is unreadable"
+            err "CodeQL is required (an Analyze (...) context or a code_scanning rule), but the"
+            err "CodeQL default setup state is unreadable"
             err "(GET repos/$OWNER/$REPO/code-scanning/default-setup) — not writing over an unknown state"
             exit 3
         fi
         [[ "$DS_STATE" == "configured" ]] && DEFAULT_SETUP=true
+    fi
+
+    # Default setup can gate neither the queue (it never runs on merge_group)
+    # nor a fork pull request (it never analyses one). The replacement is a
+    # workflow job, which runs on both.
+    codeql_remedy() {
+        err "Replace CodeQL default setup with a workflow job first:"
+        err "  1. gh api -X PATCH repos/$OWNER/$REPO/code-scanning/default-setup -f state=not-configured"
+        err "     (GitHub refuses uploads from a workflow while default setup is on)"
+        err "  2. add a job calling netresearch/.github/.github/workflows/codeql.yml@main with"
+        err "     languages: auto, in a workflow that has merge_group: in on:"
+        err "Its codeql / Analyze (...) checks report on fork pull requests and in the queue."
+        err "A ruleset code_scanning rule for CodeQL may gate the pull request after that:"
+        err '  {"type":"code_scanning","parameters":{"code_scanning_tools":[{"tool":"CodeQL","alerts_threshold":"errors","security_alerts_threshold":"high_or_higher"}]}}'
+    }
+
+    if [[ "$CODEQL_RULE" == "true" && "$DEFAULT_SETUP" == "true" ]]; then
+        err "a ruleset code_scanning rule requires CodeQL, and CodeQL default setup is configured."
+        err "Default setup never analyses pull requests from forks, so every fork pull request"
+        err "stays blocked (references/merge-strategy.md)."
+        codeql_remedy
+        err "No change made."
+        exit 6
     fi
 
     ENTRIES="$(jq -n --argjson c "$CLASSIC" --argjson r "$RULES" --argjson apps "$APP_CONTEXTS" \
@@ -301,8 +337,8 @@ if [[ "$MODE" == "--merge-queue" ]]; then
         err "gates the pull request instead (references/merge-strategy.md)."
         if [[ "$DEFAULT_SETUP" == "true" ]]; then
             err "CodeQL default setup is configured: its Analyze (...) checks never run in the"
-            err "queue. Drop them and add this rule to a repository ruleset on $DEFAULT_BRANCH:"
-            err '  {"type":"code_scanning","parameters":{"code_scanning_tools":[{"tool":"CodeQL","alerts_threshold":"errors","security_alerts_threshold":"high_or_higher"}]}}'
+            err "queue, and it never analyses pull requests from forks."
+            codeql_remedy
         fi
         if [[ "$(jq 'any(.[]; .src == "classic" and .bad)' <<<"$ENTRIES")" == "true" ]]; then
             # app_id -1 keeps "any app"; an omitted app_id would pin the
