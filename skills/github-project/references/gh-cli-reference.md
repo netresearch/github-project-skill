@@ -152,10 +152,9 @@ Before classifying comments as "from the team" by `author_association`, check th
 
 ```bash
 gh api user/memberships/orgs/ORG --jq .state   # "active" -> MEMBER values are reliable
-                                               # 404     -> token owner is not a member
 ```
 
-Without `active`, treat team membership as unknown, not as "not a member".
+Any other result means team membership is unknown. `pending` is an open invitation. A failure with HTTP 404 has two causes that `gh` does not tell apart: the token owner is not a member, or the token lacks the scope to read the membership (`gh` then adds a hint to run `gh auth refresh -s user`). Test the exit status, not the printed text: on the 404 `gh` prints the JSON error body and exits 1.
 
 ### Rapid `gh api` calls intermittently return HTTP 401
 
