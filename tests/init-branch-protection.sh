@@ -42,9 +42,13 @@ while [ $# -gt 0 ]; do
     esac
 done
 key="${method}_$(printf '%s' "$path" | tr '/?=&' '____')"
+# The Nth identical call answers from <key>.N.* when that exists (a read-back
+# after a write), otherwise from <key>.*.
+nth=$(( $(grep -cxF -- "$method $path" "$STUB_DIR/calls") + 1 ))
 echo "$method $path" >> "$STUB_DIR/calls"
 [ "$input" = "-" ] && cat > "$STUB_DIR/body_$key.json"
 resp="$STUB_DIR/resp/$key"
+[ -f "$resp.$nth.rc" ] && resp="$resp.$nth"
 if [ ! -f "$resp.rc" ]; then
     echo "stub: no response defined for $method $path" >&2
     exit 98
@@ -335,8 +339,9 @@ expect_no_write "unreadable rules get no write"
 echo "--merge-queue"
 
 RULESETS=$REPO/rulesets
-mq_repo() { # mq_repo [allow_merge_commit] — common responses for --merge-queue
-    respond GET "$REPO" 0 "$(jq -nc --argjson m "${1:-true}" '{default_branch: "main", allow_merge_commit: $m}')"
+mq_repo() { # mq_repo [allow_merge_commit] [allow_auto_merge] — common responses for --merge-queue
+    respond GET "$REPO" 0 "$(jq -nc --argjson m "${1:-true}" --argjson a "${2:-true}" \
+        '{default_branch: "main", allow_merge_commit: $m, allow_auto_merge: $a}')"
     respond GET "$REPO/branches/main" 0 '{}'
 }
 classic_checks() { # classic_checks <strict> <checks-json> — protection with required checks
@@ -535,6 +540,40 @@ respond GET "$PROT/required_status_checks" 0 '{"strict":false}'
 run acme/widget --merge-queue
 expect_exit "unreadable rules exit 3" 3
 expect_no_write "unreadable rules get no write"
+
+scenario mq-auto-merge-off
+# An existing standard queue with strict=false, but allow_auto_merge false:
+# measured 2026-10-21/22, `gh pr merge --auto` then fails with "Auto merge is
+# not allowed for this repository".
+mq_repo true false
+respond GET "$REPO/rules/branches/main?per_page=100" 0 "[$(mq_rule)]"
+respond GET "$PROT" 0 "$(classic_checks false "$LINT")"
+respond PATCH "$REPO" 0 '{}'
+respond GET "$REPO.2" 0 '{"default_branch":"main","allow_merge_commit":true,"allow_auto_merge":true}'
+run acme/widget --merge-queue
+expect_exit "disallowed auto-merge next to a standard queue is fixed" 0
+expect_call "auto-merge is allowed on the repository" "PATCH $REPO"
+expect_json "allow_auto_merge is sent as true" "$(body PATCH "$REPO")" '.' '{"allow_auto_merge":true}'
+report "allow_auto_merge is read back" "$([ "$(grep -cxF "GET $REPO" "$CASE/calls")" -eq 2 ] && echo 0 || echo 1)" "no second GET $REPO"
+report "no ruleset is created for an existing queue" "$(grep -q "^POST " "$CASE/calls" && echo 1 || echo 0)" "POST sent"
+
+scenario mq-auto-merge-readback
+mq_repo true false
+respond GET "$REPO/rules/branches/main?per_page=100" 0 "[$(mq_rule)]"
+respond GET "$PROT" 0 "$(classic_checks false "$LINT")"
+respond PATCH "$REPO" 0 '{}'
+run acme/widget --merge-queue
+expect_exit "allow_auto_merge read back as false exits 1" 1
+
+scenario mq-auto-merge-refused
+# A refused precondition writes nothing, auto-merge included.
+mq_repo true false
+respond GET "$REPO/rules/branches/main?per_page=100" 0 "[$(mq_rule "$(jq -c '.check_response_timeout_minutes = 60' <<<"$MQ_STD")")]"
+respond GET "$PROT" 0 "$(classic_checks false "$LINT")"
+respond PATCH "$REPO" 0 '{}'
+run acme/widget --merge-queue
+expect_exit "a drifted queue with disallowed auto-merge exits 1" 1
+expect_no_write "a drifted queue does not get auto-merge allowed either"
 
 scenario mq-readback
 mq_repo
