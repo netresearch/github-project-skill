@@ -796,8 +796,9 @@ added the exception.
 4. Read the effective list back from `rules/branches/BRANCH` and confirm the
    next pull request reports every newly required context.
 
-Removing a workflow, or removing or renaming a job in it (for a reusable, the
-calling job), changes the list too, whether or not you touch the ruleset.
+Removing a workflow, or removing or renaming a job in it (for a reusable: the
+calling job's ID, or the `name:` of the job inside the reusable, which renames
+the context in every calling repository at once), changes the list too, whether or not you touch the ruleset.
 Before the change merges, read the required contexts of every repository that
 runs the workflow — the ruleset and the classic branch protection
 (`branches/BRANCH/protection/required_status_checks`), since either can hold
