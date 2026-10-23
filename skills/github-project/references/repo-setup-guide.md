@@ -173,11 +173,13 @@ cognitive complexity by extracting helpers (S3776), and replace `innerHTML` with
 construction / `DOMParser` (also clears the XSS hotspot). The gate sees a brand-new file,
 not a diff.
 
-For Python, measure S3776 locally before pushing: `uvx --from complexipy complexipy
-<file>` prints the cognitive complexity per function, and SonarCloud's limit is 15.
-On `netresearch/data-tools-skill` its figures matched SonarCloud's (18 for the
-flagged function, 2 and 3 after the split), so one local run replaces a push and a
-re-analysis per attempt.
+For Python, pre-check S3776 locally before pushing: `uvx --from complexipy complexipy
+<file>` prints the cognitive complexity per function. The rule's default threshold is
+15; a project's quality profile can change it, so read the profile assigned to the
+project. complexipy is an independent tool, not SonarCloud's analyzer. On
+`netresearch/data-tools-skill` its figures matched SonarCloud's for three functions
+(18, 17 and 16, and 2 and 3 after a split), so a local run can save a push and a
+re-analysis per attempt; SonarCloud's result on the PR stays the authority.
 
 To see which new-code smells are blocking, query SonarCloud's `api/issues/search`
 endpoint (authenticated with your SonarCloud token via HTTP basic auth — token as the
