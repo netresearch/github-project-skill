@@ -343,7 +343,7 @@ mechanical:
     target: ".github/workflows/auto-merge*.{yml,yaml}"
     pattern: 'netresearch/\.github/\.github/workflows/auto-merge-deps\.yml|github\.event\.pull_request\.user\.login'
     severity: warning
-    desc: "Auto-merge should delegate to reusable workflow OR check github.event.pull_request.user.login (not github.actor which changes on reruns)"
+    desc: "Auto-merge should delegate to reusable workflow OR check github.event.pull_request.user.login (together with github.actor, see GH-28)"
 
   - id: GH-26
     type: regex
@@ -553,8 +553,10 @@ llm_reviews:
       Verify auto-merge workflow end-to-end correctness:
       1. Trigger must be pull_request_target (not pull_request) — bot PRs
          need write permissions from the base branch context
-      2. Bot detection must use github.event.pull_request.user.login
-         (not github.actor — actor changes on manual reruns)
+      2. Bot detection must require the bot as PR author
+         (github.event.pull_request.user.login) AND as actor of the event
+         (github.actor). The author alone approves a human's push to a bot
+         branch; github.actor alone is spoofable (zizmor bot-conditions)
       3. Merge command must use --auto flag (respects branch protection,
          merge queues, and required checks)
       4. Merge strategy should be dynamically detected from repo settings

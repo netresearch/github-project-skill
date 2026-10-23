@@ -59,8 +59,9 @@ EOF
 | CI can't push to main | Branch protection blocks direct push | Use Renovate `lockFileMaintenance` instead |
 | Workflow not triggering | Rapid merges skip push events | Add `workflow_dispatch` trigger, run manually |
 | "Merge method X not allowed" | Wrong merge strategy | Use auto-detection (see below) or check `gh api repos/O/R --jq '{merge: .allow_merge_commit, squash: .allow_squash_merge, rebase: .allow_rebase_merge}'` |
-| "Rebase merges cannot be automatically signed" | Signed commits + rebase | Enable squash merge on the repo; rebase merges cannot be auto-signed by GitHub |
-| Bot detection misses reruns | `github.actor` changes on synchronize | Use `github.event.pull_request.user.login` instead of `github.actor` |
+| "Rebase merges cannot be automatically signed" | Signed commits + rebase | Allow merge commits (`allow_merge_commit`) and merge with `--merge` (reusable: `merge-strategy: merge`); GitHub signs merge and squash commits, never rebased ones |
+| Renovate PR `CLEAN` for weeks, never merges | Signed commits + rebase-only: GitHub drops the armed auto-merge without an error | `gh api --paginate repos/O/R/issues/N/timeline --jq '.[].event' \| grep -c auto_merge_disabled`; fix as in the row above |
+| Bot PR approved after a human push | Job checks only `user.login` | Require `user.login` AND `github.actor` (see dependency-management.md) |
 | Third-party gitleaks scan fails on bot PRs | Legacy `gitleaks-action@v2` needs a license secret Dependabot cannot read | Call `netresearch/.github/.github/workflows/betterleaks.yml@main` (betterleaks, no license); tune `.gitleaks.toml` for false positives |
 | Old PRs not auto-merging | Opened before workflow existed | Comment `@dependabot rebase` / `@renovate rebase` to trigger `synchronize` |
 | Can't merge workflow file PRs | `GITHUB_TOKEN` lacks `workflows` scope | Merge manually; use workflow check in `auto-merge-direct.yml` template |
@@ -651,9 +652,16 @@ permissions:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    if: >-
-      github.event.pull_request.user.login == 'dependabot[bot]' ||
-      github.event.pull_request.user.login == 'renovate[bot]'
+    # The bot must be the PR author (user.login) AND the actor of the event
+    # (github.actor). The author alone lets a human push to a bot branch, or a
+    # human reopen, get approved and merged unreviewed. github.actor keeps the
+    # original actor on a re-run. zizmor's bot-conditions audit flags every
+    # github.actor check; here it only narrows the author check.
+    if: >- # zizmor: ignore[bot-conditions] -- in addition to the author check
+      (github.event.pull_request.user.login == 'dependabot[bot]' ||
+       github.event.pull_request.user.login == 'renovate[bot]') &&
+      (github.actor == 'dependabot[bot]' ||
+       github.actor == 'renovate[bot]')
     steps:
       - name: Approve PR
         env:
@@ -678,7 +686,7 @@ jobs:
 ### Key Design Decisions
 
 - **`pull_request_target`**: Required for bot PRs — `pull_request` runs with read-only tokens for fork-like contexts
-- **`user.login`**: Immutable PR author field — `github.actor` changes when humans re-run workflows
+- **`user.login` and `github.actor`**: the bot must be the PR author and the actor of the event; the author alone merges a human's push to a bot branch (see dependency-management.md, "Bot Detection Needs the Author AND the Actor")
 - **`--auto`**: Respects branch protection, merge queues, and required checks — direct merge bypasses these
 - **Dynamic strategy**: Repos may only allow specific merge methods — hardcoding breaks when config changes
 
