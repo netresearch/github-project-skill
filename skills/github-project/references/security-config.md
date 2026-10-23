@@ -758,6 +758,39 @@ result evaluation is a green rubber stamp, and requiring it would be worse than
 requiring nothing. Treating `skipped` as passing is deliberate: jobs skipped by
 an event gate must not block the merge queue.
 
+A gate that narrows this — allowing `skipped` only for named jobs, so that a
+scanner which silently skipped fails the gate — must still allow the shared
+workflows that skip themselves. In `netresearch/.github`, `betterleaks.yml` and
+`zizmor.yml` skip on `merge_group`, having scanned the same commits on the pull
+request; `dependency-review.yml` runs on `pull_request` only and skips on every
+other event, including `push` and `schedule`. Allow each skip on exactly those
+events. The keys of `needs`
+are the job IDs in YOUR workflow that call those reusables — `betterleaks`,
+`zizmor` and `dependency-review` in the `skill` and `php-module` templates, as
+below; a repository that
+named them differently uses its own. Add the clause as one more `or` beside the
+exceptions your gate already has:
+
+```yaml
+- name: Fail unless every job succeeded or skipped where allowed
+  env:
+    RESULTS: ${{ toJSON(needs) }}
+    EVENT_NAME: ${{ github.event_name }}
+  run: |
+    jq -e --arg event "$EVENT_NAME" '
+      length > 0 and all(to_entries[];
+        .value.result == "success" or
+        (.key | IN("betterleaks", "zizmor")) and $event == "merge_group" and .value.result == "skipped" or
+        .key == "dependency-review" and $event != "pull_request" and .value.result == "skipped"
+      )' <<< "$RESULTS"
+```
+
+Without the `merge_group` exception the gate passes every pull request and
+fails every queue run, so nothing can merge through the queue; without the
+`dependency-review` one it also fails every push to the default branch. Observed 2026-10-23 on
+netresearch/typo3_http_guard: the queue ejected #25 fifteen times until #26
+added the exception.
+
 ### Before changing a required-context list
 
 1. Back up the ruleset: `gh api repos/OWNER/REPO/rulesets/ID > backup.json`.
@@ -767,3 +800,18 @@ an event gate must not block the merge queue.
 3. Apply with `gh api -X PUT repos/OWNER/REPO/rulesets/ID --input new.json`.
 4. Read the effective list back from `rules/branches/BRANCH` and confirm the
    next pull request reports every newly required context.
+
+Removing a workflow, or removing or renaming a job in it (for a reusable: the
+calling job's ID, or the `name:` of the job inside the reusable, which renames
+the context in every calling repository at once), changes the list too, whether or not you touch the ruleset.
+Before the change merges, read the required contexts of every repository that
+runs the workflow — the ruleset and the classic branch protection
+(`branches/BRANCH/protection/required_status_checks`), since either can hold
+them — and replace each context that disappears with its successor in the same
+step. The classic-protection endpoint answers 404 to a token without admin
+rights on the repository, which reads exactly like "nothing required"; read it
+with an admin token. A required context that never reports again wedges the queue;
+one dropped without a successor silently removes the requirement. Observed
+2026-10-23 when CodeQL moved into `security.yml`: in
+netresearch/typo3-site-conformance-skill the dropped `Analyze (actions)` left
+no security check required until `All security checks` was added.
