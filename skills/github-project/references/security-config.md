@@ -760,11 +760,14 @@ an event gate must not block the merge queue.
 
 A gate that narrows this — allowing `skipped` only for named jobs, so that a
 scanner which silently skipped fails the gate — must still allow the shared
-workflows that skip themselves on `merge_group`. `betterleaks.yml` and
-`zizmor.yml` in `netresearch/.github` do so; they scanned the same commits on
-the pull request. Allow their skip on `merge_group` only. The keys of `needs`
-are the job IDs in YOUR workflow that call those reusables — `betterleaks` and
-`zizmor` in the `skill` and `php-module` templates, as below; a repository that
+workflows that skip themselves. In `netresearch/.github`, `betterleaks.yml` and
+`zizmor.yml` skip on `merge_group`, having scanned the same commits on the pull
+request; `dependency-review.yml` runs on `pull_request` only and skips on every
+other event, including `push` and `schedule`. Allow each skip on exactly those
+events. The keys of `needs`
+are the job IDs in YOUR workflow that call those reusables — `betterleaks`,
+`zizmor` and `dependency-review` in the `skill` and `php-module` templates, as
+below; a repository that
 named them differently uses its own. Add the clause as one more `or` beside the
 exceptions your gate already has:
 
@@ -777,12 +780,14 @@ exceptions your gate already has:
     jq -e --arg event "$EVENT_NAME" '
       length > 0 and all(to_entries[];
         .value.result == "success" or
-        (.key | IN("betterleaks", "zizmor")) and $event == "merge_group" and .value.result == "skipped"
+        (.key | IN("betterleaks", "zizmor")) and $event == "merge_group" and .value.result == "skipped" or
+        .key == "dependency-review" and $event != "pull_request" and .value.result == "skipped"
       )' <<< "$RESULTS"
 ```
 
-Without the exception the gate passes every pull request and fails every queue
-run, so nothing can merge through the queue. Observed 2026-10-23 on
+Without the `merge_group` exception the gate passes every pull request and
+fails every queue run, so nothing can merge through the queue; without the
+`dependency-review` one it also fails every push to the default branch. Observed 2026-10-23 on
 netresearch/typo3_http_guard: the queue ejected #25 fifteen times until #26
 added the exception.
 
