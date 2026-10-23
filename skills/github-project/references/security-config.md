@@ -368,8 +368,10 @@ to the reusable `codeql.yml` took a consumer repository from 14 open
 Scorecard's Pinned-Dependencies check treats every `uses:` line without a commit
 SHA alike, the organisation's own `netresearch/*` reusables at `@main`
 included. Its [check documentation](https://github.com/ossf/scorecard/blob/main/docs/checks.md#pinned-dependencies)
-names no exception for first-party actions or reusable workflows, so each new
-reusable call raises a new alert. Under the `@main` policy these alerts are
+speaks of workflows "used in building and releasing your project", but the
+alerts below also hit workflows that build nothing (`lint.yml`, `labeler.yml`,
+`auto-merge-deps.yml`). The documentation names no exception for first-party
+actions or reusable workflows, so each new reusable call raises a new alert. Under the `@main` policy these alerts are
 false positives: dismiss them as `won't fix`, never pin.
 
 Measured 2026-10-22: 40 `PinnedDependenciesID` alerts dismissed that day in
