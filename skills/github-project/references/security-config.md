@@ -758,6 +758,25 @@ result evaluation is a green rubber stamp, and requiring it would be worse than
 requiring nothing. Treating `skipped` as passing is deliberate: jobs skipped by
 an event gate must not block the merge queue.
 
+A gate that narrows this — allowing `skipped` only for named jobs, so that a
+scanner which silently skipped fails the gate — must still allow the shared
+workflows that skip themselves on `merge_group`. `betterleaks.yml` and
+`zizmor.yml` in `netresearch/.github` do so; they scanned the same commits on
+the pull request. Allow their skip on `merge_group` only:
+
+```bash
+jq -e --arg event "$EVENT_NAME" '
+  length > 0 and all(to_entries[];
+    .value.result == "success" or
+    (.key == "secret-scanning" and $event == "merge_group" and .value.result == "skipped")
+  )' <<< "$RESULTS"
+```
+
+Without the exception the gate passes every pull request and fails every queue
+run, so nothing can merge through the queue. Observed 2026-10-23 on
+netresearch/typo3_http_guard: the queue ejected #25 six times until #26 added
+the exception.
+
 ### Before changing a required-context list
 
 1. Back up the ruleset: `gh api repos/OWNER/REPO/rulesets/ID > backup.json`.
@@ -767,3 +786,14 @@ an event gate must not block the merge queue.
 3. Apply with `gh api -X PUT repos/OWNER/REPO/rulesets/ID --input new.json`.
 4. Read the effective list back from `rules/branches/BRANCH` and confirm the
    next pull request reports every newly required context.
+
+Removing or renaming a workflow changes the list too, whether or not you touch
+the ruleset. Before the change merges, read the required contexts of every
+repository that runs the workflow — the ruleset and the classic branch
+protection (`branches/BRANCH/protection/required_status_checks`), since either
+can hold them — and replace each context that disappears with its successor in
+the same step. A required context that never reports again wedges the queue;
+one dropped without a successor silently removes the requirement. Observed
+2026-10-23 when CodeQL moved into `security.yml`: in
+netresearch/typo3-site-conformance-skill the dropped `Analyze (actions)` left
+no security check required until `All security checks` was added.
