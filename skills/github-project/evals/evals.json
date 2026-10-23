@@ -496,5 +496,30 @@
                 "Re-run the nightly workflow; the PyPI outage should be over."
             ]
         }
+    },
+  {
+    "name": "bot_detection_author_and_actor",
+    "prompt": "Our auto-merge workflow runs on pull_request_target and approves and merges when github.event.pull_request.user.login is renovate[bot]. Is that check enough?",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "github\\.actor"
+      },
+      {
+        "type": "content",
+        "pattern": "(human|maintainer|someone|user).{0,60}(push|reopen)"
+      },
+      {
+        "type": "content",
+        "pattern": "(both|AND|as well as|together with)"
+      }
+    ],
+    "samples": {
+      "passing": "No. user.login is only the PR author, so a human who pushes to the renovate/* branch or reopens the PR still triggers the job with renovate[bot] as author, and the workflow approves and merges unreviewed commits. Require both: user.login AND github.actor must be the bot. zizmor flags the github.actor half (bot-conditions); suppress it inline because it only narrows the author check.",
+      "failing": [
+        "Yes. user.login is the right field; github.actor changes on re-runs, so do not use it.",
+        "Switch the check to github.actor == 'renovate[bot]', which is more precise than the author."
+      ]
     }
+  }
 ]
