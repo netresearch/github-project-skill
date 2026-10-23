@@ -763,9 +763,10 @@ scanner which silently skipped fails the gate — must still allow the shared
 workflows that skip themselves on `merge_group`. `betterleaks.yml` and
 `zizmor.yml` in `netresearch/.github` do so; they scanned the same commits on
 the pull request. Allow their skip on `merge_group` only. The keys of `needs`
-are the job IDs in YOUR workflow that call those reusables
-(`secret-scanning` and `zizmor` below), so use your own; add the clause as one
-more `or` beside the exceptions your gate already has:
+are the job IDs in YOUR workflow that call those reusables — `betterleaks` and
+`zizmor` in the `skill` and `php-module` templates, as below; a repository that
+named them differently uses its own. Add the clause as one more `or` beside the
+exceptions your gate already has:
 
 ```yaml
 - name: Fail unless every job succeeded or skipped where allowed
@@ -776,7 +777,7 @@ more `or` beside the exceptions your gate already has:
     jq -e --arg event "$EVENT_NAME" '
       length > 0 and all(to_entries[];
         .value.result == "success" or
-        (.key | IN("secret-scanning", "zizmor")) and $event == "merge_group" and .value.result == "skipped"
+        (.key | IN("betterleaks", "zizmor")) and $event == "merge_group" and .value.result == "skipped"
       )' <<< "$RESULTS"
 ```
 
