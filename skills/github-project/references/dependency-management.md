@@ -244,9 +244,17 @@ Whoever pushed to the branch owns the PR from then on: track it to merge, or clo
 - Apply the rebase label (`rebaseLabel`, default `rebase`): Renovate then regenerates its commit even on a modified branch, which discards the foreign commit.
 - For another bot that routinely commits on top of Renovate PRs, list its commit-author email (or a glob or regex matching it) in `gitIgnoredAuthors`, so its pushes do not count as a modification.
 
-### Ticking Renovate's rebase box from the CLI
+### Asking Renovate to rebase from the CLI
 
-Every Renovate PR body carries the line `- [ ] <!-- rebase-check -->If you want to rebase/retry this PR, check this box`. Ticking it asks Renovate to rebase or retry the branch, and it works without the web UI: replace `- [ ] <!-- rebase-check -->` with `- [x] <!-- rebase-check -->` in the body and PATCH the body back. Replace only the first occurrence, and keep the body in a file rather than on the command line, because Renovate bodies with release notes run to tens of kilobytes:
+Add the rebase label first. It touches no PR body, while ticking the box below means rewriting a bot-authored body, which republishes text you did not write:
+
+```bash
+gh pr edit 123 --repo OWNER/REPO --add-label rebase
+```
+
+`gh pr edit --add-label` fails when the label does not exist in the repository: create it once with `gh label create rebase --repo OWNER/REPO`, or use the name the repository configures in `rebaseLabel` (default `rebase`). Renovate removes the label when it rebases; the removed label and a new commit on the branch are the confirmation.
+
+Where a label cannot be used, tick the rebase box instead. Every Renovate PR body carries the line `- [ ] <!-- rebase-check -->If you want to rebase/retry this PR, check this box`. Ticking it asks Renovate to rebase or retry the branch, and it works without the web UI: replace `- [ ] <!-- rebase-check -->` with `- [x] <!-- rebase-check -->` in the body and PATCH the body back. Replace only the first occurrence, and keep the body in a file rather than on the command line, because Renovate bodies with release notes run to tens of kilobytes:
 
 ```bash
 R=OWNER/REPO; N=123
@@ -266,7 +274,7 @@ grep -qF -- '- [x] <!-- rebase-check -->' body.md \
 gh api "repos/$R/pulls/$N" --jq .body | grep -cF -- '- [x] <!-- rebase-check -->'
 ```
 
-Renovate acts on its next run, which can be minutes or hours away. Until then `pr-status.sh` keeps reporting the branch as behind its base; that is the expected state, not a failed tick. Do not tick again and do not poll: the read-back above is the confirmation, and the rebased push is what wakes the PR's checks.
+For both the label and the box, Renovate acts on its next run, which can be minutes or hours away. Until then `pr-status.sh` keeps reporting the branch as behind its base; that is the expected state, not a failed request. Do not label or tick again and do not poll: the label on the PR or the read-back above is the confirmation that the request is in, and the rebased push is what wakes the PR's checks.
 
 ### A version that lives outside an image tag needs a custom manager
 
