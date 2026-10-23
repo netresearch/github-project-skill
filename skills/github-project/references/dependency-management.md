@@ -459,7 +459,16 @@ permissions: {}
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'renovate[bot]'
+    # The bot must be the PR author (user.login) AND the actor of the event
+    # (github.actor). The author alone lets a human push to a bot branch, or a
+    # human reopen, get approved and merged unreviewed. github.actor keeps the
+    # original actor on a re-run. zizmor's bot-conditions audit flags every
+    # github.actor check; here it only narrows the author check.
+    if: >- # zizmor: ignore[bot-conditions] -- in addition to the author check
+      (github.event.pull_request.user.login == 'dependabot[bot]' ||
+       github.event.pull_request.user.login == 'renovate[bot]') &&
+      (github.actor == 'dependabot[bot]' ||
+       github.actor == 'renovate[bot]')
     permissions:
       contents: write
       pull-requests: write
@@ -511,11 +520,16 @@ permissions:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    # Use github.event.pull_request.user.login (not github.actor)
-    # because actor can change on synchronize/rerun events
-    if: >-
-      github.event.pull_request.user.login == 'dependabot[bot]' ||
-      github.event.pull_request.user.login == 'renovate[bot]'
+    # The bot must be the PR author (user.login) AND the actor of the event
+    # (github.actor). The author alone lets a human push to a bot branch, or a
+    # human reopen, get approved and merged unreviewed. github.actor keeps the
+    # original actor on a re-run. zizmor's bot-conditions audit flags every
+    # github.actor check; here it only narrows the author check.
+    if: >- # zizmor: ignore[bot-conditions] -- in addition to the author check
+      (github.event.pull_request.user.login == 'dependabot[bot]' ||
+       github.event.pull_request.user.login == 'renovate[bot]') &&
+      (github.actor == 'dependabot[bot]' ||
+       github.actor == 'renovate[bot]')
     steps:
       - name: Auto-approve PR
         run: gh pr review --approve "$PR_URL"
@@ -717,20 +731,25 @@ run: gh pr merge --auto --squash "$PR_URL"  # if allow_squash_merge: true
 run: gh pr merge --auto --rebase "$PR_URL"  # if allow_rebase_merge: true
 ```
 
-### `github.actor` Unreliable for Bot Detection
+### Bot Detection Needs the Author AND the Actor
 
-**Problem:** Auto-merge workflow uses `github.actor == 'dependabot[bot]'` but the workflow doesn't trigger on `synchronize` or `rerun` events.
+**Problem:** A check on one field lets the wrong pull request through.
 
-**Cause:** `github.actor` reflects who triggered the event, not who opened the PR. On `synchronize` events (new push) or manual reruns, the actor may change to the person who triggered the rerun.
+**Cause:** `github.event.pull_request.user.login` is the PR author and never changes. `github.actor` is whoever caused the event: a human who pushes to a `renovate/*` branch or reopens a bot PR becomes the actor, while the author stays the bot. On a re-run `github.actor` keeps the original actor; only `github.triggering_actor` changes ([GitHub contexts reference](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts)).
 
-**Solution:** Always use `github.event.pull_request.user.login` instead:
+- `github.actor` alone can be satisfied by a bot push on top of attacker commits; zizmor's `bot-conditions` audit flags it.
+- `user.login` alone approves and merges a human's push to a bot branch without review.
+
+**Solution:** Require both. zizmor still flags the `github.actor` half; suppress it inline after the block-scalar indicator, which keeps the parsed expression unchanged:
 ```yaml
-# ❌ Wrong - actor changes on synchronize/rerun
-if: github.actor == 'dependabot[bot]'
-
-# ✅ Correct - user.login is stable for the PR author
-if: github.event.pull_request.user.login == 'dependabot[bot]'
+if: >- # zizmor: ignore[bot-conditions] -- in addition to the author check
+  (github.event.pull_request.user.login == 'dependabot[bot]' ||
+   github.event.pull_request.user.login == 'renovate[bot]') &&
+  (github.actor == 'dependabot[bot]' ||
+   github.actor == 'renovate[bot]')
 ```
+
+The org reusable `netresearch/.github/.github/workflows/auto-merge-deps.yml` checks both. When a local workflow is replaced by a reusable, compare every condition of the old job with the reusable's: netresearch/docker-ftp-server#132 dropped a local `github.actor` check this way, and the reusable lacked it until netresearch/.github#526.
 
 ### The gitleaks Action Fails on Dependabot/Renovate PRs
 
