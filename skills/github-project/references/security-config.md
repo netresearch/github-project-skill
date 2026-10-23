@@ -363,6 +363,27 @@ to the reusable `codeql.yml` took a consumer repository from 14 open
 `actions/unpinned-tag` alerts to 0, while the publishing repository stayed at 24
 — it scans itself through default setup, which ignored the filter entirely.
 
+### Scorecard `PinnedDependenciesID` flags every `@main` org reusable
+
+Scorecard's Pinned-Dependencies check treats every `uses:` line without a commit
+SHA alike, the organisation's own `netresearch/*` reusables at `@main`
+included. Its [check documentation](https://github.com/ossf/scorecard/blob/main/docs/checks.md#pinned-dependencies)
+names no exception for first-party actions or reusable workflows, so each new
+reusable call raises a new alert. Under the `@main` policy these alerts are
+false positives: dismiss them as `won't fix`, never pin.
+
+Measured 2026-10-22: 40 `PinnedDependenciesID` alerts dismissed that day in
+`skill-repo-skill`, `git-workflow-skill` and `github-project-skill`. Read at
+each alert's commit, 39 were a `netresearch/*` reusable at `@main`; one was an
+`npm install -g` pin, which is a different finding.
+
+There is no per-path or per-dependency exclusion to configure instead.
+`scorecard-action` has no input for it, and Scorecard's
+[maintainer annotations](https://github.com/ossf/scorecard/blob/main/config/README.md)
+(`scorecard.yml`) attach a reason to a whole check, not to a path or a
+dependency. Their documentation says they give users "additional information"
+and does not say that they change the score or the code-scanning alerts.
+
 ### Dismissal comments are capped at 280 characters here too
 
 `PATCH /repos/OWNER/REPO/code-scanning/alerts/N` rejects a `dismissed_comment` over 280 characters with HTTP 422, exactly like the Dependabot endpoint ([`dependency-management.md`](dependency-management.md)) — but the reason enum is different: `false positive`, `won't fix`, `used in tests`, `mitigated` (with spaces, not underscores). The membership is not guesswork: sending an invalid value returns a 422 that lists all four, which is the cheapest way to check an enum you are unsure about.
