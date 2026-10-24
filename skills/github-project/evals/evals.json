@@ -536,14 +536,23 @@
       },
       {
         "type": "content",
-        "pattern": "push"
+        "pattern": "(scan|opengrep)[^.]{0,80}(gate|still run|keep)|(keep|still run)[^.]{0,40}(scan|opengrep)"
+      },
+      {
+        "type": "content",
+        "pattern": "re-?run[^.]{0,100}(cannot|can't|will not|won't|never|same deleted|deleted)"
+      },
+      {
+        "type": "content",
+        "pattern": "push[^.]{0,120}(scan|upload)|(scan|upload)[^.]{0,120}push"
       }
     ],
     "samples": {
       "passing": "GitHub deletes the gh-readonly-queue branch as soon as the queue merges, so the upload races the deletion and the ref is gone. A re-run targets the same deleted branch, so it cannot pass. Keep the scan as the queue gate and skip only the upload with if: always() && github.event_name != 'merge_group'. Then make sure the push run on main still runs the scan and uploads, even if a preflight skips push runs after a green merge_group run.",
       "failing": [
         "The token lacks security-events: write. Add that permission and re-run the job.",
-        "Pin github/codeql-action to an older version; the upload step has a known bug."
+        "Pin github/codeql-action to an older version; the upload step has a known bug.",
+        "Skip the whole SAST job on merge_group with if: github.event_name != 'merge_group', then re-run the failed queue run once the change is merged."
       ]
     }
   }
