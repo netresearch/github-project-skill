@@ -521,5 +521,30 @@
         "Switch the check to github.actor == 'renovate[bot]', which is more precise than the author."
       ]
     }
+  },
+  {
+    "name": "merge_group_sarif_upload_ref_not_found",
+    "prompt": "After every merge through our merge queue, the SAST job on the merge commit is red. The Opengrep scan itself passes; the 'Upload SARIF' step fails with: ref 'refs/heads/gh-readonly-queue/main/pr-93-abc' not found. Re-running the job fails the same way. What is going on and how do we fix it?",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(delet|removed|gone).{0,80}(gh-readonly-queue|queue (branch|ref))|(gh-readonly-queue|queue (branch|ref)).{0,80}(delet|removed|gone)"
+      },
+      {
+        "type": "content",
+        "pattern": "github\\.event_name != 'merge_group'|skip.{0,40}upload.{0,40}merge_group|upload.{0,40}(off|skip|disable).{0,40}merge_group"
+      },
+      {
+        "type": "content",
+        "pattern": "push"
+      }
+    ],
+    "samples": {
+      "passing": "GitHub deletes the gh-readonly-queue branch as soon as the queue merges, so the upload races the deletion and the ref is gone. A re-run targets the same deleted branch, so it cannot pass. Keep the scan as the queue gate and skip only the upload with if: always() && github.event_name != 'merge_group'. Then make sure the push run on main still runs the scan and uploads, even if a preflight skips push runs after a green merge_group run.",
+      "failing": [
+        "The token lacks security-events: write. Add that permission and re-run the job.",
+        "Pin github/codeql-action to an older version; the upload step has a known bug."
+      ]
+    }
   }
 ]
