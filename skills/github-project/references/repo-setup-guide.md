@@ -182,7 +182,10 @@ project. complexipy is an independent tool, not SonarCloud's analyzer. On
 re-analysis per attempt; SonarCloud's result on the PR stays the authority.
 
 To raise one rule's threshold for one project, give the project its own quality profile
-that inherits the profile it uses now, and override only that rule. Four `POST` calls to
+that inherits the profile it uses now, and override only that rule. The token needs the
+organization's `Administer Quality Profiles` permission: `qualityprofiles/search?organization=<org>`
+answers `"actions":{"create":true}` when it has it. Assigning the profile to a project also
+works with the project's `Administer` permission. Four `POST` calls to
 `https://sonarcloud.io/api/qualityprofiles/…`, each with `Authorization: Bearer <token>`:
 
 1. `create` with `name`, `language` and `organization`. The new key is in `.profile.key`.
@@ -198,7 +201,8 @@ Read the result back from `qualityprofiles/search?project=<projectKey>&organizat
 which lists `parentKey`. `qualityprofiles/show` returns `parentKey: null` for a profile
 that has a parent, so it cannot confirm step 2. In
 `rules/show?key=<rule>&organization=<org>&actives=true` the override carries
-`inherit: OVERRIDES`. Issues of that rule close with the next analysis of the branch.
+`inherit: OVERRIDES`. The next analysis of the branch closes the issues that the new
+threshold no longer raises; issues above the new threshold stay open.
 (`netresearch/t3x-nr-llm`, 2026-10-25: `php:S1142` from 3 to 9 returns; after the 22
 methods above 9 were split, `main` went from 278 issues of that rule to 0.)
 
