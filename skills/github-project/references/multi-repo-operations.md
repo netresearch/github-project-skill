@@ -316,6 +316,34 @@ Where probing is genuinely the only option, do not name the empty bucket
 "absent". Call it "none of the paths checked" and print which ones were checked,
 so the next reader can see the hole instead of inheriting the number.
 
+### Reading one directory's files across the org, 20 repos per request
+
+When the question is about file *content* in a known directory (which
+workflows call action X), one `contents` call per file costs thousands of
+requests across a fleet. GraphQL reads a directory's tree with every blob's
+text, and one query can carry 20 repositories as aliases:
+
+```graphql
+query {
+  r0: repository(owner: "OWNER", name: "REPO_A") {
+    object(expression: "HEAD:.github/workflows") {
+      ... on Tree { entries { name object { ... on Blob { text isTruncated } } } }
+    }
+  }
+  r1: repository(owner: "OWNER", name: "REPO_B") { ... }
+}
+```
+
+`HEAD` is the default branch. A repository without the directory returns
+`object: null`; an oversized blob returns `isTruncated: true`, so count those
+separately rather than as "no match". Count failed requests too: a sweep that
+drops a failed batch reports its 20 repositories as clean.
+
+**Measured:** 245 active repositories in 13 GraphQL requests plus one
+`gh repo list`, 0 failed batches. Org code
+search had returned 0 for the same string, and so had its positive control
+against a repository known to contain it.
+
 ## Cache-Safety for Batch Operations
 
 When iterating across many local worktrees, it's easy to edit an installed skill/plugin cache by mistake. Before any write in a multi-repo loop:
