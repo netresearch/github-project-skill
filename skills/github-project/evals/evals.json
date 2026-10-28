@@ -555,5 +555,38 @@
         "Skip the whole SAST job on merge_group with if: github.event_name != 'merge_group', then re-run the failed queue run once the change is merged."
       ]
     }
+  },
+  {
+    "name": "org_wide_workflow_content_sweep_without_code_search",
+    "prompt": "We need every workflow in our GitHub organisation (about 250 repositories) that calls github/issue-labeler. Org-wide code search returns 0 results. How do we get a list we can trust, without one API call per workflow file?",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(known|control|baseline)[^.]{0,80}(repo|string|positive)|positive control"
+      },
+      {
+        "type": "content",
+        "pattern": "graphql"
+      },
+      {
+        "type": "content",
+        "pattern": "HEAD:\\.github/workflows|object\\(expression"
+      },
+      {
+        "type": "content",
+        "pattern": "(alias|batch)[^.]{0,80}repo"
+      },
+      {
+        "type": "content",
+        "pattern": "(fail|error)[^.]{0,80}(batch|request)[^.]{0,80}(count|report|clean)"
+      }
+    ],
+    "samples": {
+      "passing": "Treat the 0 as a search failure: run a positive control against a repository known to contain the string; if that also returns 0, the index is lying. Enumerate structurally with GraphQL instead: one query carries 20 repositories as aliases, each reading object(expression: \"HEAD:.github/workflows\") with every blob's text, so 250 repositories take about 13 requests. Count failed batch requests and report them, because a dropped batch would otherwise report its repositories as clean.",
+      "failing": [
+        "Code search returned 0, so no workflow in the organisation uses github/issue-labeler.",
+        "Loop over every repository, list .github/workflows with gh api contents, and fetch each file with a separate contents call."
+      ]
+    }
   }
 ]
