@@ -578,11 +578,19 @@
       },
       {
         "type": "content",
+        "pattern": "(match|filter|grep|contain|search)[^.]{0,80}issue-labeler"
+      },
+      {
+        "type": "content",
+        "pattern": "(list|report|print)[^.]{0,60}(repo|repositor)[^.]{0,60}(file|path|workflow)"
+      },
+      {
+        "type": "content",
         "pattern": "(fail|error)[^.]{0,80}(batch|request)[^.]{0,80}(count|report|clean)"
       }
     ],
     "samples": {
-      "passing": "Treat the 0 as a search failure: run a positive control against a repository known to contain the string; if that also returns 0, the index is lying. Enumerate structurally with GraphQL instead: one query carries 20 repositories as aliases, each reading object(expression: \"HEAD:.github/workflows\") with every blob's text, so 250 repositories take about 13 requests. Count failed batch requests and report them, because a dropped batch would otherwise report its repositories as clean.",
+      "passing": "Treat the 0 as a search failure: run a positive control against a repository known to contain the string; if that also returns 0, the index is lying. Enumerate structurally with GraphQL instead: one query carries 20 repositories as aliases, each reading object(expression: \"HEAD:.github/workflows\") with every blob's text, so 250 repositories take about 13 requests. Filter each blob's text for github/issue-labeler and list every matching repository with its workflow file. Count failed batch requests and report them, because a dropped batch would otherwise report its repositories as clean.",
       "failing": [
         "Code search returned 0, so no workflow in the organisation uses github/issue-labeler.",
         "Loop over every repository, list .github/workflows with gh api contents, and fetch each file with a separate contents call."
