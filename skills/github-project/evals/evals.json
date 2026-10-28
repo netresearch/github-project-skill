@@ -662,5 +662,43 @@
         "Merge B into A's feature branch now to reduce the stack, then bypass the missing reviews on A."
       ]
     }
+  },
+  {
+    "name": "renovate_hash_lock_needs_pip_compile_header",
+    "prompt": "Our CI installs tools with `pip install --require-hashes -r requirements/tests.txt`. The file was made with `printf 'pytest\\nrequests\\n' | uv pip compile --generate-hashes --python-version 3.14 -o requirements/tests.txt -`. Renovate has never opened a PR for it and urllib3 is now flagged by Dependabot. How do we get Renovate to keep this lock current?",
+    "expected_output": "Point Renovate's pip-compile manager at the lock, move the package list into requirements/tests.in, and recompile with --option=value options and --output-file= so the header names the .in file; pip_requirements is not the fix, because hashin never adds a new transitive dependency.",
+    "expectations": [
+      "Recommends Renovate's pip-compile manager for the hash-locked file and does not recommend pip_requirements as the fix.",
+      "Recompiles from a named .in file with every option in --option=value form, including --output-file= instead of -o."
+    ],
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "pip-compile"
+      },
+      {
+        "type": "content",
+        "pattern": "\\.in\\b"
+      },
+      {
+        "type": "content",
+        "pattern": "--output-file="
+      },
+      {
+        "type": "content",
+        "pattern": "(stdin|`-`)[^.]{0,80}(\\b(is|are) (rejected|refused)|\\bunknown option|\\bfails)"
+      },
+      {
+        "type": "content",
+        "pattern": "hashin[^.]{0,160}(never|cannot|can't|not)[^.]{0,160}transitive"
+      }
+    ],
+    "samples": {
+      "passing": "Point Renovate's pip-compile manager at requirements/*.txt. It re-runs the command in the file header, so the header must name a real input file: move the package list into requirements/tests.in and compile with uv pip compile --generate-hashes --python-version=3.14 --output-file=requirements/tests.txt requirements/tests.in. The manager needs the --option=value form; -o and stdin (`-`) are rejected as unknown options. Do not use pip_requirements for this file: it updates hashes through hashin, which never adds a new transitive dependency, so a later --require-hashes install fails.",
+      "failing": [
+        "Add a pip_requirements managerFilePatterns entry for requirements/*.txt; Renovate will then update the pins and their hashes.",
+        "Renovate cannot maintain hash-pinned files; keep bumping requirements/tests.txt by hand."
+      ]
+    }
   }
 ]
