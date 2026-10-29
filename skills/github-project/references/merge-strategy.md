@@ -482,7 +482,7 @@ gh api "repos/$REPO/rules/branches/$BRANCH" --jq '
    | "\(.) (ruleset \($id))"]'
 ```
 
-The gate fails only when one of its jobs fails, so it does not block a finding from a scanner that runs report-only. zizmor is one: the shared `zizmor.yml` uploads its findings as SARIF and its job succeeds whatever it finds, so `All security checks` passes on a zizmor finding. betterleaks is not report-only (`--exit-code 2` fails its job on a finding). A report-only finding blocks a pull request only through a ruleset `code_scanning` rule, so dropping the individual contexts must not drop such a rule. Raised by CodeRabbit on netresearch/magento2-patches#8; the template comments were corrected in netresearch/.github#553.
+The gate fails when one of its jobs fails or is cancelled, so it does not block a finding from a scanner that runs report-only. zizmor is one: the shared `zizmor.yml` uploads its findings as SARIF and its job succeeds whatever it finds, so `All security checks` passes on a zizmor finding. betterleaks is not report-only (`--exit-code 2` fails its job on a finding). A report-only finding blocks a pull request only through a ruleset `code_scanning` rule, so dropping the individual contexts must not drop such a rule. Raised by CodeRabbit on netresearch/magento2-patches#8; the template comments were corrected in netresearch/.github#553.
 
 ### Required "SonarCloud Code Analysis" status absent — AutoScan never analyzed the PR
 
