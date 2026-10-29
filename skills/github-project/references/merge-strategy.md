@@ -482,6 +482,8 @@ gh api "repos/$REPO/rules/branches/$BRANCH" --jq '
    | "\(.) (ruleset \($id))"]'
 ```
 
+The gate fails when one of its jobs fails or is cancelled, so it does not block a finding from a scanner that runs report-only. zizmor is one: the shared `zizmor.yml` uploads its findings as SARIF and its job succeeds whatever it finds, so `All security checks` passes on a zizmor finding. betterleaks is not report-only (`--exit-code 2` fails its job on a finding). A report-only finding blocks a pull request only through a ruleset `code_scanning` rule, so dropping the individual contexts must not drop such a rule. Raised by CodeRabbit on netresearch/magento2-patches#8; the template comments were corrected in netresearch/.github#553.
+
 ### Required "SonarCloud Code Analysis" status absent — AutoScan never analyzed the PR
 
 The same "BLOCKED with every visible check green" symptom also occurs with a *correct* required-checks list when the context comes from an external app that never ran. SonarCloud AutoScan sometimes never analyzes a PR: its `sonarqubecloud` check-suite sits `queued` with zero check runs, so the required `SonarCloud Code Analysis` context never reports (and, as above, a missing context does not appear in `gh pr checks`). Diagnose:
