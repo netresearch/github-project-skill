@@ -596,5 +596,71 @@
         "Loop over every repository, list .github/workflows with gh api contents, and fetch each file with a separate contents call."
       ]
     }
+  },
+  {
+    "name": "critical_review_contract_survives_solo_template",
+    "prompt": "Our release policy requires two qualified human reviewers from the platform team. CODEOWNERS now names that team of eight, the classic protection endpoint says zero approvals, and a bot approved the PR. Can we merge or apply your solo-maintainer auto-approve template?",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(two|2).{0,50}(qualified|human)"
+      },
+      {
+        "type": "content",
+        "pattern": "(classic|protection)[^.]{0,100}ruleset|ruleset[^.]{0,100}(classic|protection)"
+      },
+      {
+        "type": "content",
+        "pattern": "(membership|members|CODEOWNERS)[^.]{0,100}(not|isn.t|doesn.t|eligib)"
+      },
+      {
+        "type": "content",
+        "pattern": "(bot|automated)[^.]{0,100}(cannot|not|doesn.t|does not)"
+      },
+      {
+        "type": "content",
+        "pattern": "(current.head|current revision|current commit)"
+      }
+    ],
+    "samples": {
+      "passing": "Keep the two qualified human approvals from the documented policy. Team membership and CODEOWNERS establish eligibility, not submitted approval. Read both classic protection and effective rulesets for the actual base, including paths and bypass actors; generic zero can coexist with a stricter team rule. A bot cannot satisfy a human requirement. Verify distinct non-author reviewers and actual approvals for the current revision. The solo template must not weaken this contract.",
+      "failing": [
+        "The team has eight members and a bot approved, so the two-reviewer rule is satisfied.",
+        "Classic protection says zero, so disable code-owner reviews and use solo auto-approval."
+      ]
+    }
+  },
+  {
+    "name": "stacked_critical_pr_guard_until_protected_retarget",
+    "prompt": "PR B depends on PR A and targets A's feature branch. Both are green. Our critical two-human reviewer ruleset only targets main. Should B be ready with auto-merge while A waits for review?",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(draft|merge guard)"
+      },
+      {
+        "type": "content",
+        "pattern": "(do not|never|no|without)[^.]{0,80}(auto.merge|enqueue)"
+      },
+      {
+        "type": "content",
+        "pattern": "(actual|temporary|feature).{0,50}base|base.{0,50}(branch|CODEOWNERS)"
+      },
+      {
+        "type": "content",
+        "pattern": "retarget[^.]{0,100}(main|protected)"
+      },
+      {
+        "type": "content",
+        "pattern": "(recheck|requalify|re.read)[^.]{0,100}(diff|rule|approval|check)"
+      }
+    ],
+    "samples": {
+      "passing": "Keep B draft as a merge guard and do not arm auto-merge or enqueue it: its temporary base is outside the main rules and supplies its own CODEOWNERS. Once A is actually merged, retarget B to protected main. Recheck its diff, effective rules, current checks and two qualified human approvals before marking ready and using the normal merge process. Never merge B into A's temporary feature branch.",
+      "failing": [
+        "Both are green, so leave B ready with auto-merge; main's rules protect it indirectly.",
+        "Merge B into A's feature branch now to reduce the stack, then bypass the missing reviews on A."
+      ]
+    }
   }
 ]
