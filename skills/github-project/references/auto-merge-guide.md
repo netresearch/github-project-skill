@@ -5,6 +5,12 @@
 
 Auto-merge for dependency bots and auto-approve for solo maintainers.
 
+These setups apply only after the project's documented review contract has
+been established. They must not replace required qualified human reviews with
+automated approval or reduce an existing reviewer count. Inspect enforcement on
+the actual PR base, including temporary stacked branches:
+[review-policy-contract.md](review-policy-contract.md).
+
 ## Solo Maintainer: Choose One of Two Setups
 
 GitHub does not let an author approve their own pull request. A repository with one maintainer therefore needs either an automated approver or no required approval; `required_approving_review_count: 1` without `pr-quality.yml` leaves an admin bypass as the only way to merge.
@@ -52,7 +58,7 @@ EOF
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | PR BLOCKED, checks pass | Check names don't match | Update branch protection to use exact names (e.g., `job (variant)` not `job`) |
-| PR BLOCKED, `reviewDecision: REVIEW_REQUIRED` | `require_code_owner_reviews: true` | Disable code owner reviews or add code owner approval |
+| PR BLOCKED, `reviewDecision: REVIEW_REQUIRED` | `require_code_owner_reviews: true` | Obtain the required qualified code owner approval; change requirements only under an authorized policy change |
 | PR BLOCKED, unresolved threads | `required_conversation_resolution: true` | Resolve all review threads before merging |
 | PR has pending reviewers | Requested reviewers haven't responded | Wait for all requested reviewers to submit their review |
 | Renovate PR not using bypass | Workflow racing with Renovate | Only approve in workflow; let Renovate enable auto-merge via `platformAutomerge` |

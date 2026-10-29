@@ -41,7 +41,7 @@ gh pr view PR --repo OWNER/REPO \
 
 ### Solo Maintainer: Stuck on REVIEW_REQUIRED
 
-Either `assets/pr-quality.yml.template` (auto-approve, `required_approving_review_count >= 1`) or `scripts/init-branch-protection.sh OWNER/REPO --solo` (approvals 0, conversation resolution kept) — `references/auto-merge-guide.md` compares both.
+First preserve the documented review contract (`references/review-policy-contract.md`). For an authorized solo-maintainer setup, either `assets/pr-quality.yml.template` (auto-approve, approvals >= 1) or `scripts/init-branch-protection.sh OWNER/REPO --solo` (approvals 0, conversation resolution kept) — `references/auto-merge-guide.md` compares both.
 
 ### Auto-merge Setup
 
@@ -110,6 +110,7 @@ State what a change does, not how good it is.
 | gh CLI commands | `references/gh-cli-reference.md` |
 | Polyglot CI checklists | `references/repo-setup-guide.md` |
 | Scorecard, CodeQL, security | `references/security-config.md` |
+| Qualified human approvals, actual base, stacked PR guard | `references/review-policy-contract.md` |
 | actionlint | `references/actionlint-guide.md` |
 | Actions upgrades, Node-runtime wave | `references/actions-upgrade-guide.md` |
 | Workflow bash pitfalls | `references/workflow-bash-patterns.md` |

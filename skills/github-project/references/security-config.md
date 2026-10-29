@@ -115,6 +115,7 @@ gh api repos/OWNER/REPO/branches/main/protection --jq 'if .enforce_admins.enable
 
 ## Branch Protection: Required Reviews
 
+- **Preserve the project's documented contract first:** reviewer count, human/qualification requirements and path coverage can exceed the generic baselines below. Compare them with effective rules on the PR's actual base before changing enforcement; see [review-policy-contract.md](review-policy-contract.md). A bot approval does not satisfy a qualified-human requirement.
 - **Team projects:** MUST have `required_approving_review_count >= 1`; reviews come from team members.
 - **Single-maintainer projects:** choose one of the two setups in `references/auto-merge-guide.md` → "Solo Maintainer: Choose One of Two Setups":
   - **A:** `required_approving_review_count >= 1` with the `pr-quality.yml` auto-approve workflow.
