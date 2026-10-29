@@ -62,3 +62,12 @@ repos:
     rev: v0.11.0.1
     hooks:
       - id: shellcheck
+
+  - repo: local
+    hooks:
+      - id: test-runner-capacity
+        name: Runner capacity collector behavioural tests
+        entry: bash tests/collect-runner-capacity.sh
+        language: system
+        pass_filenames: false
+        files: '^(skills/github-project/scripts/collect-runner-capacity\.py|tests/collect-runner-capacity\.(py|sh))$'

@@ -596,5 +596,42 @@
         "Loop over every repository, list .github/workflows with gh api contents, and fetch each file with a separate contents call."
       ]
     }
+  },
+  {
+    "name": "capacity_backlog_requires_readiness_and_full_scope",
+    "prompt": "Our Free-plan org has 17 workflow files. A sample peaks at 12 running jobs and has 69 queued job records. Can we call this acquisition-bound, halve the matrix, or add more jobs to finish faster? We also have retried runs and old PR heads.",
+    "assertions": [
+      {
+        "type": "content",
+        "pattern": "(needs|dependenc|approval)"
+      },
+      {
+        "type": "content",
+        "pattern": "(below|12|peak)[^.]{0,100}(not|cannot|insufficient|doesn.t)"
+      },
+      {
+        "type": "content",
+        "pattern": "(pag(e|inat)|complete)[^.]{0,80}(attempt|run|job)"
+      },
+      {
+        "type": "content",
+        "pattern": "(obsolete|old head|superseded)"
+      },
+      {
+        "type": "content",
+        "pattern": "critical path"
+      },
+      {
+        "type": "content",
+        "pattern": "(support.adjusted|effective (cap|allocation)|actual (cap|allocation))"
+      }
+    ],
+    "samples": {
+      "passing": "A below-cap peak does not prove acquisition-bound behavior: queued jobs may wait for needs, dependencies or approvals. Collect complete runs and jobs with pagination and every attempt, preserving obsolete heads as cost while selecting the current head separately. Carried jobs in retries can have new IDs and old times. Verify the effective capacity and pool against the org allocation, then attribute the critical path. Preserve every required matrix cell and compare similar queue-pressure windows.",
+      "failing": [
+        "Peak 12 is below Free 20, so this is acquisition-bound: job count is irrelevant and we should parallelize more.",
+        "Halve the supported matrix and move slow tests to a schedule; fewer workflows always finish sooner."
+      ]
+    }
   }
 ]

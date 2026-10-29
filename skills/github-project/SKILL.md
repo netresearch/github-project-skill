@@ -113,7 +113,7 @@ State what a change does, not how good it is.
 | actionlint | `references/actionlint-guide.md` |
 | Actions upgrades, Node-runtime wave | `references/actions-upgrade-guide.md` |
 | Workflow bash pitfalls | `references/workflow-bash-patterns.md` |
-| Runner capacity, concurrency groups (schedule vs push) | `references/ci-runner-capacity.md` |
+| Runner capacity, concurrency groups (schedule vs push) | `references/ci-runner-capacity.md`, `scripts/collect-runner-capacity.py` |
 | No editorializing | `references/no-editorializing.md` |
 | Fork merge base | `references/pr-commit-cleanup.md` |
 | Multi-repo batch ops | `references/multi-repo-operations.md` |

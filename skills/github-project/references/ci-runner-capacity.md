@@ -3,95 +3,111 @@
 
 # CI Runner Capacity — Diagnose Before You Optimize
 
-A slow GitHub Actions pipeline is often **runner-acquisition-bound**, not
-job-duration-bound. Before speeding up jobs or trimming the matrix, measure
-which one you actually have — the fixes are different, and the common one
-(trim job count) buys nothing under the common cause.
+A PR-to-release delay can contain review wait, workflow concurrency wait,
+dependency wait, runner acquisition, execution, artifact transfer and publication.
+Measure the complete path before changing parallelism. A below-cap peak alone
+cannot distinguish an idle dependency graph from delayed runner acquisition.
 
-## The concurrency cap
+## Establish the scope and quality contract
 
-GitHub-hosted runners are capped **org-wide**, by plan, regardless of repository
-visibility (public repos get no relief):
+Inventory workflow **files**, triggered **runs**, expanded **jobs**, assigned
+runner records and actual executions separately. One file can expand into many
+matrix cells; several trigger events can repeat the same work. Count the PR,
+merge-group and main graphs independently, including reusable workflows,
+`needs`, conditions, environments, concurrency groups and publication triggers.
+Preserve the required checks, supported matrix, suites, thresholds and qualified
+review policy while optimizing.
 
-| Plan | Concurrent jobs (standard runners) |
-|---|---|
-| Free | 20 |
-| Pro | 40 |
-| Team | 60 |
-| Enterprise | 500 |
+GitHub-hosted standard concurrency is shared by the owning account, across
+repositories. Check the [current limits](https://docs.github.com/en/actions/reference/limits)
+and the account's actual support-adjusted allocation and runner types. A plan's
+published default is a reference, not proof of the effective cap. Larger,
+macOS, GPU and self-hosted pools can have different constraints. Do not infer
+pool membership from a runner ID alone.
 
-Source: <https://docs.github.com/en/actions/reference/limits>. One PR push can
-easily trigger 40–50 jobs across CI + checks + e2e, so a single PR on the Free
-plan needs multiple full waves of the org's *entire* runner allotment — shared
-with every other repo.
+## Collect a reproducible cohort
 
-## The two regimes, and why the distinction decides the fix
-
-- **Cap-bound** (peak concurrency ≈ the cap): jobs wait on *each other*.
-  Trimming job count and fanning out less both help.
-- **Acquisition-bound** (peak concurrency **below** the cap, yet jobs still
-  queue): each job waits individually for GitHub to hand it a machine on the
-  shared pool. Job count is irrelevant — N jobs and N/2 jobs finish at the same
-  time because they wait in parallel. **Fan-out is correct here**; trimming the
-  matrix buys ≈0 wall clock.
-
-The trap: concluding "our jobs are slow, cut the matrix" when peak concurrency
-was never near the cap. Measure first.
-
-## Measure it (one run)
+The read-only collector retains every API response with its endpoint and read
+times, explicit API hostname and authenticated principal, paginates repositories,
+runs and jobs, and reads every run attempt. It re-reads each run after its jobs
+and compares the final run inventory; a revision change makes the report incomplete.
+It never cancels, reruns, changes rules or enqueues anything.
 
 ```bash
-R=OWNER/REPO; RUN=RUN_ID
-# Per-job queue (started-created) vs run (completed-started), in minutes:
-gh api "repos/$R/actions/runs/$RUN/jobs?per_page=100" --jq '
-  .jobs[] | select(.conclusion!=null) |
-  { q: (((.started_at|fromdateiso8601)-(.created_at|fromdateiso8601))/60),
-    r: (((.completed_at|fromdateiso8601)-(.started_at|fromdateiso8601))/60),
-    n: .name } | "queue=\(.q|floor)m run=\(.r|floor)m \(.n)"'
+uv run skills/github-project/scripts/collect-runner-capacity.py \
+  --org OWNER --since 2026-10-28T00:00:00Z --until 2026-10-29T00:00:00Z \
+  > capacity.json
+# Or --repo OWNER/REPO (repeatable); optional --head OWNER/REPO=40_HEX_SHA
+jq '{complete, scope, errors, reads: (.reads | length)}' capacity.json
 ```
 
-**Count jobs, never runs.** A workflow *run* reports `status: queued` while its own jobs are already executing, so `actions/runs?status=in_progress` systematically under-reports throughput and `status=queued` over-reports the backlog. Measured 2026-09-18: a run-level sweep across 21 repositories returned "0 in progress, 37 queued" and read as a total stall; the job-level count over the same runs was **624 completed, 15 in progress, 237 queued** — the pipeline was working the whole time. Diagnosing a stall off the run-level filter sends you looking for an outage that is not there.
+The scope is runs **created** in the specified window, among repositories
+visible to the token. A prior-day run still executing can be absent: widen the
+window and check older active runs before claiming an organization-wide live
+backlog. Reads are non-atomic. Repository visibility and any failed page are
+coverage limits, never evidence that unseen work is absent. A run search at
+GitHub's 1,000-result ceiling returns incomplete: split the time window and
+collect again. `complete: true` means the declared cohort was collected without
+a detected error; it does not certify token visibility or an atomic snapshot.
 
-```bash
-# Backlog at the level that actually moves
-for R in $REPOS; do
-  gh api "repos/$R/actions/runs?per_page=15" --jq '.workflow_runs[] | select(.status=="queued" or .status=="in_progress") | .id' |
-  while read -r id; do
-    gh api "repos/$R/actions/runs/$id/jobs?per_page=100" --paginate --jq '.jobs[].status'
-  done
-done | sort | uniq -c
-```
+`--head` labels other heads as obsolete **without dropping their cost**.
+Without an explicit expected head, currency is unspecified. Keep older pushes,
+cancellations, duplicate events and reruns in the cost inventory; select the
+current qualifying head separately for the release decision. Run attempts can
+carry successful jobs with new administrative IDs and old execution times, so
+do not sum attempt records as fresh executions. Use step times, runner identity
+and logs to distinguish a real rerun from a carried result.
 
-Then compute two totals and the peak:
+Sources: [workflow runs](https://docs.github.com/en/rest/actions/workflow-runs),
+[workflow jobs](https://docs.github.com/en/rest/actions/workflow-jobs).
 
-- **Σ queue job-min vs Σ run job-min.** If queue ≫ run (e.g. 415 vs 50), the
-  pipeline is waiting for machines, not computing.
-- **Peak concurrent jobs** — sweep-line the `started_at`/`completed_at` events.
-  Below the plan cap ⇒ acquisition-bound.
+## Attribute time before choosing the lever
 
-Control for noise: queue time swings run-to-run with whatever else the org is
-running. Compare runs at *similar* queue pressure, not two arbitrary runs — a
-single congested run makes any change look worthless.
+- **Assigned jobs:** a nonzero runner ID shows assignment. Unassigned queued
+  records can still be waiting on `needs`, an environment approval or a
+  concurrency group. A run-level `queued` status can coexist with running jobs;
+  inspect jobs rather than treating every queued run as executor backlog.
+- **Waiting:** `started_at - created_at` is an observed interval, not a measured
+  executor queue. Establish when dependencies, conditions and approvals cleared
+  from the workflow graph and event/log evidence. If that moment is unavailable,
+  label readiness and executor wait unknown. Summed job waits overlap and do not
+  equal the PR's elapsed wait.
+- **Compute:** sum verified execution intervals for runner cost, grouped by
+  runtime/pool. Compute peak occupancy by sweeping start/end events over the
+  same observation window; separate historical carried records and incomplete
+  intervals. An observed peak is a lower bound under incomplete coverage.
+- **Critical path:** reconstruct dependencies and timestamps from PR creation
+  through qualified reviews, checks, merge queue, main checks, release evidence
+  and publication. Attribute each elapsed segment once. Contrast the critical
+  path with summed runner time; faster off-path work can reduce cost without
+  advancing publication.
 
-## What each regime's real fix is
+Only diagnose a capacity cap when **ready** jobs compete with concurrent work
+in the same constrained pool. A below-cap peak may instead mean dependencies,
+conditions, serialized concurrency groups, different pools or missing data; it
+does not establish acquisition-bound behavior or prove that job count is
+irrelevant. Observe comparable windows across other repositories before blaming
+GitHub's shared scheduler.
 
-- **Acquisition-bound** — the lever is **capacity**, a business decision, not a
-  workflow edit: upgrade the plan (Free 20 → Team 60), or add self-hosted
-  runners. (Self-hosted on a **public** repo runs untrusted PR code — a known
-  hazard; gate on `pull_request` from forks.) Note: a higher *cap* does not
-  necessarily lower *acquisition latency* on the shared pool — verify before
-  spending.
-- **Cap-bound** — trim job count (a matrix that removes a required-by-name
-  status check makes PRs un-mergeable, so change the ruleset first), gate
-  docs-only PRs, and add `concurrency: cancel-in-progress` for `pull_request`
-  (never for `merge_group`/push-to-main).
+## Choose and verify the change
 
-## Compute is still worth cutting
+Reduce duplicate/obsolete PR work and repeated setup first. Coalescing jobs can
+reduce acquisitions, but retain independent results, dependency/runtime
+contracts, deadlines and failure diagnostics. Never trim a supported matrix or
+move required tests to a schedule just to improve latency. More parallel jobs
+can help an available pool and delay other repositories under contention.
 
-Even when it buys no wall clock, halving job-minutes lowers org-wide queue
-pressure for *every* repo sharing the pool — so making jobs faster is the right
-first move; just don't promise a wall-clock win it can't deliver under the
-acquisition-bound regime.
+Use PR cancellation for superseded PR revisions; preserve admitted merge-group,
+main and release work. Tune merge-queue build concurrency against the entire
+organization's ready width, not the target repo alone. Change required-context
+names with their effective rules and validate every trigger path. Capacity
+purchases or self-hosted runners require their own cost/security decision and
+measured benefit; a higher cap does not guarantee faster acquisition.
+
+Compare before/after cohorts with the same quality contract and similar queue
+pressure. Report critical-path elapsed time, actual executions, runner-minutes,
+obsolete work, coverage gaps and uncertainty. One faster run is an observation,
+not a causal throughput result.
 
 ## Persist tool caches written inside `docker compose run --rm`
 
