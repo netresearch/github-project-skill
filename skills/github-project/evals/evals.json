@@ -624,13 +624,29 @@
       {
         "type": "content",
         "pattern": "(support.adjusted|effective (cap|allocation)|actual (cap|allocation))"
+      },
+      {
+        "type": "content",
+        "pattern": "(preserve|retain|keep)[^.]{0,80}(required|supported)[^.]{0,40}(matrix|cell)"
+      },
+      {
+        "type": "must_not",
+        "pattern": "(^|[.!?;][[:space:]]*)[[:space:]]*(([-*+]|[0-9]+[.)])[[:space:]]+)?(we[[:space:]]+(should|can|will|must)[[:space:]]+)?(halve[[:space:]]+((the|our)[[:space:]]+)?((supported|required)[[:space:]]+)?matrix|(reduce|trim|cut|drop|remove|skip)[[:space:]]+((the|our)[[:space:]]+)?((supported|required)[[:space:]]+)?matrix[[:space:]]+(coverage|cells|combinations))"
+      },
+      {
+        "type": "must_not",
+        "pattern": "(^|[.!?;][[:space:]]*)[[:space:]]*(([-*+]|[0-9]+[.)])[[:space:]]+)?(we[[:space:]]+(should|can|will|must)[[:space:]]+)?(add|increase|double)[^.?!]{0,80}(jobs|fan.?out|parallelism)[^.?!]{0,80}(because|since|as)[^.?!]{0,100}(peak[^.?!]{0,80}(below|[0-9])|below[^.?!]{0,80}(cap|limit))"
       }
     ],
     "samples": {
       "passing": "A below-cap peak does not prove acquisition-bound behavior: queued jobs may wait for needs, dependencies or approvals. Collect complete runs and jobs with pagination and every attempt, preserving obsolete heads as cost while selecting the current head separately. Carried jobs in retries can have new IDs and old times. Verify the effective capacity and pool against the org allocation, then attribute the critical path. Preserve every required matrix cell and compare similar queue-pressure windows.",
       "failing": [
         "Peak 12 is below Free 20, so this is acquisition-bound: job count is irrelevant and we should parallelize more.",
-        "Halve the supported matrix and move slow tests to a schedule; fewer workflows always finish sooner."
+        "Halve the supported matrix and move slow tests to a schedule; fewer workflows always finish sooner.",
+        "A below-cap peak does not prove acquisition-bound behavior: queued jobs may wait for needs, dependencies or approvals. Collect complete runs and jobs with pagination and every attempt, preserving obsolete heads as cost while selecting the current head separately. Carried jobs in retries can have new IDs and old times. Verify the effective capacity and pool against the org allocation, then attribute the critical path. Preserve every required matrix cell and compare similar queue-pressure windows. Halve the supported matrix.",
+        "A below-cap peak does not prove acquisition-bound behavior: queued jobs may wait for needs, dependencies or approvals. Collect complete runs and jobs with pagination and every attempt, preserving obsolete heads as cost while selecting the current head separately. Carried jobs in retries can have new IDs and old times. Verify the effective capacity and pool against the org allocation, then attribute the critical path. Preserve every required matrix cell and compare similar queue-pressure windows. We should reduce required matrix coverage.",
+        "A below-cap peak does not prove acquisition-bound behavior: queued jobs may wait for needs, dependencies or approvals. Collect complete runs and jobs with pagination and every attempt, preserving obsolete heads as cost while selecting the current head separately. Carried jobs in retries can have new IDs and old times. Verify the effective capacity and pool against the org allocation, then attribute the critical path. Preserve every required matrix cell and compare similar queue-pressure windows. Add more jobs because peak 12 is below the cap.",
+        "A below-cap peak does not prove acquisition-bound behavior: queued jobs may wait for needs, dependencies or approvals. Collect complete runs and jobs with pagination and every attempt, preserving obsolete heads as cost while selecting the current head separately. Carried jobs in retries can have new IDs and old times. Verify the effective capacity and pool against the org allocation, then attribute the critical path. Preserve every required matrix cell and compare similar queue-pressure windows.\n- Halve the supported matrix."
       ]
     }
   },

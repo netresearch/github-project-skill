@@ -6,8 +6,10 @@
 # ///
 """Collect a read-only, non-atomic Actions cohort; never infer executor readiness.
 
-Run with Python 3.11+ and authenticated gh. Only GET requests are issued. Raw
-responses and read timestamps are retained in the JSON output, including errors.
+Run with Python 3.11+ and authenticated gh. Only GET requests are issued.
+Successful response bodies and read timestamps are retained in the JSON output.
+Failed reads retain endpoint, timestamps and a redacted error class, without
+subprocess arguments, stderr or credentials.
 """
 
 import argparse
@@ -74,6 +76,17 @@ def head_selection(head, expected_head):
     if head == expected_head:
         return "current"
     return "obsolete"
+
+
+def repository_identity(records):
+    return sorted((r["id"], r.get("full_name")) for r in records)
+
+
+def unique_repositories(repositories):
+    identities = {}
+    for repository in repositories:
+        identities.setdefault(repository.casefold(), repository)
+    return sorted(identities.values(), key=str.casefold)
 
 
 def latest_records(jobs):
@@ -264,8 +277,9 @@ class Collector:
 
     def organization_repositories(self, organization):
         path = f"orgs/{organization}/repos"
+        inventory = self.pages(path)
         repositories = []
-        for repository in self.pages(path):
+        for repository in inventory:
             full_name = repository.get("full_name")
             if not isinstance(full_name, str) or not re.fullmatch(
                 r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", full_name
@@ -273,7 +287,15 @@ class Collector:
                 self.errors.append({"endpoint": path, "error": "invalid_repository"})
                 continue
             repositories.append(full_name)
-        return repositories
+        return inventory, repositories
+
+    def verify_repository_inventory(self, organization, inventory):
+        path = f"orgs/{organization}/repos"
+        final_inventory = self.pages(path)
+        if repository_identity(inventory) != repository_identity(final_inventory):
+            self.errors.append(
+                {"endpoint": path, "error": "repository_inventory_changed"}
+            )
 
     def repository_runs(self, repository, since, until, expected_head):
         path = f"repos/{repository}/actions/runs"
@@ -292,14 +314,20 @@ class Collector:
     def collect(self, repositories, organization, since, until, heads):
         started = now()
         principal = self.principal()
+        inventory = []
         if organization:
-            repositories = self.organization_repositories(organization)
-        repositories = sorted(set(repositories))
+            inventory, repositories = self.organization_repositories(organization)
+        repositories = unique_repositories(repositories)
+        selected_heads = {name.casefold(): head for name, head in heads.items()}
         runs = []
         for repository in repositories:
             runs.extend(
-                self.repository_runs(repository, since, until, heads.get(repository))
+                self.repository_runs(
+                    repository, since, until, selected_heads.get(repository.casefold())
+                )
             )
+        if organization:
+            self.verify_repository_inventory(organization, inventory)
         return {
             "schemaVersion": 1,
             "scope": {

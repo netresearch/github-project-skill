@@ -27,11 +27,14 @@ pool membership from a runner ID alone.
 
 ## Collect a reproducible cohort
 
-The read-only collector retains every API response with its endpoint and read
-times, explicit API hostname and authenticated principal, paginates repositories,
+The read-only collector retains successful API response bodies with their endpoint
+and read times, explicit API hostname and authenticated principal, paginates repositories,
 runs and jobs, and reads every run attempt. It re-reads each run after its jobs
-and compares the final run inventory; a revision change makes the report incomplete.
+and compares the final run and organization-repository inventories; a revision
+or repository identity change makes the report incomplete.
 It never cancels, reruns, changes rules or enqueues anything.
+Failed reads retain the endpoint, read times and redacted error class. Subprocess
+arguments, stderr and credentials are not copied into the report.
 
 ```bash
 uv run skills/github-project/scripts/collect-runner-capacity.py \
@@ -50,7 +53,10 @@ GitHub's 1,000-result ceiling returns incomplete: split the time window and
 collect again. `complete: true` means the declared cohort was collected without
 a detected error; it does not certify token visibility or an atomic snapshot.
 
-`--head` labels other heads as obsolete **without dropping their cost**.
+`--head` matches repository names without regard to case and labels other heads
+as obsolete **without dropping their cost**. Repeated repository names that
+differ only in case are collected once; the first spelling and supplied head
+selectors remain in the scope record.
 Without an explicit expected head, currency is unspecified. Keep older pushes,
 cancellations, duplicate events and reruns in the cost inventory; select the
 current qualifying head separately for the release decision. Run attempts can

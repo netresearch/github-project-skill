@@ -6,10 +6,16 @@
 # ///
 """Offline behavioural probes: uv run tests/collect-runner-capacity.py."""
 
+import contextlib
 import copy
 import importlib.util
+import io
+import json
+import subprocess
+import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 from urllib.parse import parse_qs, urlsplit
 
 SOURCE = (
@@ -278,6 +284,166 @@ class CapacityTests(unittest.TestCase):
                 )
                 self.assertFalse(result["complete"])
                 self.assertEqual(result["errors"][0]["error"], "unverified_principal")
+
+    def test_repository_page_shift_is_incomplete_and_preserves_raw_reads(self):
+        inventory_pass = 0
+
+        def request(endpoint):
+            nonlocal inventory_pass
+            if endpoint == "user":
+                return {"id": 99, "login": "reader", "type": "User"}
+            if endpoint.startswith("orgs/"):
+                page = int(parse_qs(urlsplit(endpoint).query)["page"][0])
+                if page == 1:
+                    inventory_pass += 1
+                    first = 1 if inventory_pass == 1 else 2
+                    ids = range(first, first + 100)
+                else:
+                    ids = [102]
+                return [{"id": i, "full_name": f"acme/repo{i}"} for i in ids]
+            return {"workflow_runs": [], "total_count": 0}
+
+        result = MODULE.Collector(request).collect([], "acme", "start", "end", {})
+        self.assertFalse(result["complete"])
+        self.assertIn(
+            "repository_inventory_changed", [e["error"] for e in result["errors"]]
+        )
+        inventories = [
+            read for read in result["reads"] if read["endpoint"].startswith("orgs/")
+        ]
+        self.assertEqual(len(inventories), 4)
+        self.assertEqual(inventories[0]["body"][0]["id"], 1)
+        self.assertEqual(inventories[2]["body"][0]["id"], 2)
+
+    def test_repository_rename_with_same_id_is_incomplete(self):
+        inventory_reads = 0
+
+        def request(endpoint):
+            nonlocal inventory_reads
+            if endpoint == "user":
+                return {"id": 99, "login": "reader", "type": "User"}
+            if endpoint.startswith("orgs/"):
+                inventory_reads += 1
+                name = "acme/old" if inventory_reads == 1 else "acme/new"
+                return [{"id": 1, "full_name": name}]
+            return {"workflow_runs": [], "total_count": 0}
+
+        result = MODULE.Collector(request).collect([], "acme", "start", "end", {})
+        self.assertFalse(result["complete"])
+        self.assertEqual(result["errors"][0]["error"], "repository_inventory_changed")
+
+    def test_mixed_case_direct_lookup_deduplicates_api_cost_preserving_identity(self):
+        def request(endpoint):
+            path = urlsplit(endpoint).path.casefold()
+            if path == "user":
+                return {"id": 99, "login": "reader", "type": "User"}
+            if path.endswith("/actions/runs"):
+                return {"workflow_runs": [run_record()], "total_count": 1}
+            if path.endswith("/jobs"):
+                return {"jobs": [], "total_count": 0}
+            return run_record()
+
+        result = MODULE.Collector(request).collect(
+            ["Acme/Repo", "acme/repo"], None, "start", "end", {"ACME/REPO": "a" * 40}
+        )
+        self.assertTrue(result["complete"])
+        self.assertEqual(result["scope"]["repositories"], ["Acme/Repo"])
+        self.assertEqual(result["scope"]["expectedHeads"], {"ACME/REPO": "a" * 40})
+        self.assertEqual(len(result["runs"]), 1)
+        self.assertEqual(result["runs"][0]["headSelection"], "current")
+        self.assertEqual(result["runs"][0]["repository"], "Acme/Repo")
+        self.assertEqual(
+            sum("/actions/runs?" in read["endpoint"] for read in result["reads"]), 2
+        )
+
+    def test_cli_mixed_case_head_selection(self):
+        def get(_collector, endpoint):
+            path = urlsplit(endpoint).path.casefold()
+            if path == "user":
+                return {"id": 99, "login": "reader", "type": "User"}
+            if path.endswith("/actions/runs"):
+                return {"workflow_runs": [run_record()], "total_count": 1}
+            if path.endswith("/jobs"):
+                return {"jobs": [], "total_count": 0}
+            return run_record()
+
+        argv = [
+            "collector",
+            "--repo",
+            "Acme/Repo",
+            "--repo",
+            "acme/repo",
+            "--head",
+            f"ACME/REPO={'A' * 40}",
+            "--since",
+            "2026-10-29T00:00:00Z",
+            "--until",
+            "2026-10-29T01:00:00Z",
+        ]
+        output = io.StringIO()
+        with (
+            mock.patch.object(sys, "argv", argv),
+            mock.patch.object(MODULE.Collector, "gh_get", get),
+            contextlib.redirect_stdout(output),
+        ):
+            self.assertEqual(MODULE.main(), 0)
+        result = json.loads(output.getvalue())
+        self.assertEqual(len(result["runs"]), 1)
+        self.assertEqual(result["runs"][0]["headSelection"], "current")
+
+    def test_eval_rejects_contradictory_advice_but_allows_negation_and_bounded_fanout(
+        self,
+    ):
+        path = SOURCE.parents[1] / "evals/evals.json"
+        case = next(
+            case
+            for case in json.loads(path.read_text())
+            if case["name"] == "capacity_backlog_requires_readiness_and_full_scope"
+        )
+        self.assertTrue(
+            any(assertion["type"] == "must_not" for assertion in case["assertions"])
+        )
+        examples = [
+            ("Do not halve the supported matrix.", True),
+            ("We should not halve the supported matrix.", True),
+            ("Never reduce required matrix coverage.", True),
+            (
+                "After measured ready work and available capacity justify it, add bounded fan-out preserving every required cell.",
+                True,
+            ),
+            (
+                "Add two jobs because measured ready work and available capacity justify it while retaining every required matrix cell.",
+                True,
+            ),
+            ("Halve the supported matrix.", False),
+            ("\n- Halve the supported matrix.", False),
+            ("\n1. Halve the supported matrix.", False),
+            ("\n- Do not halve the supported matrix.", True),
+            ("\n1. Never reduce required matrix coverage.", True),
+            (
+                "\n- Add two jobs because measured ready work and available capacity justify it while retaining every required matrix cell.",
+                True,
+            ),
+            ("We should reduce required matrix coverage.", False),
+            ("Add more jobs because peak 12 is below the cap.", False),
+            ("\n- Add more jobs because peak 12 is below the cap.", False),
+        ]
+        for suffix, expected in examples:
+            with self.subTest(suffix=suffix):
+                answer = case["samples"]["passing"] + " " + suffix
+                verdicts = []
+                for assertion in case["assertions"]:
+                    hit = (
+                        subprocess.run(
+                            ["grep", "-qiE", assertion["pattern"]],
+                            input=answer,
+                            text=True,
+                            check=False,
+                        ).returncode
+                        == 0
+                    )
+                    verdicts.append(hit != (assertion["type"] == "must_not"))
+                self.assertEqual(all(verdicts), expected)
 
 
 if __name__ == "__main__":
