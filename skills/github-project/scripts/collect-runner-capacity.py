@@ -89,6 +89,31 @@ def unique_repositories(repositories):
     return sorted(identities.values(), key=str.casefold)
 
 
+def record_head(selected, repository, head):
+    identity, normalized = repository.casefold(), head.lower()
+    if identity in selected and selected[identity] != normalized:
+        raise ValueError(f"conflicting --head selectors for {repository}")
+    selected[identity] = normalized
+    return normalized
+
+
+def normalized_heads(heads):
+    selected = {}
+    for repository, head in heads.items():
+        record_head(selected, repository, head)
+    return selected
+
+
+def parse_head_selectors(values, repository_pattern):
+    heads, selected = {}, {}
+    for value in values:
+        match = re.fullmatch(f"({repository_pattern})=([a-fA-F0-9]{{40}})", value)
+        if not match:
+            raise ValueError("--head must be OWNER/REPO=40_HEX_SHA")
+        heads[match[1]] = record_head(selected, match[1], match[2])
+    return heads
+
+
 def latest_records(jobs):
     statuses = {}
     for job in jobs:
@@ -312,13 +337,13 @@ class Collector:
         return runs
 
     def collect(self, repositories, organization, since, until, heads):
+        selected_heads = normalized_heads(heads)
         started = now()
         principal = self.principal()
         inventory = []
         if organization:
             inventory, repositories = self.organization_repositories(organization)
         repositories = unique_repositories(repositories)
-        selected_heads = {name.casefold(): head for name, head in heads.items()}
         runs = []
         for repository in repositories:
             runs.extend(
@@ -386,12 +411,10 @@ def main():
         parser.error("--repo must be OWNER/REPO")
     if args.org and not re.fullmatch(r"[A-Za-z0-9_-]+", args.org):
         parser.error("invalid --org")
-    heads = {}
-    for value in args.head:
-        match = re.fullmatch(f"({repository_pattern})=([a-fA-F0-9]{{40}})", value)
-        if not match:
-            parser.error("--head must be OWNER/REPO=40_HEX_SHA")
-        heads[match[1]] = match[2].lower()
+    try:
+        heads = parse_head_selectors(args.head, repository_pattern)
+    except ValueError as error:
+        parser.error(str(error))
     try:
         start = datetime.fromisoformat(args.since)
         end = datetime.fromisoformat(args.until)

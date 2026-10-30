@@ -415,6 +415,10 @@ class CapacityTests(TestCase):
                 True,
             ),
             ("Halve the supported matrix.", False),
+            ("For speed, halve the supported matrix.", False),
+            ("For speed, do not halve the supported matrix.", True),
+            ("Do not, for speed, halve the supported matrix.", True),
+            ("For speed, we should not halve the supported matrix.", True),
             ("\n- Halve the supported matrix.", False),
             ("\n1. Halve the supported matrix.", False),
             ("\n- Do not halve the supported matrix.", True),
@@ -426,6 +430,18 @@ class CapacityTests(TestCase):
             ("We should reduce required matrix coverage.", False),
             ("Add more jobs because peak 12 is below the cap.", False),
             ("\n- Add more jobs because peak 12 is below the cap.", False),
+            ("Because peak 12 is below the cap, add more jobs.", False),
+            ("\n1. Because peak 12 is below the cap, add more jobs.", False),
+            ("Because peak 12 is below the cap, do not add more jobs.", True),
+            ("Because peak 12 is below the cap, we should not add more jobs.", True),
+            (
+                "If measurements confirm ready work and available capacity, add bounded fan-out preserving every required cell.",
+                True,
+            ),
+            (
+                "Because measured ready work and available capacity justify it, add two jobs preserving every required cell.",
+                True,
+            ),
         ]
         for suffix, expected in examples:
             with self.subTest(suffix=suffix):
@@ -443,6 +459,107 @@ class CapacityTests(TestCase):
                     )
                     verdicts.append(hit != (assertion["type"] == "must_not"))
                 self.assertEqual(all(verdicts), expected)
+
+    def test_cli_rejects_conflicting_heads_before_any_request(self):
+        first, second = "a" * 40, "b" * 40
+        pairs = [
+            [("Acme/Repo", first), ("Acme/Repo", second)],
+            [("Acme/Repo", second), ("Acme/Repo", first)],
+            [("Acme/Repo", first), ("acme/repo", second)],
+            [("acme/repo", second), ("Acme/Repo", first)],
+        ]
+        for selectors in pairs:
+            with self.subTest(selectors=selectors):
+                argv = [
+                    "collector",
+                    "--repo",
+                    "Acme/Repo",
+                    "--since",
+                    "2026-10-29T00:00:00Z",
+                    "--until",
+                    "2026-10-29T01:00:00Z",
+                ]
+                for repository, head in selectors:
+                    argv.extend(["--head", f"{repository}={head}"])
+                request = mock.Mock(
+                    side_effect=AssertionError("no API request permitted")
+                )
+                stderr = io.StringIO()
+                with (
+                    mock.patch.object(sys, "argv", argv),
+                    mock.patch.object(MODULE.Collector, "gh_get", request),
+                    contextlib.redirect_stderr(stderr),
+                    self.assertRaises(SystemExit) as result,
+                ):
+                    MODULE.main()
+                self.assertEqual(result.exception.code, 2)
+                self.assertIn("conflicting --head", stderr.getvalue())
+                request.assert_not_called()
+
+    def test_direct_conflicting_alias_heads_fail_before_any_request(self):
+        for pairs in [
+            [("Acme/Repo", "a" * 40), ("acme/repo", "b" * 40)],
+            [("acme/repo", "b" * 40), ("Acme/Repo", "a" * 40)],
+        ]:
+            with self.subTest(pairs=pairs):
+                request = mock.Mock(
+                    side_effect=AssertionError("no API request permitted")
+                )
+                collector = MODULE.Collector(request)
+                with self.assertRaisesRegex(ValueError, "conflicting --head"):
+                    collector.collect(["Acme/Repo"], None, "start", "end", dict(pairs))
+                request.assert_not_called()
+                self.assertEqual(collector.reads, [])
+
+    def test_cli_equivalent_duplicate_heads_preserve_scope_and_selection(self):
+        def get(_collector, endpoint):
+            path = urlsplit(endpoint).path.casefold()
+            if path == "user":
+                return {"id": 99, "login": "reader", "type": "User"}
+            if path.endswith("/actions/runs"):
+                return {"workflow_runs": [run_record()], "total_count": 1}
+            if path.endswith("/jobs"):
+                return {"jobs": [], "total_count": 0}
+            return run_record()
+
+        for repositories in [
+            ("Acme/Repo", "Acme/Repo"),
+            ("Acme/Repo", "acme/repo"),
+            ("acme/repo", "Acme/Repo"),
+        ]:
+            with self.subTest(repositories=repositories):
+                argv = [
+                    "collector",
+                    "--repo",
+                    "Acme/Repo",
+                    "--since",
+                    "2026-10-29T00:00:00Z",
+                    "--until",
+                    "2026-10-29T01:00:00Z",
+                ]
+                argv.extend(
+                    [
+                        "--head",
+                        f"{repositories[0]}={'a' * 40}",
+                        "--head",
+                        f"{repositories[1]}={'A' * 40}",
+                    ]
+                )
+                output = io.StringIO()
+                with (
+                    mock.patch.object(sys, "argv", argv),
+                    mock.patch.object(MODULE.Collector, "gh_get", get),
+                    contextlib.redirect_stdout(output),
+                ):
+                    self.assertEqual(MODULE.main(), 0)
+                result = json.loads(output.getvalue())
+                self.assertTrue(result["complete"])
+                self.assertEqual(len(result["runs"]), 1)
+                self.assertEqual(result["runs"][0]["headSelection"], "current")
+                self.assertEqual(
+                    result["scope"]["expectedHeads"],
+                    {repository: "a" * 40 for repository in repositories},
+                )
 
 
 if __name__ == "__main__":

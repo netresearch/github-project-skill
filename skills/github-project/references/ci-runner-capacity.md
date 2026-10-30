@@ -57,6 +57,9 @@ a detected error; it does not certify token visibility or an atomic snapshot.
 as obsolete **without dropping their cost**. Repeated repository names that
 differ only in case are collected once; the first spelling and supplied head
 selectors remain in the scope record.
+Conflicting SHA selectors for the same repository, including aliases that differ
+only in case, are rejected before any API request. Equivalent duplicate selectors
+are accepted.
 Without an explicit expected head, currency is unspecified. Keep older pushes,
 cancellations, duplicate events and reruns in the cost inventory; select the
 current qualifying head separately for the release decision. Run attempts can
