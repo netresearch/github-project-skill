@@ -13,9 +13,8 @@ import io
 import json
 import subprocess
 import sys
-import unittest
 from pathlib import Path
-from unittest import mock
+from unittest import TestCase, main, mock
 from urllib.parse import parse_qs, urlsplit
 
 SOURCE = (
@@ -49,7 +48,7 @@ def job(identity=1, **extra):
     }
 
 
-class CapacityTests(unittest.TestCase):
+class CapacityTests(TestCase):
     def test_pagination_reads_page_after_full_page_and_retains_provenance(self):
         def request(endpoint):
             page = int(parse_qs(urlsplit(endpoint).query)["page"][0])
@@ -447,4 +446,4 @@ class CapacityTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()
