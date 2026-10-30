@@ -415,6 +415,7 @@ def main():
         heads = parse_head_selectors(args.head, repository_pattern)
     except ValueError as error:
         parser.error(str(error))
+        return 2
     try:
         start = datetime.fromisoformat(args.since)
         end = datetime.fromisoformat(args.until)
