@@ -249,7 +249,7 @@ An `in_progress` row here with all visible checks green means the BLOCKED state 
 
 **When every gate checks out, re-query before diagnosing further — `mergeStateStatus` goes stale.** It can still read `BLOCKED` after the condition that set it is gone. GitHub documents the adjacent REST field `mergeable` as returning `null` while *"GitHub has started a background job to compute the mergeability. After giving the job time to complete, resubmit the request."* — `mergeStateStatus` has no such documented note, but was observed to lag the same way; treat the resubmit advice as applying to it too. The tell is a diagnosis that runs out of candidates: every required context present and successful, the approval in place, zero unresolved threads, no second suite in flight, `require_last_push_approval` off — and the state still `BLOCKED`. At that point the cheapest next step is not another ruleset query but the same query again; a second read minutes later returning `CLEAN` on an unchanged head SHA is the confirmation. Two guards make this safe rather than wishful: pin the head SHA across both reads so you know nothing moved, and never treat "probably stale" as merge authority — act on the `CLEAN` read, not on the assumption that produced it. (Observed on `netresearch/ofelia` [#827](https://github.com/netresearch/ofelia/pull/827): signatures, context presence, context conclusions and `require_last_push_approval` were each ruled out before the re-query returned `CLEAN` at the same SHA.)
 
-**When you are about to merge anyway, the REST merge call names the blocker.** `mergeStateStatus: BLOCKED` carries no reason, but a refused `gh api -X PUT repos/{owner}/{repo}/pulls/{n}/merge -f merge_method=merge` answers with one line such as `Required status check "betterleaks" is expected`. Observed on two Dependabot PRs that read clean on every queryable gate (required checks green or skipped, branch current, signatures verified, `reviewDecision: APPROVED`); the first guess, the `copilot_code_review` rule, was wrong, and the merge call named a required check that never ran for that actor. The call **merges** when nothing blocks, so it is a diagnosis only where a merge is already authorised — never a probe.
+**When you are about to merge anyway, the REST merge call names the blocker.** `mergeStateStatus: BLOCKED` carries no reason, but a refused `gh api -X PUT repos/{owner}/{repo}/pulls/{n}/merge -f merge_method=merge -f sha=<head SHA you checked>` answers with one line such as `Required status check "betterleaks" is expected`. Observed on two Dependabot PRs that read clean on every queryable gate (required checks green or skipped, branch current, signatures verified, `reviewDecision: APPROVED`); the first guess, the `copilot_code_review` rule, was wrong, and the merge call named a required check that never ran for that actor. The call **merges** when nothing blocks, so it is a diagnosis only where a merge is already authorised — never a probe.
 
 ### Never merge while a review is announced or in flight
 
@@ -346,8 +346,10 @@ netresearch/netresearch-branding-skill#110):
 2. **The `code_scanning` rule waiting for a CodeQL result** that default setup
    never produces for a fork head (previous section; same helper-branch
    workaround).
-3. **Workflow runs waiting for approval.** Fork runs need a maintainer's
-   approval after every new head SHA
+3. **Workflow runs waiting for approval.** Where the repository's approval
+   policy covers the contributor (Settings → Actions → "Approval for running
+   fork pull request workflows"), fork runs need a maintainer's approval after
+   every new head SHA
    (`gh api -X POST repos/{owner}/{repo}/actions/runs/{run_id}/approve`);
    `pr-status.sh` from the git-workflow skill prints those commands.
 
@@ -358,8 +360,11 @@ commits survive. A linear `git rebase -S` replays the contributor's commits
 without those merges and hits conflicts the merges had already resolved.
 
 ```bash
-# Run on a local branch tracking the fork head; BASE is the upstream base.
+# Run in a clone of the upstream repository, on a local branch tracking the
+# fork head. BASE is the PR's base branch on the upstream remote (origin here).
+git fetch origin
 BASE=origin/main
+OLD=$(git rev-parse HEAD)   # the fork head being rewritten; the push expects it
 declare -A map
 while read -r c; do
   args=()
@@ -371,14 +376,16 @@ while read -r c; do
     GIT_AUTHOR_EMAIL="$(git log -1 --format=%ae "$c")" \
     GIT_AUTHOR_DATE="$(git log -1 --format=%aD "$c")" \
     git commit-tree -S "${args[@]}" -m "$(git log -1 --format=%B "$c")" "$c^{tree}"
-  )
+  ) || { echo "signing failed for $c" >&2; break; }
 done < <(git rev-list --reverse --topo-order "$BASE..HEAD")
-new=${map[$(git rev-parse HEAD)]}
-git diff --quiet HEAD "$new" && git reset --keep "$new"   # same tree, now signed
+new=${map[$OLD]}
+[ -n "$new" ] && git diff --quiet HEAD "$new" && git reset --keep "$new"   # same tree, now signed
 ```
 
 Then bring the branch up to date with a signed `git merge -S "$BASE"` and push
-it to the fork with `--force-with-lease`. The committer of every re-created
+it to the fork with the rewritten SHA as the expected value,
+`git push <fork-remote> HEAD:<branch> --force-with-lease=<branch>:"$OLD"`, so a
+commit the contributor pushed meanwhile is not overwritten. The committer of every re-created
 commit is you, which is what signature verification checks; authorship and
 `Signed-off-by` trailers stay the contributor's.
 
