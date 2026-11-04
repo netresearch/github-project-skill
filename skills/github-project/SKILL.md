@@ -63,6 +63,13 @@ gh run view RUN_ID --repo OWNER/REPO --log-failed
 gh run rerun RUN_ID --repo OWNER/REPO
 ```
 
+**"CI failed on main" can be a fork PR.** A run's branch is the head branch, so a fork PR from a branch named `main` shows up as `main` in notifications and in `gh run list --branch main`. Its `pull_requests` array is empty. Before treating your `main` as red, read `event` and `head_repository`: `pull_request` from another repository is that PR's failure.
+
+```bash
+gh api repos/OWNER/REPO/actions/runs/RUN_ID \
+  --jq '{event, head_branch, head_repo: .head_repository.full_name}'
+```
+
 ### Security Quick Checks
 
 ```bash
