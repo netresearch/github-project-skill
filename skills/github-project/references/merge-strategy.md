@@ -249,6 +249,8 @@ An `in_progress` row here with all visible checks green means the BLOCKED state 
 
 **When every gate checks out, re-query before diagnosing further — `mergeStateStatus` goes stale.** It can still read `BLOCKED` after the condition that set it is gone. GitHub documents the adjacent REST field `mergeable` as returning `null` while *"GitHub has started a background job to compute the mergeability. After giving the job time to complete, resubmit the request."* — `mergeStateStatus` has no such documented note, but was observed to lag the same way; treat the resubmit advice as applying to it too. The tell is a diagnosis that runs out of candidates: every required context present and successful, the approval in place, zero unresolved threads, no second suite in flight, `require_last_push_approval` off — and the state still `BLOCKED`. At that point the cheapest next step is not another ruleset query but the same query again; a second read minutes later returning `CLEAN` on an unchanged head SHA is the confirmation. Two guards make this safe rather than wishful: pin the head SHA across both reads so you know nothing moved, and never treat "probably stale" as merge authority — act on the `CLEAN` read, not on the assumption that produced it. (Observed on `netresearch/ofelia` [#827](https://github.com/netresearch/ofelia/pull/827): signatures, context presence, context conclusions and `require_last_push_approval` were each ruled out before the re-query returned `CLEAN` at the same SHA.)
 
+**When you are about to merge anyway, the REST merge call names the blocker.** `mergeStateStatus: BLOCKED` carries no reason, but a refused `gh api -X PUT repos/{owner}/{repo}/pulls/{n}/merge -f merge_method=merge -f sha=<head SHA you checked>` answers with one line such as `Required status check "betterleaks" is expected`. Observed on two Dependabot PRs that read clean on every queryable gate (required checks green or skipped, branch current, signatures verified, `reviewDecision: APPROVED`); the first guess, the `copilot_code_review` rule, was wrong, and the merge call named a required check that never ran for that actor. The call **merges** when nothing blocks, so it is a diagnosis only where a merge is already authorised — never a probe.
+
 ### Never merge while a review is announced or in flight
 
 Once a reviewer is requested or has *started* (by you, a ruleset, or automation), its pendency blocks the merge until it resolves — regardless of `mergeStateStatus`. `CLEAN` is necessary but never sufficient: a `copilot_code_review` ruleset with `review_on_push: false` reports `CLEAN` off an *earlier* commit's review while a new one is still running, and a reviewer that has *started* drops off the request list without submitting — so `reviewRequests: []` is **not** "all clear". Check the timeline / pending-review state, not just `reviewRequests`. Do not request or re-request a reviewer as a pre-merge step (announcing one commits you to waiting). The absence of a review is not itself a blocker — you cannot require a review to *exist* (bots fail, decline, or are unconfigured) — but an *announced* one must be allowed to finish.
@@ -328,6 +330,64 @@ of required contexts, the job name does not matter: call the shared
 as the `skill` and `typo3-extension` templates of netresearch/.github do.
 Fork PRs of netresearch/t3x-rte_ckeditor_image and netresearch/ldap-manager got
 their CodeQL results that way.
+
+### A fork PR BLOCKED with green checks usually has more than one cause
+
+The GitHub page shows one blocking reason at a time, so a fork PR that is
+`BLOCKED` with every check green can carry several independent blockers. Check
+all of these before saying "only X blocks" (observed together on
+netresearch/netresearch-branding-skill#110):
+
+1. **Unsigned contributor commits under classic `required_signatures`.** The
+   merge is refused with "Commits must have verified signatures". Like the
+   CodeQL contexts above, this lives in classic branch protection, which the
+   rulesets endpoint does not show:
+   `gh api repos/{owner}/{repo}/branches/{base}/protection/required_signatures --jq .enabled`.
+2. **The `code_scanning` rule waiting for a CodeQL result** that default setup
+   never produces for a fork head (previous section; same helper-branch
+   workaround).
+3. **Workflow runs waiting for approval.** Where the repository's approval
+   policy covers the contributor (Settings → Actions → "Approval for running
+   fork pull request workflows"), fork runs need a maintainer's approval after
+   every new head SHA
+   (`gh api -X POST repos/{owner}/{repo}/actions/runs/{run_id}/approve`);
+   `pr-status.sh` from the git-workflow skill prints those commands.
+
+To sign the contributor's commits without losing their history — the branch
+needs "Allow edits from maintainers" — re-create every commit with its own
+tree, message and author, remapping the parents, so the branch's own merge
+commits survive. A linear `git rebase -S` replays the contributor's commits
+without those merges and hits conflicts the merges had already resolved.
+
+```bash
+# Run in a clone of the upstream repository, on a local branch tracking the
+# fork head. BASE is the PR's base branch on the upstream remote (origin here).
+git fetch origin
+BASE=origin/main
+OLD=$(git rev-parse HEAD)   # the fork head being rewritten; the push expects it
+declare -A map
+while read -r c; do
+  args=()
+  for p in $(git rev-list --parents -n1 "$c" | cut -d' ' -f2-); do
+    args+=(-p "${map[$p]:-$p}")
+  done
+  map[$c]=$(
+    GIT_AUTHOR_NAME="$(git log -1 --format=%an "$c")" \
+    GIT_AUTHOR_EMAIL="$(git log -1 --format=%ae "$c")" \
+    GIT_AUTHOR_DATE="$(git log -1 --format=%aD "$c")" \
+    git commit-tree -S "${args[@]}" -m "$(git log -1 --format=%B "$c")" "$c^{tree}"
+  ) || { echo "signing failed for $c" >&2; break; }
+done < <(git rev-list --reverse --topo-order "$BASE..HEAD")
+new=${map[$OLD]}
+[ -n "$new" ] && git diff --quiet HEAD "$new" && git reset --keep "$new"   # same tree, now signed
+```
+
+Then bring the branch up to date with a signed `git merge -S "$BASE"` and push
+it to the fork with the rewritten SHA as the expected value,
+`git push <fork-remote> HEAD:<branch> --force-with-lease=<branch>:"$OLD"`, so a
+commit the contributor pushed meanwhile is not overwritten. The committer of every re-created
+commit is you, which is what signature verification checks; authorship and
+`Signed-off-by` trailers stay the contributor's.
 
 ### `gh pr merge` falsely reports "base branch policy prohibits the merge"
 
@@ -614,6 +674,12 @@ curl -sS ${CODECOV_TOKEN:+-H "Authorization: Bearer $CODECOV_TOKEN"} "https://ap
 ```
 
 If the source is clean: do **not** dismiss the code-scanning alert or mark anything "safe" — the next analysis closes the alert and the check with it; a check-run's conclusion is immutable, so on the current commit `UNSTABLE` stays until then. Since the fix is already in the tree, this is the one case where an otherwise idle push is the remedy rather than a workaround — but it must be one that actually triggers an analysis. Automatic Analysis runs on any push; a CI-based analysis runs only when its workflow handles the event, so check which `pull_request` types the workflow subscribes to before assuming a rebase will clear it. If the source is *not* clean, the finding is real: read the taint flow (`additionalFields=_all` → `.flows`) before touching code — the rule title names the category, the flow names the sink.
+
+### A green `main` and a red PR on the same tree: a tool resolved at CI time has released
+
+When a PR turns red on a check whose files it does not touch, and `main` is green on the same tree, look for a tool that CI installs at run time rather than from a pinned version. php-cs-fixer v3.95.19 changed `binary_operator_spaces` padding inside array literals and turned three repositories' `ci / Code Style` red overnight with no commit anywhere. `main`'s green run dated before that release is stale evidence, not an all-clear: compare its timestamp with the tool's release date, or re-run it.
+
+Where that check is required, every PR in the repository is blocked by it, including ones that change no code. In the case above, the route that worked was to apply the new style in the blocked PR itself, so that the style fix and the blocked change landed together.
 
 ## References
 
