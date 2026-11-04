@@ -427,6 +427,18 @@ Name the template commit in the commit message
 baseline is traceable. The script never overwrites an existing
 `.github/template.yaml`; when re-syncing by hand, restore it after the copy.
 
+**What the drift check compares.** `scripts/drift_compare.py` in
+netresearch/.github (used by `check-drift.sh` and the reusable drift job)
+compares YAML files as parsed documents: a difference only in comments, key
+order or whitespace is reported as cosmetic and does not fail. Non-YAML files
+are compared byte for byte, and a YAML file that does not parse counts as
+drift. A workflow whose only difference is the full commit SHA a `uses:` is
+pinned to is reported as a pin notice, not drift, so Renovate moving the
+template and a consumer on different days does not redden either; a consumer
+with `strict-pins: true` in `.github/template.yaml` makes those differences
+fail. A comment in a consumer's `template.yaml` that calls the files
+"byte-identical" predates this and does not describe the check.
+
 See [dependency-management.md](./dependency-management.md) for which Dependabot ecosystems hard-fail when their manifest is missing (the common source of template drift on Go repos).
 
 ## Keeping a private copy of a public repository in sync
