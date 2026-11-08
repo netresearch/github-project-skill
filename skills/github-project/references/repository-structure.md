@@ -220,7 +220,7 @@ git remote add upstream https://github.com/upstream-org/project.git
 
 ### PR Strategy
 1. **Upstream PRs**: Push branch to fork, create PR targeting upstream `main`
-2. **Intra-fork PRs**: For changes not ready for upstream, create PR within fork. A PR opened in the fork first is reviewed by the AI reviewers configured there (Copilot, Gemini Code Assist) before the upstream maintainers see it.
+2. **Intra-fork PRs**: For changes not ready for upstream, create PR within fork. A PR opened in the fork first is reviewed by any AI reviewer enabled on the fork (such as Copilot or Gemini Code Assist) before the upstream maintainers see it.
 3. **Branch hierarchy**: Feature branches based on fix branches for incremental work
 
 ```bash
