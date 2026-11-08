@@ -88,8 +88,11 @@ When a GitHub org has an **Actions allow-list**, composite actions' **internal s
 1. Add the sub-actions to the org allow-list (requires org admin)
 2. Inline the composite action's steps directly in your workflow using only allowed actions + shell commands
 3. Fork/vendor the composite action and replace disallowed sub-actions
+4. Ask the composite action's maintainer to SHA-pin its internal sub-actions, then pin the composite action itself to that commit's full SHA. Use this when the org also requires every action to be pinned to a full commit SHA: the "Set up job" error then ends with "All actions must also be pinned to a full-…", and it rejects tag- or branch-pinned sub-actions even where their owner is allow-listed (`actions/checkout@v4` against an `actions/checkout@*` entry).
 
 **Example:** `ddev/github-action-add-on-test` internally uses `homebrew/actions/setup-homebrew@main` and `mxschmitt/action-tmate@v3` — neither is typically in org allow-lists. Solution: inline the steps (checkout + brew install via shell + bats).
+
+**Option 4 in practice:** `TYPO3-Documentation/ddev-typo3-docs` allow-lists `ddev/github-action-add-on-test@*` and requires full-SHA pins. With the action pinned at `1a55661`, whose `action.yaml` still used `@main`, `@v3` and `@v4`, every run failed at "Set up job". Upstream then SHA-pinned all three sub-actions (`f040e6e`). After the workflow moved to that SHA, the next run passed "Set up job". Whether the org allow-list changed in between is not readable without org-admin access.
 
 **Tip:** `ubuntu-latest` runners have Homebrew pre-installed. Instead of `homebrew/actions/setup-homebrew`, just add PATH entries:
 ```bash
