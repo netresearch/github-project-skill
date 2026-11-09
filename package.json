@@ -1,6 +1,7 @@
 {
   "name": "@netresearch/github-project-skill",
   "version": "0.0.0-source",
+  "private": true,
   "description": "Netresearch AI skill for GitHub repository setup, branch protection and project configuration.",
   "license": "(MIT AND CC-BY-SA-4.0)",
   "author": "Netresearch DTT GmbH (https://www.netresearch.de/)",
