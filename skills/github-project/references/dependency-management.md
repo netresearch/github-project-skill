@@ -925,7 +925,7 @@ The fix is the org reusable `netresearch/.github/.github/workflows/bun-dependenc
 
 What to expect after the first run:
 
-- Alerts that were invisible appear at once. On 2026-11-16, six of seven newly submitting repositories gained 21 alerts this way. Fix them like any other transitive advisory (next paragraph). Dependabot cannot open security-update PRs for `bun.lock`; Renovate or a manual PR does that.
+- Alerts that were invisible appear at once. On 2026-11-16, six of seven newly submitting repositories gained 21 alerts this way. Fix them like any other transitive advisory (next paragraph), through Renovate or a manual PR.
 - syft marks every package as `runtime` and does not reproduce the direct/indirect split, so an alert no longer tells you whether the package is a dev-only tool.
 - `contents: write` on the caller job raises an OpenSSF Scorecard `TokenPermissionsID` alert. The permission is required by the API, so dismiss it as won't fix and name the API in the comment.
 - The binary `bun.lockb` is not readable. Migrate with `bun install --save-text-lockfile` first.
