@@ -635,6 +635,29 @@ curl -fsSL "https://sonarcloud.io/api/hotspots/search?projectKey=KEY&branch=main
   | jq -r '.hotspots[]? | "\(.component | sub(".*:"; "")):\(.line // "?") \(.securityCategory // "")"'
 ```
 
+### From the failing condition to the finding behind it
+
+Name the condition first (the `project_status` call above, with `&branch=` or
+`&pullRequest=`), then read only the findings that feed it. For a private
+project add `-H "Authorization: Bearer $SONAR_TOKEN"` to each call.
+
+- **`new_security_rating` / `security_rating`** is computed from issues of type
+  `VULNERABILITY` alone; hotspots feed `new_security_hotspots_reviewed`
+  instead. List the open vulnerabilities rather than the whole issue list:
+  `api/issues/search?componentKeys=KEY&branch=main&types=VULNERABILITY&issueStatuses=OPEN,CONFIRMED`.
+- **A taint finding (injection, path traversal):** read the reported flow
+  before believing the rule title — `api/issues/search?issues=<key>&additionalFields=_all`,
+  then `.issues[].flows[].locations` names source, propagation and sink.
+  Analyzer-specific cases are in enterprise-readiness
+  `references/sonarcloud.md`, "Detector quirks".
+- **`new_duplicated_lines_density`:** name the file, not the percentage —
+  `api/measures/component_tree` per file; the new-code value sits under
+  `.periods[0].value`, not `.value`. The full query is in git-workflow
+  `references/merge-gate-watcher.md`.
+- **Waiting for the analysis of a commit:** `api/project_analyses/search`
+  returns `revision` as the full 40-character SHA. Match on the full SHA; a
+  watcher keyed on a short SHA never matches and runs into its timeout.
+
 ## Effective Branch Rules
 
 Reading what a branch actually enforces, and auditing whether a required check

@@ -78,9 +78,10 @@ Three recurring bugs in ad-hoc watchers:
 
 ### `gh run rerun` re-runs the OLD state — only for genuine flakes
 
-`gh run rerun [--failed]` reuses the original `GITHUB_SHA`/`GITHUB_REF` recorded at run-creation time. Two consequences:
+`gh run rerun [--failed]` reuses the original `GITHUB_SHA`/`GITHUB_REF` recorded at run-creation time. Consequences:
 
 - For `pull_request` workflows that SHA is the **merge commit** computed when the run was first created, so a rerun still tests the PR against the **old base**. After fixing a base-branch breakage, a rerun reproduces the old failure. To pick up new base state, create a new event: rebase the PR branch onto the fixed base and push (an empty commit works). (Reusable-workflow `@ref` resolution is also pinned at run-creation — see `reusable-workflow-pitfalls.md`.)
+- What a rerun keeps is the commit and the ref (and the original actor's privileges); what a step **queries from the API at run time** is read fresh. A check whose verdict depends on the commit or ref fails again identically; a check that asks the API for current state (requested reviewers, labels, review state) can pass on a rerun once that state has changed — which is why re-running the auto-approve job works in [auto-merge-guide.md](auto-merge-guide.md#fix--re-run-the-workflow).
 - Reruns are correct only for genuinely transient infra failures where the same code state should pass: runner/network blips, registry pull flakes (e.g. `Get "https://registry-1.docker.io/v2/": context deadline exceeded`), Sigstore/Rekor 409s. Don't debug the workflow for those — just `gh run rerun --failed`.
 - **A bad Codecov report is not one of them.** Codecov keys its report by commit SHA, so a rerun against the same SHA is served the report it already has; an incomplete upload survives it unchanged. The identical number on the second attempt then reads as a reproduction and invites the wrong diagnosis — "the coverage is unstable" — when the measurement simply never ran again. Force a fresh upload with a new SHA carrying the same tree: `git commit --amend --no-edit -S && git push --force-with-lease`. (Observed on a pull request whose diff deleted one YAML file and could not affect coverage: `codecov/project` reported `-0.38%`, a workflow rerun reported `-0.38%` again, and the amended commit came back green on all 20 checks.)
 
@@ -141,6 +142,10 @@ gh api repos/OWNER/REPO/stats/contributors --jq 'length'
 ```
 
 The general shape: test the status code, never the emptiness of the output.
+
+### An error body lands on stdout — test the exit status, never the emptiness
+
+On an HTTP error `gh api` writes the JSON error body to **stdout** and exits non-zero; with `--jq` the filter is not applied to it, and piped into a separate `jq` a field read on it comes out as `null`. On success, `--jq` for a field that does not exist prints nothing. So the emptiness test runs exactly backwards: `if [ -n "$(gh api repos/O/R/branches/X --jq .name 2>/dev/null)" ]` is true for a branch that does not exist, because `$( )` drops the exit status and `2>/dev/null` drops the message. `--jq 'length'` is no count either — on an error it returns the error body. Branch on the exit status (`if gh api … >/dev/null 2>err.txt; then …`) and read `err.txt` when it fails. (Measured with gh 2.104.0.)
 
 ### `author_association` depends on who reads it
 
