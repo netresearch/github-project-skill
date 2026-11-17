@@ -643,8 +643,12 @@ project add `-H "Authorization: Bearer $SONAR_TOKEN"` to each call.
 
 - **`new_security_rating` / `security_rating`** is computed from issues of type
   `VULNERABILITY` alone; hotspots feed `new_security_hotspots_reviewed`
-  instead. List the open vulnerabilities rather than the whole issue list:
-  `api/issues/search?componentKeys=KEY&branch=main&types=VULNERABILITY&issueStatuses=OPEN,CONFIRMED`.
+  instead. List the open vulnerabilities rather than the whole issue list,
+  scoped like the condition: `&pullRequest=N` for a PR gate; for a branch's
+  `new_*` condition add `&sinceLeakPeriod=true` (SonarCloud ignores
+  `inNewCodePeriod=true` and returns every open issue):
+  `api/issues/search?componentKeys=KEY&branch=main&types=VULNERABILITY&issueStatuses=OPEN,CONFIRMED&sinceLeakPeriod=true&ps=500`.
+  `ps` caps at 500; when `.total` is larger, page on with `&p=2`, `&p=3`, …
 - **A taint finding (injection, path traversal):** read the reported flow
   before believing the rule title — `api/issues/search?issues=<key>&additionalFields=_all`,
   then `.issues[].flows[].locations` names source, propagation and sink.
