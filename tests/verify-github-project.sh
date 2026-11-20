@@ -195,6 +195,13 @@ expect_line "an explicit allow_merge_commit false is a failure" "✗ Merge commi
 expect_line "an explicit allow_squash_merge false passes" "✓ Squash merge disabled"
 expect_no_line "an explicit false is not read as true" "Squash merge enabled"
 
+echo "github.com origin whose settings disable delete-branch-on-merge"
+
+settings_stub '{"default_branch":"main","allow_merge_commit":true,"allow_squash_merge":false,"allow_rebase_merge":false,"delete_branch_on_merge":false}'
+PATH="$WORK/bin-settings:$PATH" run "$WORK/git-settings"
+expect_line "an explicit delete_branch_on_merge false is a failure" "✗ Delete branch on merge disabled (should be enabled)"
+expect_no_line "an explicit delete_branch_on_merge false is not unreadable" "Delete branch on merge not readable"
+
 echo "github.com origin read by a non-admin: delete_branch_on_merge is absent"
 
 settings_stub '{"default_branch":"main","allow_merge_commit":true,"allow_squash_merge":false,"allow_rebase_merge":false}'

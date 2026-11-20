@@ -383,7 +383,7 @@ if command -v gh &> /dev/null && [ -n "$REPO_SLUG" ]; then
         ALLOW_SQUASH=$(echo "$REPO_SETTINGS" | jq -r 'if .allow_squash_merge == null then true else .allow_squash_merge end')
         # The REST API returns delete_branch_on_merge only to admins; for
         # everyone else the key is null, which says nothing about the setting.
-        DELETE_ON_MERGE=$(echo "$REPO_SETTINGS" | jq -r '.delete_branch_on_merge // "unknown"')
+        DELETE_ON_MERGE=$(echo "$REPO_SETTINGS" | jq -r 'if .delete_branch_on_merge == null then "unknown" else .delete_branch_on_merge end')
         ALLOW_AUTO_MERGE=$(echo "$REPO_SETTINGS" | jq -r '.allow_auto_merge // false')
         ALLOW_UPDATE_BRANCH=$(echo "$REPO_SETTINGS" | jq -r '.allow_update_branch // false')
         HAS_DISCUSSIONS=$(echo "$REPO_SETTINGS" | jq -r '.has_discussions // false')
