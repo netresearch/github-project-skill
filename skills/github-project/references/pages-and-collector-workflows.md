@@ -101,6 +101,10 @@ jobs:
     # Name the event that may publish: a PR builds, only main deploys.
     if: github.event_name == 'push'
     needs: build
+    # One deployment at a time, and never cancel one in progress.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     uses: netresearch/.github/.github/workflows/pages-deploy.yml@main
     permissions:
       pages: write
@@ -110,7 +114,7 @@ jobs:
       artifact-path: ./dist
 ```
 
-Both halves default the artifact name to `github-pages-site`. A site that ships dotfiles (`.nojekyll`, `.well-known/`) needs `include-hidden-files: true` on both calls. Then, in this order:
+Both halves default the artifact name to `github-pages-site`. A site that ships dotfiles (`.nojekyll`, `.well-known/`) needs `include-hidden-files: true` on both calls. A project site is served under `/<repo>/`, so a generator whose base defaults to `/` (Vite) emits asset URLs outside it; the build half exports the deployed base as `PAGES_BASE_PATH` while `configure-pages` is on (its default), so pass it, for example `build-command: npm run build -- --base "$PAGES_BASE_PATH/"`. Then, in this order:
 
 1. Set the Pages source to GitHub Actions: `gh api -X PUT repos/OWNER/REPO/pages -f build_type=workflow` (`-X POST` with the same field when Pages is not enabled yet). The build half runs `actions/configure-pages` by default and needs Pages enabled.
 2. Remove the committed build output from the index (`git rm -r --cached docs/`) and list the build directory in `.gitignore`, in the PR that adds the workflow.

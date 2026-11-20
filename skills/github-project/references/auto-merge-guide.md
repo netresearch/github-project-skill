@@ -940,7 +940,14 @@ jobs:
       # … publish …
 ```
 
-Then confirm the job's name appears in `gh pr checks` on the PR that adds it. To
-find which workflow runs a given script, `grep -rn '<script>' .github/workflows`
+A merge made with `GITHUB_TOKEN` (the auto-merge workflow's) starts no `push`
+run, so `deploy` does not run for such a merge; see *Auto-merged PRs leave the
+base branch without post-merge CI* above.
+
+Then confirm the job's name appears in `gh pr checks` on the PR that adds it.
+Appearing there does not make it gate anything: a failing job blocks a merge
+only when its context is in the branch's required status checks, and on a
+merge-queue repository the workflow also needs `merge_group:` so that context
+reports on the queue commit. To find which workflow runs a given script, `grep -rn '<script>' .github/workflows`
 and read that workflow's `on:` block; the loop in *Auto-merge proves only what
 the PR's own checks run* lists every workflow without a PR trigger.

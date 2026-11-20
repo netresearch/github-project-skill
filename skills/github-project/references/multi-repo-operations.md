@@ -94,12 +94,15 @@ Never enable auto-merge on archived repos — the auto-merge plumbing fails at s
 **Archived callers are not consumers.** Before removing an input or secret that a shared reusable workflow declares, the question is whether a *live* caller still passes it. An archived repository runs no workflows and accepts no PR, so a forwarding line there is inert — and could not be changed anyway. The two enumerations disagree on exactly these repositories: `gh repo list OWNER --no-archived` leaves them out, while the REST code search (see *Never enumerate by content with `gh search code`* below) returns them. Classify every hit before it becomes a blocker:
 
 ```bash
-gh api --paginate "search/code?q=%22INPUT_NAME%22+org:OWNER&per_page=100" \
-  --jq '.items[] | "\(.repository.full_name)|\(.path)"' | sort -u |
-while IFS='|' read -r repo path; do
-  archived=$(gh api "repos/$repo" --jq .archived) || archived=UNKNOWN
-  printf '%s %s %s\n' "$archived" "$repo" "$path"
-done
+if hits=$(gh api --paginate "search/code?q=%22INPUT_NAME%22+org:OWNER&per_page=100" \
+    --jq '.items[] | "\(.repository.full_name)|\(.path)"'); then
+  sort -u <<<"$hits" | while IFS='|' read -r repo path; do
+    archived=$(gh api "repos/$repo" --jq .archived) || archived=UNKNOWN
+    printf '%s %s %s\n' "$archived" "$repo" "$path"
+  done
+else
+  echo 'code search failed: no inventory' >&2
+fi
 ```
 
 For each `false` hit, open the file and confirm it really forwards the input rather than mentioning it in a comment. State the count of live callers in the PR that removes the input; `UNKNOWN` is unresolved, not dead.
@@ -441,12 +444,14 @@ Compare the synced file byte for byte through files, not through `$(...)`, which
 A template ships the **caller** form of shared workflows (`on: push`/`pull_request` plus `uses: …@main`). When the repository that *hosts* those reusables adopts the same template, a sync writes the caller over each reusable definition (`on: workflow_call` plus its steps). The overwritten file now calls itself, GitHub rejects it at startup, and every consumer's run of it fails with zero jobs (see `reusable-workflow-pitfalls.md` §7). A release workflow broken this way stopped the tag-push releases of every consuming repository.
 
 - List every hosted reusable under `intentional-drift:` in the host's `.github/template.yaml`, so syncs stop managing them and the drift check passes.
+- When syncing by hand (*Applying a template to one repository by hand* below), the `cp -a` writes the caller forms over the hosted files too. Before staging, restore each file listed under `intentional-drift:` with `git -C <worktree> checkout HEAD -- .github/workflows/<file>`.
 - Repair an overwritten reusable by restoring it from the commit before the sync (`git show <sync-commit>^:.github/workflows/<file>`), in the same PR that adds the exemption.
 - After any template sync of a host repository, check that each hosted reusable still declares `workflow_call`:
 
 ```bash
 for f in .github/workflows/*.y*ml; do
-  printf '%s %s\n' "$(yq '(.on | tag) == "!!map" and (.on | has("workflow_call"))' "$f")" "$f"
+  # `on:` can be a map, a list or a single event name
+  printf '%s %s\n' "$(yq '[.on | select(tag == "!!map") | keys | .[]] + [.on | select(tag == "!!seq") | .[]] + [.on | select(tag == "!!str")] | any_c(. == "workflow_call")' "$f")" "$f"
 done
 ```
 

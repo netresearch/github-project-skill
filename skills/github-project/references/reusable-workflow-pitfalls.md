@@ -266,9 +266,9 @@ A new reusable is inert until a caller runs it. Loop: wire the first caller `@ma
 
 A caller file says which reusable runs, not what it does. Before a document, a PR body or an audit answer states that CI generates an SBOM, signs artifacts or runs a scanner:
 
-1. **Read the reusable at the ref the caller pins.** `@main` means the current head of that repository's default branch; a tag means that tag: `gh api "repos/OWNER/REPO/contents/.github/workflows/FILE.yml?ref=REF" --jq .content | base64 -d`.
+1. **Read the reusable at the ref the caller pins.** `@main` means the current head of that repository's `main` branch, whichever branch is the default; a tag means that tag: `gh api "repos/OWNER/REPO/contents/.github/workflows/FILE.yml?ref=REF" --jq .content | base64 -d`.
 2. **Read the input defaults that gate the step, then the caller's `with:`.** A step behind `if: inputs.sign-artifacts` whose input has `default: true` runs unless the caller passes `false` — leaving the input out is opting in.
-3. **Permissions prove presence, never absence.** A caller granting `id-token: write` and `attestations: write` is evidence that the reusable signs or attests, since those scopes exist for little else. A secret or SAST scanner needs no unusual permission, so nothing in the caller shows whether one runs; only reading the workflows does.
+3. **Permissions hint at presence and never prove absence.** A caller granting `attestations: write` suggests that the reusable attests; `id-token: write` alone can also serve a cloud-provider login, so confirm the step in the reusable (point 1). A secret or SAST scanner needs no unusual permission, so nothing in the caller shows whether one runs; only reading the workflows does.
 4. **A configuration file in the repository is not evidence that a job reads it.** A reusable that passes `--config auto` to Semgrep or Opengrep runs registry rules, not the repository's `semgrep.yml`, and a `.gitleaks.toml` is unread when no job runs gitleaks. Grep the reusable and the caller for the file name or the tool before writing "CI uses our ruleset". For the same reason a local scan with the curated rules does not predict the CI result; reproduce with the flags the reusable passes.
 
 Overstating an enforced control is the worse error of the two: an auditor relies on it.

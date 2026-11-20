@@ -576,7 +576,7 @@ The REST path is `repos/OWNER/REPO/security-advisories/GHSA_ID`. The browser URL
 - **Send `severity` or `cvss_vector_string`, never both** — the reference says to choose one. With the vector, GitHub derives the severity.
 - **`patched_versions` stays `null` until a fixed release exists** (`null`, not `""`). Set it once the release is tagged, and check the boundary against what the package registry ships.
 - **Temporary private fork:** `gh api -X POST …/GHSA_ID/forks` creates a private repository visible to the advisory's collaborators; push the fix there and open the PR inside it.
-- **Publishing is an irreversible disclosure.** Publish only after the fix is merged and released — publication is what sends upgrade alerts downstream: `gh api -X PATCH …/GHSA_ID -f state=published`, then read back `state` and `published_at`.
+- **Publishing is an irreversible disclosure.** Normally publish once the fix is released; when no fix is coming, publish with `patched_versions` left `null` and state the mitigation in the description. Publication submits the advisory to GitHub's review for the Advisory Database, and Dependabot alerts reach dependents only after that review, so do not tell users they were alerted before `gh api advisories/GHSA_ID` returns it: `gh api -X PATCH …/GHSA_ID -f state=published`, then read back `state` and `published_at`.
 - **Requesting a CVE is asynchronous.** `gh api -X POST …/GHSA_ID/cve --include` answers `202 Accepted` with an empty body; `cve_id` stays `null` and the "Request CVE" button stays visible until GitHub assigns a number, which can take days. The status line is the only positive signal, so read it with `--include` rather than through a pipe.
 
 Read the result back after every write:

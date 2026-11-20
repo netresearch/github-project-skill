@@ -446,7 +446,7 @@ SonarCloud measures "new code" as lines touched by the PR, so mechanical refacto
 
 ### A SonarCloud finding on lines the PR did not touch: compare with `main` before reshaping the diff
 
-When a PR's new-code gate fails on a rule hit in code the PR did not write, the finding is pre-existing. Establish why Sonar reports it as new before changing anything: query the same rule on `main` across the whole project, and read when `main` was last analysed.
+When a PR's new-code gate fails on a rule hit in code the PR did not write, the finding is pre-existing — unless the PR changed a step on the issue's flow (its secondary locations, which `additionalFields=_all` returns), which makes it the PR's after all. Establish why Sonar reports it as new before changing anything: query the same rule on `main` across the whole project, and read when `main` was last analysed.
 
 ```bash
 P=<project key> PR=<pull request number> RULE=<rule key, e.g. githubactions:S6505>
@@ -635,7 +635,7 @@ gh api "repos/$R/actions/runs?event=merge_group&per_page=20" \
 
 Do not reach for `--admin` here. The escape hatch above is for a queue that never builds; this queue built, passed, and ran out of clock. Waiting is the fix.
 
-**Durations sampled inside your own fan-out are not a baseline.** The congestion inflates every run measured while it lasts, so a "CI is too slow" or "this timeout was never realistic" conclusion drawn from those runs describes your campaign, not the pipeline. Split each job's interval into `started_at - created_at` (an observed wait, not a measured executor queue — see [`ci-runner-capacity.md`](ci-runner-capacity.md)) and `completed_at - started_at` (execution). When the wait dominates, fetch runs created before the campaign started and size from those. Measured on one repository during a 55-PR wave: queue runs of 8 to 24 minutes, against a longest job of 2.1 minutes and a run outside the wave that finished in 2 min 19 s.
+**Durations sampled inside your own fan-out are not a baseline.** The congestion inflates every run measured while it lasts, so a "CI is too slow" or "this timeout was never realistic" conclusion drawn from those runs describes your campaign, not the pipeline. Split each job's interval into `started_at - created_at` (an observed wait, not a measured executor queue — see [`ci-runner-capacity.md`](ci-runner-capacity.md)) and `completed_at - started_at` (execution). When the wait dominates, take the execution time from runs created before the campaign started; the timeout must cover that plus whatever queue wait the entry will meet, so either drain the backlog first (the ordering rule above) or add the wait you measured. Measured on one repository during a 55-PR wave: queue runs of 8 to 24 minutes, against a longest job of 2.1 minutes and a run outside the wave that finished in 2 min 19 s.
 
 ```bash
 # Runs created before the campaign started (T = its first push, ISO 8601, URL-encoded "<")
