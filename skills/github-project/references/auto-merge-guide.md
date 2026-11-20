@@ -948,6 +948,7 @@ Then confirm the job's name appears in `gh pr checks` on the PR that adds it.
 Appearing there does not make it gate anything: a failing job blocks a merge
 only when its context is in the branch's required status checks, and on a
 merge-queue repository the workflow also needs `merge_group:` so that context
-reports on the queue commit. To find which workflow runs a given script, `grep -rn '<script>' .github/workflows`
-and read that workflow's `on:` block; the loop in *Auto-merge proves only what
-the PR's own checks run* lists every workflow without a PR trigger.
+reports on the queue commit. To find which workflow runs a given script,
+`grep -rn '<script>' .github/workflows` and read that workflow's `on:` block;
+the loop in *Auto-merge proves only what the PR's own checks run* lists every
+workflow without a PR trigger.
