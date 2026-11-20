@@ -219,7 +219,8 @@ if command -v gh &> /dev/null && [ -n "$REPO_SLUG" ]; then
 
     if [ "$MERGE_SETTINGS" != "{}" ]; then
         ALLOW_SQUASH=$(echo "$MERGE_SETTINGS" | jq -r '.allow_squash_merge // false')
-        ALLOW_MERGE=$(echo "$MERGE_SETTINGS" | jq -r '.allow_merge_commit // true')
+        # Not `// true`: jq's // replaces false as well as null.
+        ALLOW_MERGE=$(echo "$MERGE_SETTINGS" | jq -r 'if .allow_merge_commit == null then true else .allow_merge_commit end')
         ALLOW_REBASE=$(echo "$MERGE_SETTINGS" | jq -r '.allow_rebase_merge // false')
 
         # Check for merge method alignment with workflow
@@ -375,9 +376,14 @@ if command -v gh &> /dev/null && [ -n "$REPO_SLUG" ]; then
 
         # Check merge settings
         ALLOW_REBASE=$(echo "$REPO_SETTINGS" | jq -r '.allow_rebase_merge // false')
-        ALLOW_MERGE=$(echo "$REPO_SETTINGS" | jq -r '.allow_merge_commit // true')
-        ALLOW_SQUASH=$(echo "$REPO_SETTINGS" | jq -r '.allow_squash_merge // true')
-        DELETE_ON_MERGE=$(echo "$REPO_SETTINGS" | jq -r '.delete_branch_on_merge // false')
+        # Not `// true`: jq's // replaces false as well as null, so an
+        # explicit false would read as true. A null default applies only to
+        # a missing key.
+        ALLOW_MERGE=$(echo "$REPO_SETTINGS" | jq -r 'if .allow_merge_commit == null then true else .allow_merge_commit end')
+        ALLOW_SQUASH=$(echo "$REPO_SETTINGS" | jq -r 'if .allow_squash_merge == null then true else .allow_squash_merge end')
+        # The REST API returns delete_branch_on_merge only to admins; for
+        # everyone else the key is null, which says nothing about the setting.
+        DELETE_ON_MERGE=$(echo "$REPO_SETTINGS" | jq -r 'if .delete_branch_on_merge == null then "unknown" else .delete_branch_on_merge end')
         ALLOW_AUTO_MERGE=$(echo "$REPO_SETTINGS" | jq -r '.allow_auto_merge // false')
         ALLOW_UPDATE_BRANCH=$(echo "$REPO_SETTINGS" | jq -r '.allow_update_branch // false')
         HAS_DISCUSSIONS=$(echo "$REPO_SETTINGS" | jq -r '.has_discussions // false')
@@ -403,6 +409,8 @@ if command -v gh &> /dev/null && [ -n "$REPO_SLUG" ]; then
 
         if [ "$DELETE_ON_MERGE" = "true" ]; then
             pass "Delete branch on merge enabled"
+        elif [ "$DELETE_ON_MERGE" = "unknown" ]; then
+            warn "Delete branch on merge not readable (the REST API shows it to admins only)"
         else
             fail "Delete branch on merge disabled (should be enabled)"
         fi

@@ -176,6 +176,39 @@ expect_line "a dotted repository name yields its slug" "Checking GitHub settings
 calls=$(grep -c '^api repos/netresearch/\.github' "$WORK/gh-calls.log")
 report "the API is queried with the dotted slug" "$([ "$calls" -gt 0 ] && echo 0 || echo 1)" "gh calls: $(tr '\n' ';' < "$WORK/gh-calls.log")"
 
+echo "github.com origin whose settings disable merge commits and squash"
+
+# settings_stub <json> — a gh stub that answers `api repos/acme/widget` with
+# <json> and every other call with {}.
+settings_stub() {
+    mkdir -p "$WORK/bin-settings"
+    printf '#!/usr/bin/env bash\nif [ "$*" = "api repos/acme/widget" ]; then cat "%s"; else echo "{}"; fi\n' "$WORK/settings.json" > "$WORK/bin-settings/gh"
+    chmod +x "$WORK/bin-settings/gh"
+    printf '%s\n' "$1" > "$WORK/settings.json"
+}
+
+gitrepo "$WORK/git-settings" main
+git -C "$WORK/git-settings" remote add origin https://github.com/acme/widget.git
+settings_stub '{"default_branch":"main","allow_merge_commit":false,"allow_squash_merge":false,"allow_rebase_merge":false,"delete_branch_on_merge":true}'
+PATH="$WORK/bin-settings:$PATH" run "$WORK/git-settings"
+expect_line "an explicit allow_merge_commit false is a failure" "✗ Merge commits disabled (should be enabled)"
+expect_line "an explicit allow_squash_merge false passes" "✓ Squash merge disabled"
+expect_no_line "an explicit false is not read as true" "Squash merge enabled"
+
+echo "github.com origin whose settings disable delete-branch-on-merge"
+
+settings_stub '{"default_branch":"main","allow_merge_commit":true,"allow_squash_merge":false,"allow_rebase_merge":false,"delete_branch_on_merge":false}'
+PATH="$WORK/bin-settings:$PATH" run "$WORK/git-settings"
+expect_line "an explicit delete_branch_on_merge false is a failure" "✗ Delete branch on merge disabled (should be enabled)"
+expect_no_line "an explicit delete_branch_on_merge false is not unreadable" "Delete branch on merge not readable"
+
+echo "github.com origin read by a non-admin: delete_branch_on_merge is absent"
+
+settings_stub '{"default_branch":"main","allow_merge_commit":true,"allow_squash_merge":false,"allow_rebase_merge":false}'
+PATH="$WORK/bin-settings:$PATH" run "$WORK/git-settings"
+expect_line "a missing delete_branch_on_merge is reported as unreadable" "Delete branch on merge not readable"
+expect_no_line "a missing delete_branch_on_merge is not a failure" "✗ Delete branch on merge disabled"
+
 echo
 if [ "$fail" -ne 0 ]; then
     echo "verify-github-project.sh: FAILED ($count checks)"
