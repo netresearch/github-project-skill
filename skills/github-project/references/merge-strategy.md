@@ -449,7 +449,8 @@ SonarCloud measures "new code" as lines touched by the PR, so mechanical refacto
 When a PR's new-code gate fails on a rule hit in code the PR did not write, the finding is pre-existing. Establish why Sonar reports it as new before changing anything: query the same rule on `main` across the whole project, and read when `main` was last analysed.
 
 ```bash
-P=<project key>   # public projects need no token; private ones: add -H "Authorization: Bearer $SONAR_TOKEN"
+P=<project key> PR=<pull request number> RULE=<rule key, e.g. githubactions:S6505>
+# public projects need no token; private ones: add -H "Authorization: Bearer $SONAR_TOKEN"
 curl -fsS "https://sonarcloud.io/api/issues/search?componentKeys=$P&pullRequest=$PR&ps=100" \
   | jq -r '.issues[] | .rule + " @ " + (.component | split(":") | last) + ":" + (.line | tostring)'
 curl -fsS "https://sonarcloud.io/api/issues/search?componentKeys=$P&branch=main&rules=$RULE&ps=100" \
