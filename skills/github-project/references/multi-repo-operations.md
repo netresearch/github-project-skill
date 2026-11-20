@@ -91,6 +91,19 @@ fi
 
 Never enable auto-merge on archived repos — the auto-merge plumbing fails at set-up time with "archived" errors.
 
+**Archived callers are not consumers.** Before removing an input or secret that a shared reusable workflow declares, the question is whether a *live* caller still passes it. An archived repository runs no workflows and accepts no PR, so a forwarding line there is inert — and could not be changed anyway. The two enumerations disagree on exactly these repositories: `gh repo list OWNER --no-archived` leaves them out, while the REST code search (see *Never enumerate by content with `gh search code`* below) returns them. Classify every hit before it becomes a blocker:
+
+```bash
+gh api --paginate "search/code?q=%22INPUT_NAME%22+org:OWNER&per_page=100" \
+  --jq '.items[] | "\(.repository.full_name)|\(.path)"' | sort -u |
+while IFS='|' read -r repo path; do
+  archived=$(gh api "repos/$repo" --jq .archived) || archived=UNKNOWN
+  printf '%s %s %s\n' "$archived" "$repo" "$path"
+done
+```
+
+For each `false` hit, open the file and confirm it really forwards the input rather than mentioning it in a comment. State the count of live callers in the PR that removes the input; `UNKNOWN` is unresolved, not dead.
+
 ### 3. Contents API vs branch protection
 
 `gh api -X PUT repos/.../contents/...` is the fastest path for tiny single-file edits across a fleet — but it returns HTTP 409 on any repo that requires PRs, a merge queue, or signed commits. If your batch mixes repos with and without branch protection, this path breaks mid-loop and leaves half the fleet updated.
@@ -405,6 +418,37 @@ When a consumer repo's template-drift check fails and the fix is "remove a thing
 ```
 
 **Rule of thumb for template scope:** the template should carry only what EVERY consumer of that class actually needs. A `go-lib` template with an `npm` dependabot entry is wrong because most Go libraries don't ship `package.json`. A `go-app` template with an `npm` entry is defensible — some go-apps DO ship frontend assets — but the class is loose enough that per-consumer overrides become common. When you see carve-outs accumulating in `intentional-drift:` lists, that's a signal the template is too broad for its consumer base and the classes should be split (e.g. `go-app` vs `go-app-headless`).
+
+### Read each repository's template before syncing a file across repos
+
+A consumer's drift check compares it against the one template named by `template:` in its `.github/template.yaml`, and the same filename differs between templates (`templates/skill/.github/labeler.yml` and `templates/php-module/.github/labeler.yml` are different files). A repository's name does not tell you which: a repository named `*-skill-plugin` that is a PHP composer plugin uses `php-module`, and syncing the `skill` version into it turned its green drift check red. Read the key, group the targets by it, and copy each group from its own template:
+
+```bash
+set -o pipefail
+for repo in $REPOS; do
+  if t=$(gh api "repos/OWNER/$repo/contents/.github/template.yaml" --jq .content | base64 -d | yq -r '.template'); then
+    printf '%s %s\n' "$t" "$repo"
+  else
+    printf 'UNREADABLE %s\n' "$repo"
+  fi
+done | sort
+```
+
+Compare the synced file byte for byte through files, not through `$(...)`, which strips trailing newlines.
+
+### A repository that hosts reusables must exempt them from its own template
+
+A template ships the **caller** form of shared workflows (`on: push`/`pull_request` plus `uses: …@main`). When the repository that *hosts* those reusables adopts the same template, a sync writes the caller over each reusable definition (`on: workflow_call` plus its steps). The overwritten file now calls itself, GitHub rejects it at startup, and every consumer's run of it fails with zero jobs (see `reusable-workflow-pitfalls.md` §7). A release workflow broken this way stopped the tag-push releases of every consuming repository.
+
+- List every hosted reusable under `intentional-drift:` in the host's `.github/template.yaml`, so syncs stop managing them and the drift check passes.
+- Repair an overwritten reusable by restoring it from the commit before the sync (`git show <sync-commit>^:.github/workflows/<file>`), in the same PR that adds the exemption.
+- After any template sync of a host repository, check that each hosted reusable still declares `workflow_call`:
+
+```bash
+for f in .github/workflows/*.y*ml; do
+  printf '%s %s\n' "$(yq '(.on | tag) == "!!map" and (.on | has("workflow_call"))' "$f")" "$f"
+done
+```
 
 ### Applying a template to one repository by hand
 

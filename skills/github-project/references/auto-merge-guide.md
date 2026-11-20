@@ -905,3 +905,42 @@ A converted `run:` line can also break the file itself:
 `pip install --only-binary :all: $DEPS` is not a valid plain YAML scalar,
 because a colon followed by a space starts a mapping. Keep a block scalar
 (`run: |` or `run: >-`) and run `actionlint` before pushing.
+
+## A green check list proves only the checks it lists
+
+Before citing "all checks green" as evidence that a particular gate passed, name
+the job that runs that gate and find it in `gh pr checks <n>`. The list shows
+job names, not what they ran: a PR reported as "5/5 green" had passed CodeQL,
+DCO and SonarCloud, while the verification script the claim was about ran only
+in a workflow triggered by `push: main` — after the merge, including for the
+commit that changed the script itself.
+
+A repository-local check that does not run on `pull_request` can never check its
+own change. When the same workflow also deploys, add `pull_request:` and gate
+the publishing job on the event that may publish:
+
+```yaml
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:                          # runs the verification script on every PR
+    runs-on: ubuntu-latest
+    steps:
+      # … checkout, build, run the script …
+  deploy:
+    needs: build
+    # Name the publishing event. `!= 'pull_request'` would also publish
+    # from a merge_group trigger added later.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      # … publish …
+```
+
+Then confirm the job's name appears in `gh pr checks` on the PR that adds it. To
+find which workflow runs a given script, `grep -rn '<script>' .github/workflows`
+and read that workflow's `on:` block; the loop in *Auto-merge proves only what
+the PR's own checks run* lists every workflow without a PR trigger.
