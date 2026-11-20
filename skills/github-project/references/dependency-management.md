@@ -376,6 +376,36 @@ Renovate replaces Dependabot only where Renovate **runs**. A `renovate.json` in 
 
 5. **Prose:** grep the repository for "Dependabot" — Dockerfile comments, lint-config rationales and OpenSSF badge evidence name the updater and turn false with the file.
 
+### A deliberate version cap needs a matching `allowedVersions` rule
+
+Renovate reads a hand-set cap such as `"rector/rector": "^2.0 <2.6.4"` as an ordinary range. When the excluded version is the newest, it proposes widening the range — `<2.6.5` — which re-admits exactly the version the cap was set against, and with auto-merge on the cap disappears without a human seeing the PR. In one shared-workflow repository that happened two days after the cap was set, and the next CI run on `main` went red.
+
+State the exclusion where Renovate reads policy, in the same commit as the cap, and lift rule and cap together once upstream ships the fix:
+
+```json
+{
+  "packageRules": [
+    {
+      "description": "<version> breaks <what> (<upstream issue URL>); lift together with the cap in composer.json",
+      "matchPackageNames": ["rector/rector"],
+      "allowedVersions": "<2.6.4"
+    }
+  ]
+}
+```
+
+### A dependency pass covers the runtime requirements and the bot's open branches
+
+Raising the toolchain (PHPStan, Rector, PHPUnit) and the language floor is half a dependency update; the runtime `require` block decides whether anyone can install the package. In three libraries such a pass left `phpdocumentor/reflection-docblock` at `^5.3.0` while `typo3/cms-extbase ^14.3` requires `^6.0.3`, so no TYPO3 14 project could install them, and falling back to the previous major did not help because it carried the same constraint. Before declaring the pass done:
+
+- Read every entry of `require` against the current majors of what the package's consumers run.
+- Read the bot's open branches and PRs. Renovate has already computed what is stale and names the constraint to adopt, so an unmerged `renovate/<package>-<major>.x` branch is an unread finding.
+
+```bash
+git ls-remote --heads origin 'renovate/*'    # the remote's branches, not stale local refs
+gh pr list --author app/renovate --state open --json number,title,headRefName
+```
+
 ### Auto-merge Configuration (Recommended)
 
 **IMPORTANT:** Use `platformAutomerge: true` to leverage Renovate's bypass permissions:

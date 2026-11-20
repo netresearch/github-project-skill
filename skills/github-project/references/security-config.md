@@ -394,6 +394,10 @@ and does not say that they change the score or the code-scanning alerts.
 
 `PATCH /repos/OWNER/REPO/code-scanning/alerts/N` rejects a `dismissed_comment` over 280 characters with HTTP 422, exactly like the Dependabot endpoint ([`dependency-management.md`](dependency-management.md)) — but the reason enum is different: `false positive`, `won't fix`, `used in tests`, `mitigated` (with spaces, not underscores). The membership is not guesswork: sending an invalid value returns a 422 that lists all four, which is the cheapest way to check an enum you are unsure about.
 
+### `py/overly-permissive-file` flags any group or other bit — tests included
+
+CodeQL's Python query `py/overly-permissive-file` reports a `chmod` whose mode grants **any** group or other permission bit, not only a world-writable one, and it analyses test files too. A test that needs "some mode other than the default" and steps down one bit per push fails each time: one repository went through `0o666` (world writable), `0o644` (world readable) and `0o640` (group readable), three CI rounds and three review threads, before `0o700` passed. Pick an owner-only mode — `0o700`, `0o500` or `0o400` — from the start, and read the query's condition once instead of iterating against the scanner.
+
 ### Supported Languages — PHP Is NOT Supported
 
 CodeQL does **not** support PHP (as of 2026; tracked in [community discussion #158392](https://github.com/orgs/community/discussions/158392)). On a PHP/TYPO3 repo, the only languages worth scanning are:
@@ -563,6 +567,25 @@ If your Scorecard score is low, check these common issues:
 | Code-Review | PRs reviewed before merge | Auto-approve + `required_approving_review_count >= 1` satisfies this |
 | SAST | Static analysis enabled | CodeQL workflow (see above) |
 
+## Repository security advisories (GHSA) via `gh api`
+
+The REST path is `repos/OWNER/REPO/security-advisories/GHSA_ID`. The browser URL's path (`/security/advisories/GHSA_ID`, one segment more) 404s through `gh api`: take the GHSA id from a pasted URL and rebuild the path. The behaviour below is from the [REST reference](https://docs.github.com/en/rest/security-advisories/repository-advisories) and from handling one advisory in August 2026.
+
+- **Filling a draft is not publishing.** `gh api -X PATCH …/GHSA_ID --input fields.json` sets `description`, `cvss_vector_string`, `cwe_ids`, `vulnerabilities` and `credits` while `state` stays `draft` and `published_at` stays `null`.
+- **`credits` and `vulnerabilities` are replaced, not merged.** A PATCH carries the whole array, and an entry left out — the original reporter's credit, say — is deleted. Read the advisory first and send the complete set. One login carries one credit `type`: two entries for the same login keep only the last.
+- **Send `severity` or `cvss_vector_string`, never both** — the reference says to choose one. With the vector, GitHub derives the severity.
+- **`patched_versions` stays `null` until a fixed release exists** (`null`, not `""`). Set it once the release is tagged, and check the boundary against what the package registry ships.
+- **Temporary private fork:** `gh api -X POST …/GHSA_ID/forks` creates a private repository visible to the advisory's collaborators; push the fix there and open the PR inside it.
+- **Publishing is an irreversible disclosure.** Normally publish once the fix is released; when no fix is coming, publish with `patched_versions` left `null` and state the mitigation in the description. Publication submits the advisory to GitHub's review for the Advisory Database, and Dependabot alerts reach dependents only after that review, so do not tell users they were alerted before `gh api advisories/GHSA_ID` returns it: `gh api -X PATCH …/GHSA_ID -f state=published`, then read back `state` and `published_at`.
+- **Requesting a CVE is asynchronous.** `gh api -X POST …/GHSA_ID/cve --include` answers `202 Accepted` with an empty body; `cve_id` stays `null` and the "Request CVE" button stays visible until GitHub assigns a number, which can take days. The status line is the only positive signal, so read it with `--include` rather than through a pipe.
+
+Read the result back after every write:
+
+```bash
+gh api repos/OWNER/REPO/security-advisories/GHSA_ID \
+  --jq '{state, published_at, cve_id, credits: [.credits_detailed[]? | {login: .user.login, type, state}], vulnerabilities}'
+```
+
 ## GitHub Security API: Scripting Gotchas
 
 Endpoint quirks when scripting repo security settings, verified against the GitHub REST spec (source: [AriESQ/gh-safe-repo](https://github.com/AriESQ/gh-safe-repo)). For the bootstrap commands these annotate, see [`repo-bootstrap.md`](repo-bootstrap.md) § Actions & Security Hardening.
@@ -720,6 +743,35 @@ gh api repos/OWNER/REPO/rulesets/RULESET_ID \
 `pull_request` lets it merge a pull request that does not satisfy it. The REST
 API returns `actor_id` as a number and does not resolve it to a role name — say
 "repository role id 5" rather than guessing "admin" unless you resolved it.
+
+**Who can be a bypass actor.** Adding a GitHub App (`actor_type: Integration`)
+can fail with `422 Actor <name> integration must be part of the ruleset source
+or owner organization` although the app is installed in that organization.
+Measured on one repository in August 2026: two installed apps whose repository
+permissions were read-only were rejected; Renovate (`contents: write`,
+`pull_requests: write`) and Dependabot were accepted. The built-in
+`github-actions` app (id 15368) is always rejected — it is not an organization
+installation — so a workflow that merges with `GITHUB_TOKEN` cannot be given a
+bypass at all. Before designing a bypass, read the app's installation
+permissions and check who actually performs the merge: a `gh pr merge` in a
+workflow that authenticates with `GITHUB_TOKEN` is `github-actions`, not the bot
+that opened the PR; with an app token it is that app.
+
+```bash
+gh api orgs/ORG/installations --jq '.installations[] | {app_slug, app_id, permissions}'
+gh pr list --repo OWNER/REPO --state merged --limit 20 --json number,mergedBy \
+  --jq '.[] | "\(.number) \(.mergedBy.login)"'
+```
+
+**Bypass is per ruleset, not per rule.** The rulesets on a branch combine as a
+union, but each carries its own `bypass_actors`. To let an actor past the review
+requirement while the status checks still apply to it, put the two rules in
+separate rulesets: one with `required_status_checks` and no bypass, one with
+`pull_request` and the bypass list.
+
+**Organization rulesets depend on the plan.** On an organization whose plan
+lacks them, `GET orgs/ORG/rulesets` answers `403 Upgrade to GitHub Team to
+enable this feature.`, and every ruleset has to be created per repository.
 
 ### Auditing whether a required check can actually fail
 

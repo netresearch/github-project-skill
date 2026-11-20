@@ -70,6 +70,56 @@ def is_rate_limited(response):
 
 Collectors persist state between runs by uploading an artifact and pulling it back with `dawidd6/action-download-artifact`. Its `branch` input has **no default**, so it takes the latest successful run of the workflow on *any* branch. A `workflow_dispatch` test on a feature branch therefore loads (and its upload then becomes) production state. Convenient for testing a fix against real data; set `branch:` explicitly if you need isolation.
 
+## Serve a Pages site's assets same-origin, built in CI
+
+A Pages demo that loads its own HTML through a CDN that mirrors GitHub breaks in ways a green build does not show:
+
+- **jsDelivr serves `.html` as `text/plain`.** `cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/page.html` answers `200` with `content-type: text/plain; charset=utf-8` (measured 2026-11-20; JavaScript from the same CDN comes back as `application/javascript`). An iframe or modal loaded from there displays the page's source. JS and CSS libraries are unaffected.
+- **rawgit.com was shut down in 2019.** A `rawgit.com` URL still in a page has been broken since then.
+
+Serve the site's own files from the Pages origin instead. Do not get there by committing the build output into the Pages source directory (a built `docs/` beside the app's sources): every built page then duplicates its source, and a copy-paste detector such as SonarCloud's reports that as new duplication on every PR that touches the copied pages. Build in CI and deploy the artifact. The netresearch/.github reusables `pages-build.yml` (checkout, toolchain, build, artifact upload) and `pages-deploy.yml` (Pages packaging and deployment) split that into two calls:
+
+```yaml
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  build:
+    uses: netresearch/.github/.github/workflows/pages-build.yml@main
+    permissions:
+      contents: read
+    with:
+      setup-node: true
+      pre-build-command: npm ci
+      build-command: npm run build
+      artifact-path: dist
+  deploy:
+    # Name the event that may publish: a PR builds, only main deploys.
+    if: github.event_name == 'push'
+    needs: build
+    # One deployment at a time, and never cancel one in progress.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    uses: netresearch/.github/.github/workflows/pages-deploy.yml@main
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    with:
+      artifact-path: ./dist
+```
+
+Both halves default the artifact name to `github-pages-site`. A site that ships dotfiles (`.nojekyll`, `.well-known/`) needs `include-hidden-files: true` on both calls. A project site is served under `/<repo>/`, so a generator whose base defaults to `/` (Vite) emits asset URLs outside it; the build half exports the deployed base as `PAGES_BASE_PATH` while `configure-pages` is on (its default), so pass it, for example `build-command: npm run build -- --base "$PAGES_BASE_PATH/"`. Then, in this order:
+
+1. Set the Pages source to GitHub Actions: `gh api -X PUT repos/OWNER/REPO/pages -f build_type=workflow` (`-X POST` with the same field when Pages is not enabled yet). The build half runs `actions/configure-pages` by default and needs Pages enabled.
+2. Remove the committed build output from the index (`git rm -r --cached docs/`) and list the build directory in `.gitignore`, in the PR that adds the workflow.
+3. The first deployment runs only after the merge to `main`. Read the `deploy` job's conclusion, then verify the rendered page as described next.
+
 ## A Pages "200 OK" is not proof the page rendered
 
 For a **JS-rendered** page (data embedded in the HTML, DOM built client-side), `curl` returning `200` with the correct `<title>` proves nothing — the body can be blank. Real incident: a `String.prototype.replace(placeholder, json)` bug (replaces only the first of two identical tokens) shipped `window.{…json…} = __PLACEHOLDER__;` — a syntax error, blank dashboard, green build, 200 response.

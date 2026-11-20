@@ -444,6 +444,25 @@ SonarCloud measures "new code" as lines touched by the PR, so mechanical refacto
 - **What Automatic Analysis honors vs. ignores**: `.sonarcloud.properties` file exclusions and inline `// NOSONAR` comments work; `sonar.issue.ignore.multicriteria` rule-ignores are a **no-op** there — don't spend a round-trip on them, use exclusions or NOSONAR.
 - **Automatic Analysis (GitHub-App mode) silently ignores `sonar-project.properties`.** The file it honors is **`.sonarcloud.properties`** at repo root (Java-properties syntax), on the analyzed branch; it overrides UI Analysis-Scope settings. For false-positive sensors on template files (e.g. TYPO3 Fluid tripping the HTML sensor), plain `sonar.exclusions=...` removes the files from scope and cannot break analysis — prefer it over disabling sensors or `sonar.issue.ignore.multicriteria`.
 
+### A SonarCloud finding on lines the PR did not touch: compare with `main` before reshaping the diff
+
+When a PR's new-code gate fails on a rule hit in code the PR did not write, the finding is pre-existing — unless the PR changed a step on the issue's flow (its secondary locations, which `additionalFields=_all` returns), which makes it the PR's after all. Establish why Sonar reports it as new before changing anything: query the same rule on `main` across the whole project, and read when `main` was last analysed.
+
+```bash
+P=<project key> PR=<pull request number> RULE=<rule key, e.g. githubactions:S6505>
+# public projects need no token; private ones: add -H "Authorization: Bearer $SONAR_TOKEN"
+curl -fsS "https://sonarcloud.io/api/issues/search?componentKeys=$P&pullRequest=$PR&ps=100" \
+  | jq -r '.issues[] | .rule + " @ " + (.component | split(":") | last) + ":" + (.line | tostring)'
+curl -fsS "https://sonarcloud.io/api/issues/search?componentKeys=$P&branch=main&rules=$RULE&ps=100" \
+  | jq -r '.total, (.issues[] | .component | split(":") | last)'
+curl -fsS "https://sonarcloud.io/api/project_analyses/search?project=$P&branch=main&ps=3" | jq -r '.analyses[].date'
+```
+
+- **The rule has hits on sibling files on `main`:** it runs there, so no explanation of the form "this rule is not checked on `main`" holds. Report what was measured and leave the cause open rather than naming one.
+- **0 hits on `main`, and `main`'s last analysis predates the rule's activation:** `main` has no record of the finding, so every PR touching such a file reports it as new. Landing any commit on `main` refreshes the baseline (Automatic Analysis runs on push). In one repository that took the rule's findings on `main` from 0 to 10, and a Renovate PR blocked on the same findings for two days passed its gate minutes later. An unrelated PR (a dependency bump) tripping the same rule confirms the finding is not yours.
+- **Do not reshape the diff to dodge it.** In that case, moving the code to a new file, a `git mv` and an in-place conversion all left the gate result unchanged.
+- **Do not apply the rule's suggested fix blind.** `githubactions:S6505` asks for `--ignore-scripts` on `npm install`; for a CLI whose npm package installs its native binary in a `postinstall` script, that flag produces an install that fails at the first run. Run the changed step before adopting the fix.
+
 ### "Merge commits are not allowed on this repository"
 
 **Cause:** `allow_merge_commit` is false in repository settings.
@@ -615,6 +634,19 @@ gh api "repos/$R/actions/runs?event=merge_group&per_page=20" \
 **The ordering rule:** let the backlog drain before enqueueing into a merge-queue repo. Re-enqueueing into the same congestion restarts the entry's checks and buys another ejection. Where a batch touches both plain and merge-queue repos, merge the plain ones first and hold the queued ones until the org's job backlog is near zero — measure it per [`ci-runner-capacity.md`](ci-runner-capacity.md), at the **job** level.
 
 Do not reach for `--admin` here. The escape hatch above is for a queue that never builds; this queue built, passed, and ran out of clock. Waiting is the fix.
+
+**Durations sampled inside your own fan-out are not a baseline.** The congestion inflates every run measured while it lasts, so a "CI is too slow" or "this timeout was never realistic" conclusion drawn from those runs describes your campaign, not the pipeline. Split each job's interval into `started_at - created_at` (an observed wait, not a measured executor queue — see [`ci-runner-capacity.md`](ci-runner-capacity.md)) and `completed_at - started_at` (execution). When the wait dominates, take the execution time from runs created before the campaign started; the timeout must cover that plus whatever queue wait the entry will meet, so either drain the backlog first (the ordering rule above) or add the wait you measured. Measured on one repository during a 55-PR wave: queue runs of 8 to 24 minutes, against a longest job of 2.1 minutes and a run outside the wave that finished in 2 min 19 s.
+
+```bash
+# Runs created before the campaign started (T = its first push, ISO 8601, URL-encoded "<")
+gh api "repos/$R/actions/runs?event=merge_group&created=%3C$T&per_page=20" \
+  --jq '.workflow_runs[] | [.id, .created_at, .run_started_at, .updated_at] | @tsv'
+# Per finished job of one run: seconds waited vs seconds executed
+gh api --paginate "repos/$R/actions/runs/$RUN/jobs?per_page=100" \
+  --jq '.jobs[] | select(.completed_at) | [.name, ((.started_at|fromdate) - (.created_at|fromdate)), ((.completed_at|fromdate) - (.started_at|fromdate))] | @tsv'
+```
+
+Name the window a number came from whenever it supports a configuration change.
 
 ### Arming a merge queue PR: `--auto` with no strategy flag
 
