@@ -51,9 +51,8 @@ and match them against the account `gh auth status` reports.
 Before filing a bug report, name the code of ours that hits the bug. A
 difference found by a comparison (two PHP versions, two library releases) is a
 finding, not yet a report. If none of our code takes the affected path, the
-report has no consumer. The decision prompt then says so, warns that
-maintainers often close such reports as not planned, and recommends not
-filing.
+report has no consumer. Tell the user that, warn that maintainers often close
+such reports as not planned, and recommend not filing.
 
 nikic/PHP-Parser#1188 reported that `PipeOperatorEmulator::reverseEmulate()`
 does not re-lex a `=` or `>` after it splits a PHP 8.5 `T_PIPE`. The body
@@ -62,9 +61,10 @@ results do not change. The maintainer quoted that sentence back, answered that
 reverse emulation is best effort and that only reports from real-world need are
 wanted, and closed the issue as not planned.
 
-Never write a no-impact sentence ("parse results do not change", "we do not
-need a fix") into a report body. If the sentence is true, the report should
-not exist. If it is false, the body is wrong.
+A report body names the code that the defect affects. A statement about output
+that does not change ("parse results do not change") is accurate and can stay,
+but only next to that consumer. If the body can name no consumer, the report
+should not exist.
 
 ## Read the contribution contract — and run ALL of it
 
@@ -123,7 +123,7 @@ better, say so plainly and close your own PR in its favour, with thanks.
 
 A repository owner can block an account. GitHub then refuses every comment
 write from that account, but each surface words the refusal differently, and
-only the first one names the block:
+only the first two name the block:
 
 | Surface | Message |
 | --- | --- |
@@ -132,8 +132,10 @@ only the first one names the block:
 | REST `PATCH /repos/OWNER/REPO/issues/comments/ID` on your own comment | `403 Must have admin rights to Repository.` |
 | Web comment form | `There was a problem saving your comment. Please try again.` |
 
-A retry, another token or the web form does not help: only the owner can lift
-the block. Stop, tell the user which account is blocked in which repository,
+The web form message also appears during GitHub outages, so it proves nothing
+alone. Confirm the block with `gh issue comment` or the REST POST first. Once
+one of them names the block, a retry or another token does not help: only the
+owner can lift it. Stop, tell the user which account is blocked in which repository,
 and hand over the comment text so they can choose another route.
 
 ## Closing your superseded work
