@@ -46,6 +46,25 @@ forbids asking (herdr's `CONTRIBUTING.md` does), the remaining step is a comment
 on the relevant discussion. Read those two files with the issue and PR lists,
 and match them against the account `gh auth status` reports.
 
+## File a report only for code that needs the fix
+
+Before filing a bug report, name the code of ours that hits the bug. A
+difference found by a comparison (two PHP versions, two library releases) is a
+finding, not yet a report. If none of our code takes the affected path, the
+report has no consumer. The decision prompt then says so, warns that
+maintainers often close such reports as not planned, and recommends not
+filing.
+
+nikic/PHP-Parser#1188 reported that `PipeOperatorEmulator::reverseEmulate()`
+does not re-lex a `=` or `>` after it splits a PHP 8.5 `T_PIPE`. The body
+itself said that parse results do not change and that our code never reaches
+reverse emulation. The maintainer quoted that sentence back and closed the
+issue as not planned.
+
+Never write a no-impact sentence ("parse results do not change", "we do not
+need a fix") into a report body. If the sentence is true, the report should
+not exist. If it is false, the body is wrong.
+
 ## Read the contribution contract — and run ALL of it
 
 `CONTRIBUTING.md` or the README's contributing section, every linked step, the
@@ -98,6 +117,23 @@ Check out the competing branch and run it against **your own reproduction**,
 then answer with the measured result. A table of before/after numbers settles
 in one comment what diff-reading speculation cannot — and if the other fix is
 better, say so plainly and close your own PR in its favour, with thanks.
+
+## Recognise a block by the repository owner
+
+A repository owner can block an account. GitHub then refuses every comment
+write from that account, but each surface words the refusal differently, and
+only the first one names the block:
+
+| Surface | Message |
+| --- | --- |
+| `gh issue comment` | `GraphQL: User is blocked (addComment)` |
+| REST `POST /repos/OWNER/REPO/issues/N/comments` | `403 Blocked` |
+| REST `PATCH /repos/OWNER/REPO/issues/comments/ID` on your own comment | `403 Must have admin rights to Repository.` |
+| Web comment form | `There was a problem saving your comment. Please try again.` |
+
+A retry, another token or the web form does not help: only the owner can lift
+the block. Stop, tell the user which account is blocked in which repository,
+and hand over the comment text so they can choose another route.
 
 ## Closing your superseded work
 
