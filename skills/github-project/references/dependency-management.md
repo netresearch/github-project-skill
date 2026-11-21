@@ -235,6 +235,47 @@ gh api "repos/ORG/REPO" --jq .fork
 
 `repository_selection: all` plus `fork: true` plus no dashboard is the signature.
 
+### Manifests under `tests/` and `test/` are ignored, so their pins go stale
+
+`config:recommended` extends `:ignoreModulesAndTests`, which sets `ignorePaths` to `**/node_modules/**`, `**/bower_components/**`, `**/vendor/**`, `**/examples/**`, `**/__tests__/**`, `**/test/**`, `**/tests/**`, `**/__fixtures__/**`, `**/.mise/locks/**` and `**/.config/mise/locks/**`. The `nuget` manager has its own `ignorePaths` in that preset, without `**/__tests__/**`, `**/test/**` and `**/tests/**`, so NuGet manifests there stay tracked. For every other manager, a `package.json` for a browser-test harness under `tests/` never gets an update, and nothing reports the gap. It surfaces months later as a CI failure that looks like an upstream problem.
+
+**Real case:** `tests/companion/package.json` in netresearch/ldap-selfservice-password-changer pinned Playwright 1.57.0. When `ubuntu-latest` moved to Ubuntu 26.04, `playwright install --with-deps chromium` failed with `Playwright does not support chromium on ubuntu26.04-x64`. Pinning the runner or bumping Playwright by hand would have fixed that run only. The fix was the Renovate config: Renovate then opened the Playwright bump itself, and that PR's CI run was the verification on Ubuntu 26.04.
+
+**`ignorePaths` is not mergeable.** Setting it in the repository replaces the whole effective list, including paths that the extended org preset or the existing `renovate.json` added. Repeat every path you still want ignored and leave out only the one to track. The example holds only the built-in paths; add your own presets' paths to it:
+
+```json
+{
+  "extends": ["github>myorg/renovate-config"],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/examples/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/__fixtures__/**",
+    "**/.mise/locks/**",
+    "**/.config/mise/locks/**"
+  ]
+}
+```
+
+Take the current list from `lib/config/presets/internal/default.preset.ts` in renovatebot/renovate; it changes between Renovate releases.
+
+**Check which files Renovate sees** before and after the change:
+
+- The Dependency Dashboard lists detected package files per manager. Renovate cuts that section to the space left in the issue body, so a missing manifest there is a hint, not proof. Use the local run to settle it.
+- A local run shows the same thing without waiting for the hosted app. It needs a token for `github>` presets. It cannot resolve `local>` presets, because the local platform reads no remote files; a config that extends one has to be checked on the hosted app:
+
+```bash
+report="$(mktemp -d)/renovate-report.json"
+GITHUB_COM_TOKEN="$(gh auth token)" bunx --package renovate renovate \
+  --platform=local --dry-run=lookup --report-type=file --report-path="$report" &&
+  jq -c '[.repositories[].packageFiles | to_entries[] | {manager: .key, files: [.value[].packageFile]}]' "$report"
+```
+
+`--dry-run=lookup` also fills in the planned updates per dependency; `--dry-run=extract` lists files only.
+
 ### A push by anyone else takes the PR out of Renovate's hands
 
 Renovate treats a PR as modified as soon as another Git author adds a commit to its branch — a lockfile repair, a fixed test, a formatting commit. From then on it makes no further commits to that branch: it does not rebase it on conflicts and does not update it to a newer version. When the dependency later reaches the target version some other way, Renovate also does not delete the stale branch or autoclose the PR: it renames the PR to `<title> - abandoned` and comments that autoclosing is skipped. The PR stays open until someone closes it.
