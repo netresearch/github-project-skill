@@ -136,8 +136,9 @@ The web form message also appears during GitHub outages, so it proves nothing
 alone. Confirm the block with `gh issue comment` or the REST POST first. Once
 one of them names the block, a retry or another token does not help while the
 block is active. A personal account's block lasts until the owner lifts it; an
-organization can also set a block that expires on its own. Stop, tell the user which account is blocked in which
-repository, and hand over the comment text so they can choose another route.
+organization can also set a block that expires on its own. Stop, tell the user
+which account is blocked in which repository, and hand over the comment text so
+they can choose another route.
 
 ## Closing your superseded work
 
