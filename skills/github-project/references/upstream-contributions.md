@@ -46,6 +46,26 @@ forbids asking (herdr's `CONTRIBUTING.md` does), the remaining step is a comment
 on the relevant discussion. Read those two files with the issue and PR lists,
 and match them against the account `gh auth status` reports.
 
+## File a report only for code that needs the fix
+
+Before filing a bug report, name the code of ours that hits the bug. A
+difference found by a comparison (two PHP versions, two library releases) is a
+finding, not yet a report. If none of our code takes the affected path, the
+report has no consumer. Tell the user that, warn that maintainers often close
+such reports as not planned, and recommend not filing.
+
+nikic/PHP-Parser#1188 reported that `PipeOperatorEmulator::reverseEmulate()`
+does not re-lex a `=` or `>` after it splits a PHP 8.5 `T_PIPE`. The body
+named no code of ours that reads the token stream, and it said that parse
+results do not change. The maintainer quoted that sentence back, answered that
+reverse emulation is best effort and that only reports from real-world need are
+wanted, and closed the issue as not planned.
+
+A report body names the code that the defect affects. A statement about output
+that does not change ("parse results do not change") is accurate and can stay,
+but only next to that consumer. If the body can name no consumer, the report
+should not exist.
+
 ## Read the contribution contract — and run ALL of it
 
 `CONTRIBUTING.md` or the README's contributing section, every linked step, the
@@ -98,6 +118,27 @@ Check out the competing branch and run it against **your own reproduction**,
 then answer with the measured result. A table of before/after numbers settles
 in one comment what diff-reading speculation cannot — and if the other fix is
 better, say so plainly and close your own PR in its favour, with thanks.
+
+## Recognise a block by the repository owner
+
+A repository owner can block an account. GitHub then refuses every comment
+write from that account, but each surface words the refusal differently, and
+only the first two name the block:
+
+| Surface | Message |
+| --- | --- |
+| `gh issue comment` | `GraphQL: User is blocked (addComment)` |
+| REST `POST /repos/OWNER/REPO/issues/N/comments` | `403 Blocked` |
+| REST `PATCH /repos/OWNER/REPO/issues/comments/ID` on your own comment | `403 Must have admin rights to Repository.` |
+| Web comment form | `There was a problem saving your comment. Please try again.` |
+
+The web form message also appears during GitHub outages, so it proves nothing
+alone. Confirm the block with `gh issue comment` or the REST POST first. Once
+one of them names the block, a retry or another token does not help while the
+block is active. A personal account's block lasts until the owner lifts it; an
+organization can also set a block that expires on its own. Stop, tell the user
+which account is blocked in which repository, and hand over the comment text so
+they can choose another route.
 
 ## Closing your superseded work
 
