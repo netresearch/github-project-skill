@@ -57,9 +57,10 @@ filing.
 
 nikic/PHP-Parser#1188 reported that `PipeOperatorEmulator::reverseEmulate()`
 does not re-lex a `=` or `>` after it splits a PHP 8.5 `T_PIPE`. The body
-itself said that parse results do not change and that our code never reaches
-reverse emulation. The maintainer quoted that sentence back and closed the
-issue as not planned.
+named no code of ours that reads the token stream, and it said that parse
+results do not change. The maintainer quoted that sentence back, answered that
+reverse emulation is best effort and that only reports from real-world need are
+wanted, and closed the issue as not planned.
 
 Never write a no-impact sentence ("parse results do not change", "we do not
 need a fix") into a report body. If the sentence is true, the report should
