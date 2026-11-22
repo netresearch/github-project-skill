@@ -192,7 +192,7 @@ jobs:
       - uses: actions/create-github-app-token@<sha>
         id: app-token
         with:
-          client-id: "${{ secrets.APP_ID }}"   # app-id is deprecated since v3
+          client-id: "${{ secrets.APP_ID }}"   # needs v3.1.0 or later
           private-key: "${{ secrets.APP_PRIVATE_KEY }}"
           permission-contents: write     # only what the publish needs
       - uses: actions/github-script@<sha>
@@ -209,8 +209,9 @@ installation grants unless `permission-*` inputs narrow it, so an unscoped
 token in the publishing job hands the whole installation to whatever that job
 runs.
 
-`client-id` replaced the `app-id` input in v3, and `app-id` now prints a
-deprecation warning on every run. The action reads `client-id` first, falls
+`client-id` replaced the `app-id` input in v3.1.0, and `app-id` now prints a
+deprecation warning on every run. v3.0.0 still requires `app-id`, so pin a
+commit of v3.1.0 or later before switching the input name. The action reads `client-id` first, falls
 back to `app-id`, and passes either value to the same `appId` field of its
 auth call (`main.js` and `lib/main.js` at v3.4.0), so an existing numeric App
 ID secret works under the new input name without a new secret.

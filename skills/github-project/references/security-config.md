@@ -354,24 +354,33 @@ Only the newest analysis of a category is `deletable`. Delete newest first,
 one call per analysis. With `confirm_delete` the response named no next
 analysis for these sets (`{"next_analysis_url":null,"confirm_delete_url":null}`),
 so list the ids once, ordered newest first as the API returns them, and walk
-that list instead of following the response:
-
-```bash
-CAT='.github/workflows/codeql-analysis.yml:analyze/language:javascript'
-gh api "repos/OWNER/REPO/code-scanning/analyses?ref=refs/heads/main&per_page=100" --paginate \
-  | jq -r -s --arg c "$CAT" '.[][] | select(.category == $c) | .id' \
-  | while read -r id; do
-      gh api -X DELETE "repos/OWNER/REPO/code-scanning/analyses/$id?confirm_delete=true" >/dev/null
-    done
-# verify: no analysis of that category is left on the default branch
-gh api "repos/OWNER/REPO/code-scanning/analyses?ref=refs/heads/main&per_page=100" --paginate \
-  | jq -s --arg c "$CAT" '[.[][] | select(.category == $c)] | length'
-```
+that list instead of following the response.
 
 Deleting the last analysis also deletes alerts that exist only in it,
-dismissals included. Check the category's alerts first
+dismissals included. Before the loop, check the category's alerts
 (`code-scanning/alerts?state=all`, field `most_recent_instance.category`)
 and make sure a live configuration still covers the same code.
+
+```bash
+set -euo pipefail
+REPO=OWNER/REPO
+TOOL=CodeQL
+CAT='.github/workflows/codeql-analysis.yml:analyze/language:javascript'
+BRANCH=$(gh api "repos/$REPO" --jq .default_branch)
+list() {
+  gh api "repos/$REPO/code-scanning/analyses?ref=refs/heads/$BRANCH&tool_name=$TOOL&per_page=100" --paginate
+}
+ids=$(list | jq -r -s --arg c "$CAT" '.[][] | select(.category == $c) | .id')
+for id in $ids; do
+  gh api -X DELETE "repos/$REPO/code-scanning/analyses/$id?confirm_delete=true" >/dev/null
+done
+# verify: no analysis of that category is left on the default branch
+list | jq -s --arg c "$CAT" '[.[][] | select(.category == $c)] | length'
+```
+
+`tool_name` keeps another tool's uploads under the same category out of the
+loop. `pipefail` stops the script when a listing fails, so the final count
+cannot read `0` after an API error.
 
 Seen on `netresearch/t3x-rte_ckeditor_image` (2026-11-22): two categories of
 a deleted `codeql-analysis.yml` held 238 default-branch analyses, the newest
