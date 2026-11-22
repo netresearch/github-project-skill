@@ -358,7 +358,8 @@ that list instead of following the response.
 
 Deleting the last analysis also deletes alerts that exist only in it,
 dismissals included. Before the loop, check the category's alerts
-(`code-scanning/alerts?state=all`, field `most_recent_instance.category`)
+(`code-scanning/alerts` without a `state` filter, which returns every state;
+field `most_recent_instance.category`)
 and make sure a live configuration still covers the same code.
 
 ```bash
@@ -368,7 +369,8 @@ TOOL=CodeQL
 CAT='.github/workflows/codeql-analysis.yml:analyze/language:javascript'
 BRANCH=$(gh api "repos/$REPO" --jq .default_branch)
 list() {
-  gh api "repos/$REPO/code-scanning/analyses?ref=refs/heads/$BRANCH&tool_name=$TOOL&per_page=100" --paginate
+  gh api -X GET "repos/$REPO/code-scanning/analyses" --paginate \
+    -f ref="refs/heads/$BRANCH" -f tool_name="$TOOL" -f per_page=100
 }
 ids=$(list | jq -r -s --arg c "$CAT" '.[][] | select(.category == $c) | .id')
 for id in $ids; do
