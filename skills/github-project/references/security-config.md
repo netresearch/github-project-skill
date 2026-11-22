@@ -341,6 +341,56 @@ alerts sat under `.github/workflows/check.yml:gosec` while every run since the
 rename uploaded to `.github/workflows/ci.yml:gosec`. `gosec ./...` had exited 0
 for months, and the code carried reviewed `#nosec` justifications.
 
+### A removed workflow leaves a stale configuration on the tool status page
+
+The tool status page (`security/code-scanning/tools/<tool>/status`) lists one
+configuration per `category` that ever uploaded to the default branch. Delete
+the workflow and its configuration stays listed, with its last upload months
+old, because nothing ever uploads under that category again. The page offers
+removal; through the API, a configuration disappears once every default-branch
+analysis of its category is deleted.
+
+Only the newest analysis of a category is `deletable`. Delete newest first,
+one call per analysis. With `confirm_delete` the response named no next
+analysis for these sets (`{"next_analysis_url":null,"confirm_delete_url":null}`),
+so list the ids once, ordered newest first as the API returns them, and walk
+that list instead of following the response.
+
+Deleting the last analysis also deletes alerts that exist only in it,
+dismissals included. Before the loop, check the category's alerts
+(`code-scanning/alerts` without a `state` filter, which returns every state;
+field `most_recent_instance.category`)
+and make sure a live configuration still covers the same code.
+
+```bash
+set -euo pipefail
+REPO=OWNER/REPO
+TOOL=CodeQL
+CAT='.github/workflows/codeql-analysis.yml:analyze/language:javascript'
+BRANCH=$(gh api "repos/$REPO" --jq .default_branch)
+list() {
+  gh api -X GET "repos/$REPO/code-scanning/analyses" --paginate \
+    -f ref="refs/heads/$BRANCH" -f tool_name="$TOOL" -f per_page=100
+}
+ids=$(list | jq -r -s --arg c "$CAT" '.[][] | select(.category == $c) | .id')
+for id in $ids; do
+  gh api -X DELETE "repos/$REPO/code-scanning/analyses/$id?confirm_delete=true" >/dev/null
+done
+# verify: no analysis of that category is left on the default branch
+list | jq -s --arg c "$CAT" '[.[][] | select(.category == $c)] | length'
+```
+
+`tool_name` keeps another tool's uploads under the same category out of the
+loop. `pipefail` stops the script when a listing fails, so the final count
+cannot read `0` after an API error.
+
+Seen on `netresearch/t3x-rte_ckeditor_image` (2026-11-22): two categories of
+a deleted `codeql-analysis.yml` held 238 default-branch analyses, the newest
+from 2026-01-08. Deleting them in that order took about four minutes and
+cleared the stale entries; the one alert under them was a `won't fix`
+dismissal of code the current `/language:javascript-typescript` analysis no
+longer flags.
+
 ### A repository that only PUBLISHES the reusable CodeQL workflow is scanned by default setup
 
 The rule above — default setup off, custom workflow on — applies to
