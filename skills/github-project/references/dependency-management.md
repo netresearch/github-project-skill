@@ -317,6 +317,14 @@ gh api "repos/$R/pulls/$N" --jq .body | grep -cF -- '- [x] <!-- rebase-check -->
 
 For both the label and the box, Renovate acts on its next run, which can be minutes or hours away. Until then `pr-status.sh` keeps reporting the branch as behind its base; that is the expected state, not a failed request. Do not label or tick again and do not poll: the label on the PR or the read-back above is the confirmation that the request is in, and the rebased push is what wakes the PR's checks.
 
+### Composer updates stop without a PR when the platform PHP excludes a locked package
+
+Renovate updates `composer.lock` by running Composer. When `config.platform.php` names a version that any locked package does not allow, no lock update resolves, and Renovate opens no Composer PRs while its other managers keep working. Observed on netresearch/timetracker after the move to PHP 8.6: no Composer PR until [PR 971](https://github.com/netresearch/timetracker/pull/971), the first ones two minutes after its merge.
+
+- **Detect it:** the dependency dashboard issue lists `Branch not created because artifact update failed`, and Composer PRs stop on the day the platform version changed. Reproduce on a copy of the checkout with Renovate's default flags: `composer update <vendor/package> --with-dependencies --dry-run --no-scripts --no-plugins --ignore-platform-req='ext-*' --ignore-platform-req='lib-*'`. It is this case when that fails and the same command with `--ignore-platform-req=php` added resolves.
+- **Fix it** in `renovate.json`: `"composerIgnorePlatformReqs": ["ext-*", "lib-*", "php"]`. The list replaces Renovate's default, so repeat `ext-*` and `lib-*`. Do this only where the install ignores the same requirement, for example `--ignore-platform-req=php` in the Dockerfile, and remove both when the blocking package allows the version.
+- **Packages that require each other at the same version** need one `packageRules` entry with a `groupName`: a single-package update of `scheb/2fa-*` did not resolve, all three together did ([PR 986](https://github.com/netresearch/timetracker/pull/986)).
+
 ### A version that lives outside an image tag needs a custom manager
 
 Renovate's built-in managers read image tags, actions and lock files. A version stated as `ARG APP_VERSION=1.2.3`, as a Compose default (`${APP_VERSION:-1.2.3}`), in `.env.example`, in a CI `env:` block or in a README table is invisible to them, so the application itself is the one dependency no bot ever proposes — while its base images update weekly. A `customManagers` entry of `customType: regex` closes that; the points that cost a detour in `netresearch/moodle-docker` (PR #94):
