@@ -335,8 +335,8 @@ their CodeQL results that way.
 
 The GitHub page shows one blocking reason at a time, so a fork PR that is
 `BLOCKED` with every check green can carry several independent blockers. Check
-all of these before saying "only X blocks" (observed together on
-netresearch/netresearch-branding-skill#110):
+all of these before saying "only X blocks" (observed together on one fork
+pull request, 2026-10-22):
 
 1. **Unsigned contributor commits under classic `required_signatures`.** The
    merge is refused with "Commits must have verified signatures". Like the
