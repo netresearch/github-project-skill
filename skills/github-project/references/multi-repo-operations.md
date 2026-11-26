@@ -360,6 +360,49 @@ drops a failed batch reports its 20 repositories as clean.
 search had returned 0 for the same string, and so had its positive control
 against a repository known to contain it.
 
+## Bulk Label Writes to Many Issues or PRs
+
+Adding a label to thousands of issues or PRs is one write per item. The loop
+must survive being stopped half-way, and it starts only after the approval
+the Hard Rule above requires.
+
+1. **Count first, write the plan to a file.** One entry per write
+   (`{repo, number, label}`), built from a full read per repository:
+   `gh pr list -R "$repo" --state merged --limit 2000 --json number,title,labels`
+   (`gh issue list -R "$repo" --state closed …` for issues). A repository
+   whose count reaches the limit is re-read with a higher `--limit` before
+   it gets any plan entries. Leave out archived repositories
+   (`gh repo view -R "$repo" --json isArchived`), items whose `labels`
+   already hold the label, and repositories whose `gh label list -R "$repo"`
+   lacks it; report the last group, never create the label from the loop.
+2. **Keep the plan, the script and the done file outside the scratchpad,**
+   for example in `~/.claude/projects/<slug>/<session-id>/`. A wiped scratchpad
+   mid-run otherwise leaves no record of what was planned or written.
+3. **Show the per-repository counts and wait for the go.** This is the
+   dry-run manifest of the Hard Rule; write nothing before it.
+4. **Write through the REST endpoint and compare what it returns.**
+   `gh api -X POST repos/$repo/issues/$number/labels -f 'labels[]=<label>' --jq '[.[].name]'`
+   returns the item's labels; `gh pr edit --add-label` prints only a URL.
+   Append `repo#number:label` to the done file and flush it only when the
+   returned list holds the label. A restart reads the done file and skips
+   those entries. Re-adding a label is harmless, so an item written but not
+   yet logged costs nothing; this does not hold for a close or reopen, which
+   needs a re-read of the item before each write.
+5. **Write serially, one second after each attempt.** No parallel writers.
+6. **Retry only a rate limit.** When the answer is HTTP 429 or its message
+   says "rate limit", wait 60 × n seconds for attempt n = 1 … 6, then retry.
+   When the sixth attempt is still limited, stop the loop: the done file lets
+   a later run resume. Any other error, a plain 403 included (no write
+   access), is a `FAIL` line for that item at once, and the loop continues.
+
+End with one line, `DONE total=… ok=… skipped=… failed=…`, where
+`total = ok + skipped + failed` and `skipped` counts entries already in the
+done file. Before reporting, read back at least 6 random entries of the done
+file (`shuf -n 6 done.txt`); any mismatch stops the report.
+
+**Measured:** 3716 labels on merged PRs in 73 repositories in about 2 hours,
+0 failed, no rate-limit answer.
+
 ## Cache-Safety for Batch Operations
 
 When iterating across many local worktrees, it's easy to edit an installed skill/plugin cache by mistake. Before any write in a multi-repo loop:
