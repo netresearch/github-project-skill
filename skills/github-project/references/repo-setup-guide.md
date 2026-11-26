@@ -77,7 +77,7 @@ gh api repos/OWNER/REPO/topics -X PUT -f names='["typo3","typo3-extension","php"
 |---------|-------|-----|
 | `has_projects` | true | Project board for issue tracking |
 | `has_wiki` | false | Use Documentation/ folder instead |
-| Description | `<What it does> - by Netresearch` | Consistent branding |
+| Description | `<What it does> - by Netresearch` | Consistent attribution |
 
 ### Required Topics
 
