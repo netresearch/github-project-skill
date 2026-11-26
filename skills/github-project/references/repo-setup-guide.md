@@ -102,7 +102,7 @@ typo3, typo3-extension, php, ai, llm, openai, anthropic, claude, gemini, gpt
 
 ### README Badge Order
 
-Badges should appear in this order (see `netresearch-branding` skill for templates):
+Badges should appear in this order:
 
 ```markdown
 <!-- Row 1: CI/Quality badges -->
