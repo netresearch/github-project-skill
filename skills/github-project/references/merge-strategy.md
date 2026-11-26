@@ -352,6 +352,11 @@ pull request, 2026-10-22):
    every new head SHA
    (`gh api -X POST repos/{owner}/{repo}/actions/runs/{run_id}/approve`);
    `pr-status.sh` from the git-workflow skill prints those commands.
+   Approval runs the contributor's code in CI, so read first what CI will
+   execute besides the code under test: `gh pr diff <n> --name-only` lists
+   the changed paths. A path under `.github/`, a manifest whose scripts CI
+   runs (`composer.json`, `package.json`, a lock file), a `Makefile` or a
+   build script (`Build/`) means: read that change before approving.
 
 To sign the contributor's commits without losing their history — the branch
 needs "Allow edits from maintainers" — re-create every commit with its own
