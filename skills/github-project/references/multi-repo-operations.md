@@ -374,17 +374,19 @@ the Hard Rule above requires.
    it gets any plan entries. Leave out archived repositories
    (`gh api "repos/$repo" --jq .archived` prints `true`), items whose
    `labels` already hold the label, and repositories without the label
-   (`gh api "repos/$repo/labels/<label>"` answers 404; a label name with
-   spaces is URL-encoded). `gh label list` reads only 30 labels by default
-   and is no check. Report the repositories without the label, never create
-   the label from the loop.
+   (`gh api "repos/$repo/labels/<label>" --jq .name` answers 404; a label
+   name with spaces is URL-encoded). That lookup ignores case: keep the name
+   it prints as the repository's spelling, and use that spelling in the plan
+   entry, the "already holds" filter and every later comparison.
+   `gh label list` reads only 30 labels by default and is no check. Report
+   the repositories without the label, never create the label from the loop.
 2. **Keep the plan, the script and the done file outside the scratchpad,**
    for example in `~/.claude/projects/<slug>/<session-id>/`. A wiped scratchpad
    mid-run otherwise leaves no record of what was planned or written.
 3. **Show the per-repository counts and wait for the go.** This is the
    dry-run manifest of the Hard Rule; write nothing before it.
 4. **Write through the REST endpoint and compare what it returns.**
-   `gh api -X POST repos/$repo/issues/$number/labels -f 'labels[]=<label>' --jq '[.[].name]'`
+   `gh api -X POST "repos/$repo/issues/$number/labels" -f "labels[]=$label" --jq '[.[].name]'`
    returns the item's labels; `gh pr edit --add-label` prints only a URL.
    Append `repo#number:label` to the done file and flush it only when the
    returned list holds the label; a success whose list lacks the label is a
