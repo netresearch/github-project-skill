@@ -388,11 +388,15 @@ the Hard Rule above requires.
    returns the item's labels; `gh pr edit --add-label` prints only a URL.
    Append `repo#number:label` to the done file and flush it only when the
    returned list holds the label; a success whose list lacks the label is a
-   `FAIL` line. A restart reads the done file and skips
+   `FAIL` line. `FAIL repo#number:label <reason>` lines go to a separate
+   `failed.txt` beside the done file, never into it: the done file holds only
+   confirmed writes. A restart reads the done file and skips
    those entries. Re-adding a label is harmless, so an item written but not
    yet logged costs nothing; this does not hold for a close or reopen, which
    needs a re-read of the item before each write.
-5. **Write serially, one second after each attempt.** No parallel writers.
+5. **Write serially, one second after each attempt.** No parallel writers;
+   this overrides the parallel-subagents row in Common Anti-Patterns, which
+   is for reads and per-repository work.
 6. **Retry only a rate limit.** When the answer is HTTP 429 or its message
    says "rate limit", retry the write up to 6 times, waiting 60 × n seconds
    before retry n. When retry 6 is still limited, stop the loop: the done
@@ -403,7 +407,8 @@ the Hard Rule above requires.
 End with one line, `DONE total=… ok=… skipped=… failed=… pending=…`, where
 `total = ok + skipped + failed + pending`, `skipped` counts entries already
 in the done file and `pending` counts entries a rate-limit stop left
-unwritten (0 on a complete run). Before reporting, take at least 6 random
+unwritten (0 on a complete run), including the entry whose retries ran
+out. Before reporting, take at least 6 random
 entries of the done file (`shuf -n 6 done.txt`) and read each item's labels
 from GitHub (`gh api "repos/$repo/issues/$number/labels" --jq '.[].name'`);
 a sampled label missing there stops the report.
@@ -566,7 +571,7 @@ Some consumers accept only a private repository — the Claude organization mark
 | Anti-pattern | Consequence | Fix |
 |--------------|-------------|-----|
 | Tag pushed before version-bump PR merged | Release workflow runs on old version | Enforce order in supervisor prompt |
-| Sequential (not parallel) processing of independent repos | Hours wasted; user interrupts | Dispatch as parallel subagents |
+| Sequential (not parallel) processing of independent repos | Hours wasted; user interrupts | Dispatch as parallel subagents (not for bulk writes, see Bulk Label Writes) |
 | "Should work now, try it" without per-repo verification | One failure poisons the batch | Collect results in a table, verify each |
 | Shared branch name across repos (e.g. `bump-version`) | PR searches return wrong repo | Include repo name in branch: `bump-<repo>-v1.2.4` |
 | Squash-merging version-bump PRs when repo uses atomic commits | Lost signatures, CI confusion | Respect repo merge policy per `git-workflow` |
