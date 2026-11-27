@@ -413,7 +413,8 @@ the Hard Rule above requires.
    and, when `gh api rate_limit --jq .resources.core` shows `remaining`
    0, the time until its `reset` (UTC epoch seconds). The headers show only
    when the write runs with `gh api -i`, which prints them before the body
-   on an error too. When retry 6 is still limited, stop the loop: the done
+   on an error too; the label comparison of step 4 then reads the body after
+   the headers. When retry 6 is still limited, stop the loop: the done
    file lets a later run resume. Any other error, a plain 403 included (no
    write access), is a `FAIL` line for that item at once, and the loop
    continues.
