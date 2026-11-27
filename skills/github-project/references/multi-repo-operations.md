@@ -360,6 +360,77 @@ drops a failed batch reports its 20 repositories as clean.
 search had returned 0 for the same string, and so had its positive control
 against a repository known to contain it.
 
+## Bulk Label Writes to Many Issues or PRs
+
+Adding a label to thousands of issues or PRs is one write per item. The loop
+must survive being stopped half-way, and it starts only after the approval
+the Hard Rule above requires.
+
+1. **Count first, write the plan to a file.** One entry per write
+   (`{repo, number, label}`), built from a full read per repository:
+   `gh pr list -R "$repo" --state <state> --limit 2000 --json number,title,labels`
+   (`gh issue list …` for issues), with the state the task names
+   (`open`, `closed`, `merged` or `all`; `gh pr list` defaults to `open`).
+   A repository whose count reaches the limit is re-read with a higher
+   `--limit` before it gets any plan entries. A read that exits non-zero
+   (issues disabled, an API error) is listed in the step-3 counts as
+   `READ FAILED <reason>`, never as 0 items. Leave out archived repositories
+   (`gh api "repos/$repo" --jq .archived` prints `true`), items whose
+   `labels` already hold the label, and repositories without the label
+   (`gh api "repos/$repo/labels/<label>" --jq .name` answers 404; a label
+   name with spaces is URL-encoded). That lookup ignores case: keep the name
+   it prints as the repository's spelling, and use that spelling in the plan
+   entry, the "already holds" filter and every later comparison.
+   `gh label list` reads only 30 labels by default and is no check. Report
+   the repositories without the label, never create the label from the loop.
+2. **Keep the plan, the script and the done file outside the scratchpad,**
+   for example in `~/.claude/projects/<slug>/<session-id>/`. A wiped scratchpad
+   mid-run otherwise leaves no record of what was planned or written.
+3. **Show the manifest and wait for the go.** It names the label, the
+   action (add), the item state, the plan file's path and the count per
+   repository, plus the `READ FAILED` repositories and those without the
+   label. This is the dry-run manifest of the Hard Rule; write nothing
+   before it.
+4. **Write through the REST endpoint and compare what it returns.**
+   `gh api -X POST "repos/$repo/issues/$number/labels" -f "labels[]=$label" --jq '[.[].name]'`
+   returns the item's labels; `gh pr edit --add-label` prints only a URL.
+   Append `repo#number:label` to the done file and flush it only when the
+   returned list holds the label; a success whose list lacks the label is a
+   `FAIL` line. `FAIL repo#number:label <reason>` lines go to a failed file
+   of this run (`failed.<run>.txt`) beside the done file, never into the done
+   file, which holds only confirmed writes. An item that failed in an earlier
+   run is not in the done file, so the next run retries it; report failures
+   from the current run's file only. A restart reads the done file and skips
+   those entries. Re-adding a label is harmless, so an item written but not
+   yet logged costs nothing; this does not hold for a close or reopen, which
+   needs a re-read of the item before each write.
+5. **Write serially, one second after each attempt.** No parallel writers;
+   this overrides the parallel-subagents row in Common Anti-Patterns, which
+   is for reads and per-repository work.
+6. **Retry only a rate limit.** When the answer is HTTP 429 or its message
+   says "rate limit", retry the write up to 6 times. Before retry n wait
+   the longest of: 60 × n seconds, the `retry-after` header in seconds,
+   and, when `gh api rate_limit --jq .resources.core` shows `remaining`
+   0, the time until its `reset` (UTC epoch seconds). The headers show only
+   when the write runs with `gh api -i`, which prints them before the body
+   on an error too; the label comparison of step 4 then reads the body after
+   the headers. When retry 6 is still limited, stop the loop: the done
+   file lets a later run resume. Any other error, a plain 403 included (no
+   write access), is a `FAIL` line for that item at once, and the loop
+   continues.
+
+End with one line, `DONE total=… ok=… skipped=… failed=… pending=…`, where
+`total = ok + skipped + failed + pending`, `skipped` counts entries already
+in the done file and `pending` counts entries a rate-limit stop left
+unwritten (0 on a complete run), including the entry whose retries ran
+out. Before reporting, take at least 6 random
+entries of the done file (`shuf -n 6 done.txt`) and read each item's labels
+from GitHub (`gh api "repos/$repo/issues/$number/labels" --jq '.[].name'`);
+a sampled label missing there stops the report.
+
+**Measured:** 3716 labels on merged PRs in 73 repositories in about 2 hours,
+0 failed, no rate-limit answer.
+
 ## Cache-Safety for Batch Operations
 
 When iterating across many local worktrees, it's easy to edit an installed skill/plugin cache by mistake. Before any write in a multi-repo loop:
@@ -515,7 +586,7 @@ Some consumers accept only a private repository — the Claude organization mark
 | Anti-pattern | Consequence | Fix |
 |--------------|-------------|-----|
 | Tag pushed before version-bump PR merged | Release workflow runs on old version | Enforce order in supervisor prompt |
-| Sequential (not parallel) processing of independent repos | Hours wasted; user interrupts | Dispatch as parallel subagents |
+| Sequential (not parallel) processing of independent repos | Hours wasted; user interrupts | Dispatch as parallel subagents (not for bulk writes, see Bulk Label Writes) |
 | "Should work now, try it" without per-repo verification | One failure poisons the batch | Collect results in a table, verify each |
 | Shared branch name across repos (e.g. `bump-version`) | PR searches return wrong repo | Include repo name in branch: `bump-<repo>-v1.2.4` |
 | Squash-merging version-bump PRs when repo uses atomic commits | Lost signatures, CI confusion | Respect repo merge policy per `git-workflow` |
