@@ -368,10 +368,13 @@ the Hard Rule above requires.
 
 1. **Count first, write the plan to a file.** One entry per write
    (`{repo, number, label}`), built from a full read per repository:
-   `gh pr list -R "$repo" --state merged --limit 2000 --json number,title,labels`
-   (`gh issue list -R "$repo" --state closed …` for issues). A repository
-   whose count reaches the limit is re-read with a higher `--limit` before
-   it gets any plan entries. Leave out archived repositories
+   `gh pr list -R "$repo" --state <state> --limit 2000 --json number,title,labels`
+   (`gh issue list …` for issues), with the state the task names
+   (`open`, `closed`, `merged` or `all`; `gh pr list` defaults to `open`).
+   A repository whose count reaches the limit is re-read with a higher
+   `--limit` before it gets any plan entries. A read that exits non-zero
+   (issues disabled, an API error) is listed in the step-3 counts as
+   `READ FAILED <reason>`, never as 0 items. Leave out archived repositories
    (`gh api "repos/$repo" --jq .archived` prints `true`), items whose
    `labels` already hold the label, and repositories without the label
    (`gh api "repos/$repo/labels/<label>" --jq .name` answers 404; a label
@@ -390,9 +393,11 @@ the Hard Rule above requires.
    returns the item's labels; `gh pr edit --add-label` prints only a URL.
    Append `repo#number:label` to the done file and flush it only when the
    returned list holds the label; a success whose list lacks the label is a
-   `FAIL` line. `FAIL repo#number:label <reason>` lines go to a separate
-   `failed.txt` beside the done file, never into it: the done file holds only
-   confirmed writes. A restart reads the done file and skips
+   `FAIL` line. `FAIL repo#number:label <reason>` lines go to a failed file
+   of this run (`failed.<run>.txt`) beside the done file, never into the done
+   file, which holds only confirmed writes. An item that failed in an earlier
+   run is not in the done file, so the next run retries it; report failures
+   from the current run's file only. A restart reads the done file and skips
    those entries. Re-adding a label is harmless, so an item written but not
    yet logged costs nothing; this does not hold for a close or reopen, which
    needs a re-read of the item before each write.
