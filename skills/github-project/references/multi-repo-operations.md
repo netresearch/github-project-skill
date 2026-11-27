@@ -386,8 +386,11 @@ the Hard Rule above requires.
 2. **Keep the plan, the script and the done file outside the scratchpad,**
    for example in `~/.claude/projects/<slug>/<session-id>/`. A wiped scratchpad
    mid-run otherwise leaves no record of what was planned or written.
-3. **Show the per-repository counts and wait for the go.** This is the
-   dry-run manifest of the Hard Rule; write nothing before it.
+3. **Show the manifest and wait for the go.** It names the label, the
+   action (add), the item state, the plan file's path and the count per
+   repository, plus the `READ FAILED` repositories and those without the
+   label. This is the dry-run manifest of the Hard Rule; write nothing
+   before it.
 4. **Write through the REST endpoint and compare what it returns.**
    `gh api -X POST "repos/$repo/issues/$number/labels" -f "labels[]=$label" --jq '[.[].name]'`
    returns the item's labels; `gh pr edit --add-label` prints only a URL.
@@ -405,8 +408,12 @@ the Hard Rule above requires.
    this overrides the parallel-subagents row in Common Anti-Patterns, which
    is for reads and per-repository work.
 6. **Retry only a rate limit.** When the answer is HTTP 429 or its message
-   says "rate limit", retry the write up to 6 times, waiting 60 × n seconds
-   before retry n. When retry 6 is still limited, stop the loop: the done
+   says "rate limit", retry the write up to 6 times. Before retry n wait
+   the longest of: 60 × n seconds, the `retry-after` header in seconds,
+   and, when `gh api rate_limit --jq .resources.core` shows `remaining`
+   0, the time until its `reset` (UTC epoch seconds). The headers show only
+   when the write runs with `gh api -i`, which prints them before the body
+   on an error too. When retry 6 is still limited, stop the loop: the done
    file lets a later run resume. Any other error, a plain 403 included (no
    write access), is a `FAIL` line for that item at once, and the loop
    continues.
