@@ -372,9 +372,12 @@ the Hard Rule above requires.
    (`gh issue list -R "$repo" --state closed …` for issues). A repository
    whose count reaches the limit is re-read with a higher `--limit` before
    it gets any plan entries. Leave out archived repositories
-   (`gh repo view -R "$repo" --json isArchived`), items whose `labels`
-   already hold the label, and repositories whose `gh label list -R "$repo"`
-   lacks it; report the last group, never create the label from the loop.
+   (`gh api "repos/$repo" --jq .archived` prints `true`), items whose
+   `labels` already hold the label, and repositories without the label
+   (`gh api "repos/$repo/labels/<label>"` answers 404; a label name with
+   spaces is URL-encoded). `gh label list` reads only 30 labels by default
+   and is no check. Report the repositories without the label, never create
+   the label from the loop.
 2. **Keep the plan, the script and the done file outside the scratchpad,**
    for example in `~/.claude/projects/<slug>/<session-id>/`. A wiped scratchpad
    mid-run otherwise leaves no record of what was planned or written.
@@ -384,21 +387,26 @@ the Hard Rule above requires.
    `gh api -X POST repos/$repo/issues/$number/labels -f 'labels[]=<label>' --jq '[.[].name]'`
    returns the item's labels; `gh pr edit --add-label` prints only a URL.
    Append `repo#number:label` to the done file and flush it only when the
-   returned list holds the label. A restart reads the done file and skips
+   returned list holds the label; a success whose list lacks the label is a
+   `FAIL` line. A restart reads the done file and skips
    those entries. Re-adding a label is harmless, so an item written but not
    yet logged costs nothing; this does not hold for a close or reopen, which
    needs a re-read of the item before each write.
 5. **Write serially, one second after each attempt.** No parallel writers.
 6. **Retry only a rate limit.** When the answer is HTTP 429 or its message
-   says "rate limit", wait 60 × n seconds for attempt n = 1 … 6, then retry.
-   When the sixth attempt is still limited, stop the loop: the done file lets
-   a later run resume. Any other error, a plain 403 included (no write
-   access), is a `FAIL` line for that item at once, and the loop continues.
+   says "rate limit", retry the write up to 6 times, waiting 60 × n seconds
+   before retry n. When retry 6 is still limited, stop the loop: the done
+   file lets a later run resume. Any other error, a plain 403 included (no
+   write access), is a `FAIL` line for that item at once, and the loop
+   continues.
 
-End with one line, `DONE total=… ok=… skipped=… failed=…`, where
-`total = ok + skipped + failed` and `skipped` counts entries already in the
-done file. Before reporting, read back at least 6 random entries of the done
-file (`shuf -n 6 done.txt`); any mismatch stops the report.
+End with one line, `DONE total=… ok=… skipped=… failed=… pending=…`, where
+`total = ok + skipped + failed + pending`, `skipped` counts entries already
+in the done file and `pending` counts entries a rate-limit stop left
+unwritten (0 on a complete run). Before reporting, take at least 6 random
+entries of the done file (`shuf -n 6 done.txt`) and read each item's labels
+from GitHub (`gh api "repos/$repo/issues/$number/labels" --jq '.[].name'`);
+a sampled label missing there stops the report.
 
 **Measured:** 3716 labels on merged PRs in 73 repositories in about 2 hours,
 0 failed, no rate-limit answer.
